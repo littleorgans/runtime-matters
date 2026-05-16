@@ -35,7 +35,9 @@ async fn main() -> Result<()> {
         "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={}",
         lifecycle.state,
         rtm_cli::cli::event_name(&event),
-        lifecycle.runtime_pid
+        lifecycle
+            .runtime_pid
+            .expect("running lifecycle runtime pid")
     );
     println!("runtime events observed={}", events.len());
     Ok(())

@@ -3,7 +3,9 @@ use serde::de::DeserializeOwned;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
-use crate::{Lifecycle, ProtocolError, RuntimeEvent, ShimReady, SpawnRequest};
+use crate::{
+    KillRequest, Lifecycle, ProtocolError, RuntimeEvent, ShimExit, ShimReady, SpawnRequest,
+};
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 pub struct StatusRequest {
@@ -14,10 +16,12 @@ pub struct StatusRequest {
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum RuntimeRpc {
     Spawn { request: SpawnRequest },
+    Kill { request: KillRequest },
     Status { request: StatusRequest },
     Events,
     Stop,
     ShimReady { ready: ShimReady },
+    ShimExit { exit: ShimExit },
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]

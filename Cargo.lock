@@ -492,6 +492,8 @@ dependencies = [
  "clap",
  "rtm-core",
  "rtm-daemon",
+ "rtm-platform",
+ "serde_json",
  "tempfile",
  "tokio",
  "tracing-subscriber",
@@ -517,9 +519,21 @@ dependencies = [
  "anyhow",
  "chrono",
  "rtm-core",
+ "rtm-platform",
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rtm-platform"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "libc",
+ "rtm-core",
+ "tokio",
 ]
 
 [[package]]

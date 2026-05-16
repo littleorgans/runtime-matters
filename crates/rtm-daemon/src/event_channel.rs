@@ -1,9 +1,32 @@
-use rtm_core::{Lifecycle, RuntimeEvent};
+use anyhow::{Result, anyhow};
+use rtm_core::{Lifecycle, LifecycleState, RuntimeEvent, TerminationEvidence};
 
-pub(crate) fn running_event(lifecycle: &Lifecycle) -> RuntimeEvent {
-    RuntimeEvent::Running {
+pub(crate) fn running_event(lifecycle: &Lifecycle) -> Result<RuntimeEvent> {
+    let runtime_pid = lifecycle
+        .runtime_pid
+        .ok_or_else(|| anyhow!("running lifecycle missing runtime pid"))?;
+    let start_time = lifecycle
+        .start_time
+        .ok_or_else(|| anyhow!("running lifecycle missing start time"))?;
+    Ok(RuntimeEvent::Running {
         session_id: lifecycle.session_id,
-        runtime_pid: lifecycle.runtime_pid,
-        start_time: lifecycle.start_time,
+        runtime_pid,
+        start_time,
+    })
+}
+
+pub(crate) fn terminated_event(
+    lifecycle: &Lifecycle,
+    evidence: TerminationEvidence,
+) -> RuntimeEvent {
+    let (exit_code, signal) = match lifecycle.state {
+        LifecycleState::Exited(exit) => (exit.code, exit.signal),
+        _ => (None, None),
+    };
+    RuntimeEvent::Terminated {
+        session_id: lifecycle.session_id,
+        exit_code,
+        signal,
+        evidence,
     }
 }
