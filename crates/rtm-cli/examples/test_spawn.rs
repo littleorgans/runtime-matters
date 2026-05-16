@@ -21,6 +21,8 @@ async fn main() -> Result<()> {
             request: SpawnRequest {
                 session_id: args.session_id,
                 runtime: args.runtime,
+                env: Vec::new(),
+                cwd: None,
             },
         },
     )

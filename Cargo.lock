@@ -519,9 +519,18 @@ dependencies = [
  "anyhow",
  "chrono",
  "rtm-core",
+ "rtm-launchers",
  "rtm-platform",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rtm-launchers"
+version = "0.1.0"
+dependencies = [
+ "rtm-core",
  "uuid",
 ]
 

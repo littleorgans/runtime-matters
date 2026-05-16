@@ -2,21 +2,24 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
-use crate::RuntimeKindParseError;
+use crate::{LaunchEnv, RuntimeKindParseError};
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeKind {
     Claude,
+    Codex,
+    Other(String),
 }
 
 impl RuntimeKind {
-    pub const fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Other(value) => value,
         }
     }
 }
@@ -31,10 +34,35 @@ impl FromStr for RuntimeKind {
     type Err = RuntimeKindParseError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value.is_empty() {
+            return Err(RuntimeKindParseError(value.to_owned()));
+        }
+
         match value {
             "claude" => Ok(Self::Claude),
-            other => Err(RuntimeKindParseError(other.to_owned())),
+            "codex" => Ok(Self::Codex),
+            other => Ok(Self::Other(other.to_owned())),
         }
+    }
+}
+
+impl Serialize for RuntimeKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for RuntimeKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -110,6 +138,10 @@ pub struct RuntimeSignalParseError(pub String);
 pub struct SpawnRequest {
     pub session_id: Uuid,
     pub runtime: RuntimeKind,
+    #[serde(default)]
+    pub env: Vec<LaunchEnv>,
+    #[serde(default)]
+    pub cwd: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -125,6 +157,11 @@ pub struct ShimReady {
     pub shim_pid: u32,
     pub runtime_pid: u32,
     pub start_time: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ShimLaunchRequest {
+    pub session_id: Uuid,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -145,7 +182,7 @@ pub struct Lifecycle {
 }
 
 impl Lifecycle {
-    pub const fn forking(session_id: Uuid, runtime: RuntimeKind) -> Self {
+    pub fn forking(session_id: Uuid, runtime: RuntimeKind) -> Self {
         Self {
             session_id,
             runtime,

@@ -17,9 +17,10 @@ impl RtmHarness {
     pub fn start() -> Self {
         let temp = TempDir::new().expect("temp dir");
         let socket = temp.path().join("rtm.sock");
-        let fake_claude = write_fake_claude(temp.path());
+        write_fake_runtime(temp.path(), "claude");
+        write_fake_runtime(temp.path(), "codex");
         let rtm = env!("CARGO_BIN_EXE_rtm");
-        let daemon = start_daemon(rtm, &socket, &fake_claude);
+        let daemon = start_daemon(rtm, &socket, temp.path());
         wait_for_socket(&socket);
         Self {
             _temp: temp,
@@ -30,10 +31,14 @@ impl RtmHarness {
     }
 
     pub fn spawn(&self, session_id: &str) -> Output {
+        self.spawn_runtime(session_id, "claude")
+    }
+
+    pub fn spawn_runtime(&self, session_id: &str, runtime: &str) -> Output {
         self.rtm_command()
             .arg("spawn")
             .arg("--runtime")
-            .arg("claude")
+            .arg(runtime)
             .arg("--session-id")
             .arg(session_id)
             .output()
@@ -107,6 +112,10 @@ pub fn output_stdout(output: Output) -> String {
     String::from_utf8(output.stdout).expect("stdout")
 }
 
+pub fn output_stderr(output: Output) -> String {
+    String::from_utf8(output.stderr).expect("stderr")
+}
+
 pub fn parse_runtime_pid(stdout: &str) -> u32 {
     stdout
         .split("runtime_pid=")
@@ -175,9 +184,9 @@ fn wait_until<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) -> Opt
     None
 }
 
-fn write_fake_claude(dir: &Path) -> PathBuf {
-    let path = dir.join("claude");
-    std::fs::write(&path, "#!/bin/sh\nexec sleep 60\n").expect("fake claude");
+fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
+    let path = dir.join(name);
+    std::fs::write(&path, "#!/bin/sh\nexec sleep 60\n").expect("fake runtime");
     let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
     use std::os::unix::fs::PermissionsExt;
     permissions.set_mode(0o755);
@@ -185,16 +194,25 @@ fn write_fake_claude(dir: &Path) -> PathBuf {
     path
 }
 
-fn start_daemon(rtm: &'static str, socket: &Path, fake_claude: &Path) -> Child {
+fn start_daemon(rtm: &'static str, socket: &Path, fake_bin_dir: &Path) -> Child {
     Command::new(rtm)
         .arg("daemon")
         .arg("start")
         .env("RTM_SOCKET_PATH", socket)
-        .env("RTM_CLAUDE_PATH", fake_claude)
+        .env("PATH", test_path(fake_bin_dir))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("daemon start")
+}
+
+fn test_path(fake_bin_dir: &Path) -> String {
+    let current = std::env::var_os("PATH").unwrap_or_default();
+    let paths = std::iter::once(fake_bin_dir.to_path_buf()).chain(std::env::split_paths(&current));
+    std::env::join_paths(paths)
+        .expect("joined path")
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn wait_for_socket(socket: &Path) {

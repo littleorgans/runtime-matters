@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use rtm_core::{
-    KillRequest, Lifecycle, LifecycleState, LostEvidence, RuntimeEvent, RuntimeExit, RuntimeKind,
+    KillRequest, LaunchSpec, Lifecycle, LifecycleState, LostEvidence, RuntimeEvent, RuntimeExit,
     RuntimeSignal, ShimExit, ShimReady, SpawnRequest, TerminationEvidence,
 };
 use tokio::net::UnixListener;
@@ -35,6 +35,7 @@ impl DaemonConfig {
 }
 
 pub async fn run_daemon(config: DaemonConfig) -> Result<()> {
+    rtm_launchers::warm_registry().context("failed to initialize launcher registry")?;
     socket::prepare_socket(&config.socket_path)?;
     let listener = UnixListener::bind(&config.socket_path)
         .with_context(|| format!("failed to bind {}", config.socket_path.display()))?;
@@ -75,6 +76,7 @@ pub(crate) struct ServerState {
     events: Mutex<Vec<RuntimeEvent>>,
     lifecycles: Mutex<HashMap<Uuid, Lifecycle>>,
     exit_watchers: Mutex<HashMap<Uuid, rtm_platform::kqueue::ProcessExitWatcher>>,
+    pending_launches: Mutex<HashMap<Uuid, LaunchSpec>>,
     pending_ready: Mutex<HashMap<Uuid, oneshot::Sender<ShimReady>>>,
     terminated_events: Mutex<HashSet<Uuid>>,
 }
@@ -86,6 +88,7 @@ impl ServerState {
             events: Mutex::new(Vec::new()),
             lifecycles: Mutex::new(HashMap::new()),
             exit_watchers: Mutex::new(HashMap::new()),
+            pending_launches: Mutex::new(HashMap::new()),
             pending_ready: Mutex::new(HashMap::new()),
             terminated_events: Mutex::new(HashSet::new()),
         }
@@ -98,6 +101,7 @@ impl ServerState {
     pub(crate) async fn begin_spawn(
         &self,
         request: &SpawnRequest,
+        launch: LaunchSpec,
     ) -> Result<oneshot::Receiver<ShimReady>> {
         if self
             .lifecycles
@@ -110,8 +114,12 @@ impl ServerState {
 
         self.lifecycles.lock().await.insert(
             request.session_id,
-            Lifecycle::forking(request.session_id, request.runtime),
+            Lifecycle::forking(request.session_id, request.runtime.clone()),
         );
+        self.pending_launches
+            .lock()
+            .await
+            .insert(request.session_id, launch);
         self.begin_ready_wait(request.session_id).await
     }
 
@@ -125,8 +133,17 @@ impl ServerState {
     }
 
     pub(crate) async fn cancel_spawn(&self, session_id: Uuid) {
+        self.pending_launches.lock().await.remove(&session_id);
         self.pending_ready.lock().await.remove(&session_id);
         self.lifecycles.lock().await.remove(&session_id);
+    }
+
+    pub(crate) async fn take_launch_spec(&self, session_id: Uuid) -> Result<LaunchSpec> {
+        self.pending_launches
+            .lock()
+            .await
+            .remove(&session_id)
+            .ok_or_else(|| anyhow!("no pending launch for session {session_id}"))
     }
 
     pub(crate) async fn complete_shim_ready(&self, ready: ShimReady) -> Result<()> {
@@ -370,24 +387,6 @@ impl ServerState {
         let event = event_channel::terminated_event(lifecycle, evidence);
         self.events.lock().await.push(event.clone());
         Ok(Some(event))
-    }
-}
-
-pub fn resolve_claude_path() -> PathBuf {
-    if let Some(path) = std::env::var_os("RTM_CLAUDE_PATH") {
-        return PathBuf::from(path);
-    }
-
-    // Pass 1 shortcut: this hardcoded Claude resolver is removed in Pass 3,
-    // when RuntimeLauncher dispatch owns runtime specific launch behavior.
-    option_env!("RTM_COMPILED_CLAUDE_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("claude"))
-}
-
-pub(crate) fn runtime_command_path(runtime: RuntimeKind) -> PathBuf {
-    match runtime {
-        RuntimeKind::Claude => resolve_claude_path(),
     }
 }
 

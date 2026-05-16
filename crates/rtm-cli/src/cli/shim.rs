@@ -3,26 +3,30 @@ use std::process::ExitStatus;
 
 use anyhow::{Context, Result, anyhow};
 use clap::Args;
-use rtm_core::{RuntimeExit, RuntimeKind, RuntimeSignal, ShimExit, ShimReady};
+use rtm_core::{LaunchSpec, RuntimeExit, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady};
 use uuid::Uuid;
 
 #[derive(Debug, Args)]
 pub struct ShimArgs {
     #[arg(long)]
     session_id: Uuid,
-    #[arg(long)]
-    runtime: RuntimeKind,
 }
 
 pub async fn run(args: ShimArgs) -> Result<()> {
-    let mut child = rtm_daemon::shim_socket::runtime_command(args.runtime)
-        .env("RTM_SESSION_ID", args.session_id.to_string())
-        .env("RTM_RUNTIME_KIND", args.runtime.as_str())
+    let socket_path = rtm_daemon::socket::socket_path_from_env()?;
+    let launch = rtm_daemon::shim_socket::request_launch(
+        &socket_path,
+        ShimLaunchRequest {
+            session_id: args.session_id,
+        },
+    )
+    .await?;
+    let mut child = runtime_command(&launch)?
         .spawn()
-        .with_context(|| format!("failed to spawn {} runtime", args.runtime))?;
+        .context("failed to spawn runtime")?;
     let runtime_pid = child
         .id()
-        .ok_or_else(|| anyhow!("spawned {} runtime has no pid", args.runtime))?;
+        .ok_or_else(|| anyhow!("spawned runtime has no pid"))?;
 
     let ready = ShimReady {
         session_id: args.session_id,
@@ -31,7 +35,6 @@ pub async fn run(args: ShimArgs) -> Result<()> {
         start_time: rtm_platform::process::start_time_for_pid(runtime_pid)?
             .unwrap_or_else(chrono::Utc::now),
     };
-    let socket_path = rtm_daemon::socket::socket_path_from_env()?;
     rtm_daemon::shim_socket::send_ready(&socket_path, ready).await?;
 
     let status = wait_for_runtime(&mut child).await?;
@@ -41,6 +44,18 @@ pub async fn run(args: ShimArgs) -> Result<()> {
     };
     rtm_daemon::shim_socket::send_exit(&socket_path, exit).await?;
     Ok(())
+}
+
+fn runtime_command(launch: &LaunchSpec) -> Result<tokio::process::Command> {
+    let mut command = tokio::process::Command::new(launch.command()?);
+    command.args(launch.argv.iter().skip(1));
+    for env in &launch.env {
+        command.env(&env.key, &env.value);
+    }
+    if let Some(cwd) = &launch.cwd {
+        command.current_dir(cwd);
+    }
+    Ok(command)
 }
 
 async fn wait_for_runtime(child: &mut tokio::process::Child) -> Result<ExitStatus> {

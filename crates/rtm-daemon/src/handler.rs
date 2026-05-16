@@ -44,7 +44,8 @@ async fn handle_rpc(rpc: RuntimeRpc, state: Arc<ServerState>) -> RuntimeResponse
 async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<RuntimeResponse> {
     match rpc {
         RuntimeRpc::Spawn { request } => {
-            let ready_rx = state.begin_spawn(&request).await?;
+            let launch = rtm_launchers::dispatch(&request.runtime)?.launch_spec(&request)?;
+            let ready_rx = state.begin_spawn(&request, launch).await?;
             if let Err(error) = shim_socket::launch_shim(state.config(), &request).await {
                 state.cancel_spawn(request.session_id).await;
                 return Err(error);
@@ -70,6 +71,10 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             events: state.events().await,
         }),
         RuntimeRpc::Stop => Ok(RuntimeResponse::Stopping),
+        RuntimeRpc::ShimLaunch { request } => {
+            let launch = state.take_launch_spec(request.session_id).await?;
+            Ok(RuntimeResponse::ShimLaunch { launch })
+        }
         RuntimeRpc::ShimReady { ready } => {
             state.complete_shim_ready(ready).await?;
             Ok(RuntimeResponse::Ack)
