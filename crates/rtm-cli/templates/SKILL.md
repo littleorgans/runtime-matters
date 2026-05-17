@@ -1,42 +1,8 @@
-# runtime-matters
+---
+name: rtm-admin
+description: Admin MCP tools for runtime-matters rtmd.
+---
 
-Per host runtime substrate for the Helioy agent platform.
-
-## Development
-
-```bash
-just check
-just build
-just test
-```
-
-## Pass 1 tracer
-
-Start the daemon:
-
-```bash
-rtm daemon start
-```
-
-Spawn a Claude runtime:
-
-```bash
-cargo run -p rtm-cli --example test_spawn -- --runtime claude --session-id "$(uuidgen)"
-```
-
-Check status:
-
-```bash
-rtm status
-```
-
-Stop the daemon:
-
-```bash
-rtm daemon stop
-```
-
-<!-- rtm-admin-tools:start -->
 ## Admin MCP Tools
 
 | Tool | Purpose |
@@ -45,4 +11,3 @@ rtm daemon stop
 | `rtm_status` | Return rtmd Lifecycle rows, optionally filtered by session id, runtime, and lifecycle state. |
 | `rtm_version` | Return the rtmd package version and build git sha. |
 | `rtm_watchers` | Return rtmd operator visibility counters for kqueue watchers and pending shim socket waiters. |
-<!-- rtm-admin-tools:end -->

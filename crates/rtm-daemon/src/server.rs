@@ -5,8 +5,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use rtm_core::{
-    KillRequest, LaunchSpec, Lifecycle, LifecycleState, LostEvidence, NudgeRequest, RuntimeEvent,
-    RuntimeExit, RuntimeSignal, ShimExit, ShimReady, SpawnRequest, TerminationEvidence,
+    KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, LifecycleState,
+    LostEvidence, NudgeRequest, RuntimeEvent, RuntimeExit, RuntimeSignal, ShimExit, ShimReady,
+    SpawnRequest, StatusFilter, TerminationEvidence, WatcherCounts,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use tokio::net::UnixListener;
@@ -214,6 +215,34 @@ impl ServerState {
         Ok(())
     }
 
+    pub(crate) async fn kill_pid(&self, request: KillByPidRequest) -> Result<KillByPidResponse> {
+        rtm_platform::signal::send_raw_signal(request.pid, request.signal)?;
+        let deadline = Instant::now() + Duration::from_secs(request.grace_secs);
+
+        while Instant::now() < deadline {
+            if !rtm_platform::process::pid_alive(request.pid) {
+                return Ok(KillByPidResponse {
+                    pid: request.pid,
+                    signal: request.signal,
+                    killed_after_grace: false,
+                });
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+
+        let mut killed_after_grace = false;
+        let kill_signal = rtm_platform::signal::signal_number(RuntimeSignal::Kill);
+        if rtm_platform::process::pid_alive(request.pid) && request.signal != kill_signal {
+            rtm_platform::signal::send_raw_signal(request.pid, kill_signal)?;
+            killed_after_grace = true;
+        }
+        Ok(KillByPidResponse {
+            pid: request.pid,
+            signal: request.signal,
+            killed_after_grace,
+        })
+    }
+
     pub(crate) async fn nudge_runtime(&self, request: NudgeRequest) -> Result<()> {
         let lifecycle = self
             .store
@@ -253,9 +282,9 @@ impl ServerState {
         Ok(())
     }
 
-    pub(crate) async fn status(&self, session_id: Option<Uuid>) -> Vec<Lifecycle> {
-        match self.store.list(session_id).await {
-            Ok(rows) => rows,
+    pub(crate) async fn status(&self, filter: StatusFilter) -> Vec<Lifecycle> {
+        match self.store.list(filter.session_id).await {
+            Ok(rows) => filter_lifecycles(rows, &filter),
             Err(error) => {
                 tracing::warn!(%error, "failed to read lifecycle status");
                 Vec::new()
@@ -265,6 +294,13 @@ impl ServerState {
 
     pub(crate) async fn events(&self) -> Vec<RuntimeEvent> {
         self.events.lock().await.clone()
+    }
+
+    pub(crate) async fn watcher_counts(&self) -> WatcherCounts {
+        WatcherCounts {
+            kqueue_watchers: self.exit_watchers.lock().await.len(),
+            shim_sockets: self.pending_ready.lock().await.len(),
+        }
     }
 
     pub(crate) async fn start_exit_watcher(
@@ -411,6 +447,30 @@ impl ServerState {
                 bail!("session {} is already terminal", lifecycle.session_id)
             }
         }
+    }
+}
+
+fn filter_lifecycles(rows: Vec<Lifecycle>, filter: &StatusFilter) -> Vec<Lifecycle> {
+    rows.into_iter()
+        .filter(|row| runtime_matches(row, filter.runtime.as_deref()))
+        .filter(|row| state_matches(row, filter.state.as_deref()))
+        .collect()
+}
+
+fn runtime_matches(row: &Lifecycle, runtime: Option<&str>) -> bool {
+    runtime.is_none_or(|runtime| row.runtime.as_str() == runtime)
+}
+
+fn state_matches(row: &Lifecycle, state: Option<&str>) -> bool {
+    state.is_none_or(|state| state_name(&row.state).eq_ignore_ascii_case(state))
+}
+
+fn state_name(state: &LifecycleState) -> &'static str {
+    match state {
+        LifecycleState::Forking => "Forking",
+        LifecycleState::Running => "Running",
+        LifecycleState::Exited(_) => "Exited",
+        LifecycleState::Lost(_) => "Lost",
     }
 }
 

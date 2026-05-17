@@ -4,13 +4,28 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
 use crate::{
-    KillRequest, LaunchSpec, Lifecycle, NudgeRequest, ProtocolError, RuntimeEvent, ShimExit,
-    ShimLaunchRequest, ShimReady, SpawnRequest,
+    KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, McpBridgeRequest,
+    McpBridgeResponse, NudgeRequest, ProtocolError, RuntimeEvent, ShimExit, ShimLaunchRequest,
+    ShimReady, SpawnRequest, StatusFilter, WatcherCounts,
 };
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 pub struct StatusRequest {
     pub session_id: Option<Uuid>,
+    #[serde(default)]
+    pub runtime: Option<String>,
+    #[serde(default)]
+    pub state: Option<String>,
+}
+
+impl From<StatusRequest> for StatusFilter {
+    fn from(request: StatusRequest) -> Self {
+        Self {
+            session_id: request.session_id,
+            runtime: request.runtime,
+            state: request.state,
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
@@ -18,10 +33,14 @@ pub struct StatusRequest {
 pub enum RuntimeRpc {
     Spawn { request: SpawnRequest },
     Kill { request: KillRequest },
+    KillByPid { request: KillByPidRequest },
     Nudge { request: NudgeRequest },
     Status { request: StatusRequest },
+    Version,
+    Watchers,
     Events,
     Stop,
+    McpBridge { request: McpBridgeRequest },
     ShimLaunch { request: ShimLaunchRequest },
     ShimReady { ready: ShimReady },
     ShimExit { exit: ShimExit },
@@ -37,8 +56,20 @@ pub enum RuntimeResponse {
     Status {
         lifecycles: Vec<Lifecycle>,
     },
+    KillByPid {
+        response: KillByPidResponse,
+    },
+    Version {
+        version: crate::VersionInfo,
+    },
+    Watchers {
+        watchers: WatcherCounts,
+    },
     Events {
         events: Vec<RuntimeEvent>,
+    },
+    McpBridge {
+        response: McpBridgeResponse,
     },
     ShimLaunch {
         launch: LaunchSpec,

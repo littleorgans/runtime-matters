@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use rtm_core::{
-    LaunchEnv, RuntimeEvent, RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line,
-    write_json_line,
+    LaunchEnv, RuntimeEvent, RuntimeResponse, RuntimeRpc, StatusFilter, StatusRequest,
+    read_json_line, write_json_line,
 };
 use tokio::io::BufReader;
 use tokio::net::UnixStream;
@@ -41,10 +41,26 @@ pub async fn request(socket_path: &Path, rpc: RuntimeRpc) -> Result<RuntimeRespo
 }
 
 pub async fn status(socket_path: &Path, session_id: Option<Uuid>) -> Result<RuntimeResponse> {
+    status_filtered(
+        socket_path,
+        StatusFilter {
+            session_id,
+            runtime: None,
+            state: None,
+        },
+    )
+    .await
+}
+
+pub async fn status_filtered(socket_path: &Path, filter: StatusFilter) -> Result<RuntimeResponse> {
     request(
         socket_path,
         RuntimeRpc::Status {
-            request: StatusRequest { session_id },
+            request: StatusRequest {
+                session_id: filter.session_id,
+                runtime: filter.runtime,
+                state: filter.state,
+            },
         },
     )
     .await

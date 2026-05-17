@@ -1,16 +1,20 @@
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use rtm_core::{
-    KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal,
-    SpawnRequest,
+    KillByPidRequest, KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse,
+    RuntimeRpc, RuntimeSignal, SpawnRequest, StatusFilter,
 };
 use uuid::Uuid;
 
 use crate::cli::daemon::DaemonCommand;
+use crate::generated::cli_help;
 
 pub mod daemon;
+pub mod doctor;
 pub mod initdb;
+pub mod mcp;
 pub mod shim;
+pub mod version;
 
 #[derive(Debug, Parser)]
 #[command(name = "rtm")]
@@ -27,9 +31,17 @@ enum Command {
         command: DaemonCommand,
     },
     Spawn(SpawnArgs),
+    #[command(about = cli_help::KILL_ABOUT)]
     Kill(KillArgs),
     Nudge(NudgeArgs),
+    #[command(about = cli_help::STATUS_ABOUT)]
     Status(StatusArgs),
+    #[command(about = cli_help::MCP_ABOUT)]
+    Mcp,
+    #[command(about = cli_help::VERSION_ABOUT)]
+    Version,
+    #[command(about = cli_help::WATCHERS_ABOUT)]
+    Doctor,
     Events,
     Initdb,
     #[command(name = "__shim", hide = true)]
@@ -48,6 +60,10 @@ pub struct SpawnArgs {
 pub struct StatusArgs {
     #[arg(long)]
     session_id: Option<Uuid>,
+    #[arg(long)]
+    runtime: Option<String>,
+    #[arg(long)]
+    state: Option<String>,
     #[arg(long, value_enum, default_value_t = StatusFormat::Summary)]
     format: StatusFormat,
 }
@@ -66,8 +82,10 @@ pub enum StatusFormat {
 
 #[derive(Debug, Args)]
 pub struct KillArgs {
-    #[arg(long)]
-    session_id: Uuid,
+    #[arg(long, conflicts_with = "pid", required_unless_present = "pid")]
+    session_id: Option<Uuid>,
+    #[arg(long, conflicts_with = "session_id")]
+    pid: Option<u32>,
     #[arg(long, default_value_t = RuntimeSignal::Term)]
     signal: RuntimeSignal,
     #[arg(long, default_value_t = 2)]
@@ -90,6 +108,9 @@ impl Cli {
             Command::Kill(args) => kill(args).await,
             Command::Nudge(args) => nudge(args).await,
             Command::Status(args) => status(args).await,
+            Command::Mcp => mcp::run().await,
+            Command::Version => version::run().await,
+            Command::Doctor => doctor::run().await,
             Command::Events => events().await,
             Command::Initdb => initdb::run().await,
             Command::Shim(args) => shim::run(args).await,
@@ -129,12 +150,18 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
 }
 
 async fn kill(args: KillArgs) -> Result<()> {
+    if let Some(pid) = args.pid {
+        return kill_pid(args, pid).await;
+    }
+    let session_id = args
+        .session_id
+        .ok_or_else(|| anyhow::anyhow!("--session-id or --pid is required"))?;
     let socket_path = crate::shared::socket_path()?;
     let response = crate::shared::request(
         &socket_path,
         RuntimeRpc::Kill {
             request: KillRequest {
-                session_id: args.session_id,
+                session_id,
                 signal: args.signal,
                 grace_secs: args.grace_secs,
             },
@@ -144,9 +171,35 @@ async fn kill(args: KillArgs) -> Result<()> {
 
     match response {
         RuntimeResponse::Ack => {
-            println!("kill OK; session_id={}", args.session_id);
+            println!("kill OK; session_id={session_id}");
         }
         other => bail!("unexpected kill response: {other:?}"),
+    }
+    Ok(())
+}
+
+async fn kill_pid(args: KillArgs, pid: u32) -> Result<()> {
+    let socket_path = crate::shared::socket_path()?;
+    let response = crate::shared::request(
+        &socket_path,
+        RuntimeRpc::KillByPid {
+            request: KillByPidRequest {
+                pid,
+                signal: rtm_platform::signal::signal_number(args.signal),
+                grace_secs: args.grace_secs,
+            },
+        },
+    )
+    .await?;
+
+    match response {
+        RuntimeResponse::KillByPid { response } => {
+            println!(
+                "kill OK; pid={} signal={} killed_after_grace={}",
+                response.pid, response.signal, response.killed_after_grace
+            );
+        }
+        other => bail!("unexpected kill-by-pid response: {other:?}"),
     }
     Ok(())
 }
@@ -175,7 +228,15 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
 
 async fn status(args: StatusArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
-    let response = crate::shared::status(&socket_path, args.session_id).await?;
+    let response = crate::shared::status_filtered(
+        &socket_path,
+        StatusFilter {
+            session_id: args.session_id,
+            runtime: args.runtime,
+            state: args.state,
+        },
+    )
+    .await?;
     match response {
         RuntimeResponse::Status { lifecycles } if lifecycles.is_empty() => {
             println!("no lifecycles");

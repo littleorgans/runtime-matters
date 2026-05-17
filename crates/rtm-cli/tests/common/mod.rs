@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
-use std::{fmt::Write as _, io::Read};
+use std::{fmt::Write as _, io::Read, io::Write};
 
 use tempfile::TempDir;
 
@@ -98,6 +98,23 @@ impl RtmHarness {
             .arg("events")
             .output()
             .expect("events client")
+    }
+
+    pub fn mcp_line(&self, line: &str) -> Output {
+        let mut child = self
+            .rtm_command()
+            .arg("mcp")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("mcp client");
+        {
+            let stdin = child.stdin.as_mut().expect("mcp stdin");
+            stdin.write_all(line.as_bytes()).expect("write mcp line");
+            stdin.write_all(b"\n").expect("write mcp newline");
+        }
+        child.wait_with_output().expect("mcp output")
     }
 
     pub fn start_rtmd(&mut self) {

@@ -2,12 +2,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use rtm_core::{RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line, write_json_line};
+use rtm_core::{RuntimeResponse, RuntimeRpc, read_json_line, write_json_line};
 use tokio::io::BufReader;
 use tokio::net::UnixStream;
 use tokio::sync::broadcast;
 
-use crate::{server::ServerState, shim_socket};
+use crate::{mcp_bridge, server::ServerState, shim_socket};
 
 pub(crate) async fn handle_connection(
     stream: UnixStream,
@@ -62,19 +62,31 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             state.kill_runtime(request).await?;
             Ok(RuntimeResponse::Ack)
         }
+        RuntimeRpc::KillByPid { request } => Ok(RuntimeResponse::KillByPid {
+            response: state.kill_pid(request).await?,
+        }),
         RuntimeRpc::Nudge { request } => {
             state.nudge_runtime(request).await?;
             Ok(RuntimeResponse::Ack)
         }
-        RuntimeRpc::Status {
-            request: StatusRequest { session_id },
-        } => Ok(RuntimeResponse::Status {
-            lifecycles: state.status(session_id).await,
+        RuntimeRpc::Status { request } => Ok(RuntimeResponse::Status {
+            lifecycles: state.status(request.into()).await,
+        }),
+        RuntimeRpc::Version => Ok(RuntimeResponse::Version {
+            version: rtm_core::version_info(),
+        }),
+        RuntimeRpc::Watchers => Ok(RuntimeResponse::Watchers {
+            watchers: state.watcher_counts().await,
         }),
         RuntimeRpc::Events => Ok(RuntimeResponse::Events {
             events: state.events().await,
         }),
         RuntimeRpc::Stop => Ok(RuntimeResponse::Stopping),
+        RuntimeRpc::McpBridge { request } => Ok(RuntimeResponse::McpBridge {
+            response: rtm_core::McpBridgeResponse {
+                line: mcp_bridge::handle_line(&state, &request.line).await,
+            },
+        }),
         RuntimeRpc::ShimLaunch { request } => {
             let launch = state.take_launch_spec(request.session_id).await?;
             Ok(RuntimeResponse::ShimLaunch { launch })
