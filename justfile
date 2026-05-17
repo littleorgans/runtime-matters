@@ -2,6 +2,9 @@ set shell := ["bash", "-cu"]
 
 RTM_LOCAL_BIN := env_var_or_default("RTM_LOCAL_BIN", "/Users/alphab/.cargo/bin/rtm")
 
+install:
+    cargo fetch --locked
+
 build:
     cargo build --workspace
 
