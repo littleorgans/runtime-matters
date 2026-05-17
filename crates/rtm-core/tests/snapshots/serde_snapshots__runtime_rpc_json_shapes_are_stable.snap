@@ -1,0 +1,116 @@
+---
+source: crates/rtm-core/tests/serde_snapshots.rs
+expression: rpcs
+---
+[
+  {
+    "type": "spawn",
+    "payload": {
+      "request": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "runtime": "claude",
+        "env": [
+          {
+            "key": "TMUX_PANE",
+            "value": "%1"
+          }
+        ],
+        "cwd": "/tmp/rtm"
+      }
+    }
+  },
+  {
+    "type": "kill",
+    "payload": {
+      "request": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "signal": "term",
+        "grace_secs": 2
+      }
+    }
+  },
+  {
+    "type": "kill_by_pid",
+    "payload": {
+      "request": {
+        "pid": 4242,
+        "signal": 15,
+        "grace_secs": 1
+      }
+    }
+  },
+  {
+    "type": "nudge",
+    "payload": {
+      "request": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "content": "wake up"
+      }
+    }
+  },
+  {
+    "type": "status",
+    "payload": {
+      "request": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "runtime": "claude",
+        "state": "Running"
+      }
+    }
+  },
+  {
+    "type": "version"
+  },
+  {
+    "type": "watchers"
+  },
+  {
+    "type": "doctor"
+  },
+  {
+    "type": "events"
+  },
+  {
+    "type": "stop"
+  },
+  {
+    "type": "mcp_bridge",
+    "payload": {
+      "request": {
+        "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"
+      }
+    }
+  },
+  {
+    "type": "shim_launch",
+    "payload": {
+      "request": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001"
+      }
+    }
+  },
+  {
+    "type": "shim_ready",
+    "payload": {
+      "ready": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "shim_pid": 4241,
+        "runtime_pid": 4242,
+        "start_time": "2023-11-14T22:13:20Z",
+        "tmux_pane": "rtm:0.1"
+      }
+    }
+  },
+  {
+    "type": "shim_exit",
+    "payload": {
+      "exit": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "exit": {
+          "code": null,
+          "signal": 9
+        }
+      }
+    }
+  }
+]

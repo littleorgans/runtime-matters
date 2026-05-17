@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  local-gate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@cargo-insta
+      - uses: Swatinem/rust-cache@v2
+      - run: just check
+      - run: just build
+      - run: just test
+      - run: just insta-test

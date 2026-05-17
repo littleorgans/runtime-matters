@@ -1,0 +1,43 @@
+use anyhow::{Context, Result, bail};
+use clap::Parser;
+use rtm_cli::cli::Cli;
+use uuid::Uuid;
+
+fn main() -> Result<()> {
+    if let Some(session_id) = shim_session_id()? {
+        return rtm_cli::cli::shim::run_for_session_blocking(session_id);
+    }
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("failed to build tokio runtime")?;
+
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .init();
+
+    runtime.block_on(Cli::parse().run())
+}
+
+fn shim_session_id() -> Result<Option<Uuid>> {
+    let mut args = std::env::args_os();
+    let _bin = args.next();
+    if args.next().as_deref() != Some(std::ffi::OsStr::new("__shim")) {
+        return Ok(None);
+    }
+
+    let flag = args.next().context("__shim requires --session-id")?;
+    if flag != "--session-id" {
+        bail!("__shim expects --session-id, got {flag:?}");
+    }
+    let session_id = args
+        .next()
+        .context("__shim requires a session id")?
+        .into_string()
+        .map_err(|value| anyhow::anyhow!("invalid unicode session id: {value:?}"))?
+        .parse()
+        .context("invalid shim session id")?;
+    Ok(Some(session_id))
+}

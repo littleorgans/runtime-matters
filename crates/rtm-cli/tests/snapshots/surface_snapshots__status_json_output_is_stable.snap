@@ -1,0 +1,15 @@
+---
+source: crates/rtm-cli/tests/surface_snapshots.rs
+expression: rows
+---
+[
+  {
+    "runtime": "claude",
+    "runtime_pid": "[pid]",
+    "session_id": "[uuid]",
+    "shim_pid": "[pid]",
+    "start_time": "[timestamp]",
+    "state": "running",
+    "tmux_pane": "[tmux_pane]"
+  }
+]

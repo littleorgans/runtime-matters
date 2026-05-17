@@ -1,0 +1,23 @@
+---
+source: crates/rtm-cli/tests/surface_snapshots.rs
+expression: normalize_doctor(&output_stdout(output))
+---
+rtmd
+  version             [version]
+  socket              [socket]
+  uptime              [uptime]
+sqlite
+  applied migrations  2 of 2 (lifecycle, probe state)
+lifecycles
+  forking             0
+  running             0
+  exited              0
+  lost                0
+kqueue watchers       0
+shim sockets          0
+launchers
+  claude              [command]
+  codex               [command]
+tmux                  [availability]
+last probe sweep      [timestamp]
+recent lost           (none in last 24h)
