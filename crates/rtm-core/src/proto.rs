@@ -38,6 +38,7 @@ pub enum RuntimeRpc {
     Status { request: StatusRequest },
     Version,
     Watchers,
+    Doctor,
     Events,
     Stop,
     McpBridge { request: McpBridgeRequest },
@@ -64,6 +65,9 @@ pub enum RuntimeResponse {
     },
     Watchers {
         watchers: WatcherCounts,
+    },
+    Doctor {
+        doctor: crate::DoctorResponse,
     },
     Events {
         events: Vec<RuntimeEvent>,

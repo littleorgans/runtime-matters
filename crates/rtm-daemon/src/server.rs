@@ -52,6 +52,11 @@ pub async fn run_daemon(config: DaemonConfig) -> Result<()> {
     let state = Arc::new(ServerState::new(config.clone(), store));
     reconcile::reconcile_startup(Arc::clone(&state), &reconcile::SystemProcessProbe).await?;
     let (shutdown_tx, mut shutdown_rx) = broadcast::channel(8);
+    let reconcile_task = tokio::spawn(reconcile::run_periodic(
+        Arc::clone(&state),
+        reconcile::SystemProcessProbe,
+        shutdown_tx.subscribe(),
+    ));
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
 
     loop {
@@ -73,12 +78,17 @@ pub async fn run_daemon(config: DaemonConfig) -> Result<()> {
     }
 
     socket::remove_socket_file(&config.socket_path)?;
+    let _ = shutdown_tx.send(());
+    if let Err(error) = reconcile_task.await {
+        tracing::warn!(%error, "periodic reconciliation task failed");
+    }
     Ok(())
 }
 
 pub(crate) struct ServerState {
     config: DaemonConfig,
     store: LifecycleStore,
+    started_instant: Instant,
     events: Mutex<Vec<RuntimeEvent>>,
     exit_watchers: Mutex<HashMap<Uuid, rtm_platform::kqueue::ProcessExitWatcher>>,
     pending_launches: Mutex<HashMap<Uuid, LaunchSpec>>,
@@ -91,6 +101,7 @@ impl ServerState {
         Self {
             config,
             store,
+            started_instant: Instant::now(),
             events: Mutex::new(Vec::new()),
             exit_watchers: Mutex::new(HashMap::new()),
             pending_launches: Mutex::new(HashMap::new()),
@@ -105,6 +116,10 @@ impl ServerState {
 
     pub(crate) fn store(&self) -> &LifecycleStore {
         &self.store
+    }
+
+    pub(crate) fn uptime_secs(&self) -> u64 {
+        self.started_instant.elapsed().as_secs()
     }
 
     pub(crate) async fn begin_spawn(

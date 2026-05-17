@@ -7,7 +7,10 @@ pub mod tool_contracts;
 pub mod types;
 mod version;
 
-pub use admin::{KillByPidRequest, KillByPidResponse, StatusFilter, StatusResponse, WatcherCounts};
+pub use admin::{
+    DoctorResponse, KillByPidRequest, KillByPidResponse, LauncherStatus, LifecycleCounts,
+    MigrationState, RecentLostEvent, StatusFilter, StatusResponse, TmuxStatus, WatcherCounts,
+};
 pub use error::{ProtocolError, RuntimeKindParseError};
 pub use launcher::{LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher};
 pub use mcp::{

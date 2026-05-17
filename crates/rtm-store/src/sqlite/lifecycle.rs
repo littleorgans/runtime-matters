@@ -3,12 +3,17 @@ use std::str::FromStr;
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
-use rtm_core::{Lifecycle, LifecycleState, LostEvidence, RuntimeExit, RuntimeKind, TmuxPane};
+use rtm_core::{
+    Lifecycle, LifecycleCounts, LifecycleState, LostEvidence, MigrationState, RecentLostEvent,
+    RuntimeExit, RuntimeKind, TmuxPane,
+};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Executor, SqlitePool};
 use uuid::Uuid;
 
 use crate::{StoreConfig, schema};
+
+const LAST_PROBE_SWEEP_KEY: &str = "last_probe_sweep_at";
 
 #[derive(Clone)]
 pub struct LifecycleStore {
@@ -182,6 +187,114 @@ impl LifecycleStore {
         rows.into_iter().map(TryInto::try_into).collect()
     }
 
+    pub async fn lifecycle_counts(&self) -> Result<LifecycleCounts> {
+        let rows = sqlx::query_as::<_, StateCountRow>(
+            r#"
+            SELECT state, COUNT(*) AS count
+            FROM lifecycle
+            GROUP BY state
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to count lifecycle states")?;
+
+        let mut counts = LifecycleCounts::default();
+        for row in rows {
+            let count = u64::try_from(row.count).context("lifecycle count out of range")?;
+            match row.state.as_str() {
+                "Forking" => counts.forking = count,
+                "Running" => counts.running = count,
+                "Exited" => counts.exited = count,
+                "Lost" => counts.lost = count,
+                state => bail!("unknown lifecycle state {state}"),
+            }
+        }
+        Ok(counts)
+    }
+
+    pub async fn recent_lost_since(&self, since: DateTime<Utc>) -> Result<Vec<RecentLostEvent>> {
+        let rows = sqlx::query_as::<_, RecentLostRow>(
+            r#"
+            SELECT session_id, lost_evidence, updated_at
+            FROM lifecycle
+            WHERE state = 'Lost' AND updated_at >= ?
+            ORDER BY updated_at DESC, session_id
+            "#,
+        )
+        .bind(since.to_rfc3339())
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to list recent lost lifecycles")?;
+        rows.into_iter().map(TryInto::try_into).collect()
+    }
+
+    pub async fn record_probe_sweep(&self, swept_at: DateTime<Utc>) -> Result<()> {
+        let value = swept_at.to_rfc3339();
+        sqlx::query(
+            r#"
+            INSERT INTO rtm_metadata (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(LAST_PROBE_SWEEP_KEY)
+        .bind(value.clone())
+        .bind(value)
+        .execute(&self.pool)
+        .await
+        .context("failed to record last probe sweep")?;
+        Ok(())
+    }
+
+    pub async fn last_probe_sweep(&self) -> Result<Option<DateTime<Utc>>> {
+        let value = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT value
+            FROM rtm_metadata
+            WHERE key = ?
+            "#,
+        )
+        .bind(LAST_PROBE_SWEEP_KEY)
+        .fetch_optional(&self.pool)
+        .await
+        .context("failed to read last probe sweep")?;
+        value.map(|time| parse_time(&time)).transpose()
+    }
+
+    pub async fn migration_state(&self) -> Result<MigrationState> {
+        let known = schema::known_migrations();
+        let applied_versions = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT version
+            FROM _sqlx_migrations
+            WHERE success = 1
+            ORDER BY version
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .context("failed to read applied migrations")?;
+
+        let mut applied_descriptions = Vec::new();
+        let mut pending_descriptions = Vec::new();
+        for migration in &known {
+            if applied_versions.contains(&migration.version) {
+                applied_descriptions.push(migration.description.clone());
+            } else {
+                pending_descriptions.push(migration.description.clone());
+            }
+        }
+        Ok(MigrationState {
+            applied: applied_descriptions.len(),
+            total: known.len(),
+            applied_descriptions,
+            pending_descriptions,
+        })
+    }
+
     pub async fn reset(&self) -> Result<()> {
         self.pool
             .execute("DELETE FROM lifecycle")
@@ -207,6 +320,19 @@ struct LifecycleRow {
     exit_code: Option<i64>,
     exit_signal: Option<i64>,
     lost_evidence: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct StateCountRow {
+    state: String,
+    count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct RecentLostRow {
+    session_id: String,
+    lost_evidence: Option<String>,
+    updated_at: String,
 }
 
 struct EncodedLifecycle {
@@ -254,6 +380,18 @@ impl TryFrom<LifecycleRow> for Lifecycle {
             runtime_pid: decode_u32(row.runtime_pid, "runtime_pid")?,
             start_time: row.start_time.map(|time| parse_time(&time)).transpose()?,
             tmux_pane: decode_tmux_pane(row.tmux_pane)?,
+        })
+    }
+}
+
+impl TryFrom<RecentLostRow> for RecentLostEvent {
+    type Error = anyhow::Error;
+
+    fn try_from(row: RecentLostRow) -> Result<Self> {
+        Ok(Self {
+            session_id: Uuid::parse_str(&row.session_id)?,
+            evidence: decode_lost(row.lost_evidence.as_deref())?,
+            occurred_at: parse_time(&row.updated_at)?,
         })
     }
 }
@@ -385,6 +523,42 @@ mod tests {
 
         let restored = store.get(session_id).await.expect("get").expect("row");
         assert_eq!(restored.tmux_pane, lifecycle.tmux_pane);
+    }
+
+    #[tokio::test]
+    async fn reports_counts_migrations_probe_sweep_and_recent_lost() {
+        let temp = TempDir::new().expect("temp dir");
+        let store = LifecycleStore::path_open(temp.path().join("rtm.sqlite"))
+            .await
+            .expect("store");
+        let session_id = Uuid::now_v7();
+        let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
+        store.insert_forking(&lifecycle).await.expect("insert");
+        lifecycle.mark_lost(LostEvidence::PidNotAlive);
+        store.update_lifecycle(&lifecycle).await.expect("lost");
+
+        let swept_at = Utc::now();
+        store
+            .record_probe_sweep(swept_at)
+            .await
+            .expect("record sweep");
+
+        let counts = store.lifecycle_counts().await.expect("counts");
+        assert_eq!(counts.lost, 1);
+        let migrations = store.migration_state().await.expect("migrations");
+        assert_eq!(migrations.applied, migrations.total);
+        assert_eq!(migrations.total, 2);
+        assert_eq!(
+            store.last_probe_sweep().await.expect("last sweep"),
+            Some(swept_at)
+        );
+        let recent = store
+            .recent_lost_since(Utc::now() - chrono::Duration::hours(1))
+            .await
+            .expect("recent lost");
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].session_id, session_id);
+        assert_eq!(recent[0].evidence, LostEvidence::PidNotAlive);
     }
 
     #[tokio::test]

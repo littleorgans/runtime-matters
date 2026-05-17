@@ -100,6 +100,13 @@ impl RtmHarness {
             .expect("events client")
     }
 
+    pub fn doctor(&self) -> Output {
+        self.rtm_command()
+            .arg("doctor")
+            .output()
+            .expect("doctor client")
+    }
+
     pub fn mcp_line(&self, line: &str) -> Output {
         let mut child = self
             .rtm_command()

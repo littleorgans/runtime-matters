@@ -1,10 +1,17 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use rtm_core::{Lifecycle, LostEvidence, RuntimeEvent};
+use tokio::sync::broadcast;
+use tokio::time::{Instant, sleep_until};
 
 use crate::server::ServerState;
+
+pub const PROBE_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
+const RESUME_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const RESUME_GAP_THRESHOLD: chrono::Duration = chrono::Duration::seconds(3);
 
 pub trait ProcessProbe {
     fn pid_alive(&self, pid: u32) -> bool;
@@ -27,6 +34,67 @@ pub async fn reconcile_startup(
     state: Arc<ServerState>,
     probe: &impl ProcessProbe,
 ) -> Result<Vec<RuntimeEvent>> {
+    reconcile_once(state, probe).await
+}
+
+pub async fn run_periodic<P>(
+    state: Arc<ServerState>,
+    probe: P,
+    shutdown_rx: broadcast::Receiver<()>,
+) where
+    P: ProcessProbe + Send + Sync + 'static,
+{
+    run_periodic_with_interval(state, probe, shutdown_rx, PROBE_SWEEP_INTERVAL).await;
+}
+
+async fn run_periodic_with_interval<P>(
+    state: Arc<ServerState>,
+    probe: P,
+    mut shutdown_rx: broadcast::Receiver<()>,
+    interval: Duration,
+) where
+    P: ProcessProbe + Send + Sync + 'static,
+{
+    let mut next_deadline = Instant::now() + interval;
+    let mut last_wall_tick = Utc::now();
+
+    loop {
+        let poll_deadline = std::cmp::min(next_deadline, Instant::now() + RESUME_POLL_INTERVAL);
+        tokio::select! {
+            _ = shutdown_rx.recv() => break,
+            _ = sleep_until(poll_deadline) => {
+                let now = Instant::now();
+                let wall_now = Utc::now();
+                let resumed = wall_now - last_wall_tick > RESUME_GAP_THRESHOLD;
+                last_wall_tick = wall_now;
+
+                if now >= next_deadline || resumed {
+                    if let Err(error) = reconcile_once(Arc::clone(&state), &probe).await {
+                        tracing::warn!(%error, "periodic reconciliation failed");
+                    }
+                    next_deadline = if now >= next_deadline {
+                        advance_deadline(next_deadline, interval, now)
+                    } else {
+                        now + interval
+                    };
+                }
+            }
+        }
+    }
+}
+
+fn advance_deadline(mut deadline: Instant, interval: Duration, now: Instant) -> Instant {
+    deadline += interval;
+    while deadline <= now {
+        deadline += interval;
+    }
+    deadline
+}
+
+async fn reconcile_once(
+    state: Arc<ServerState>,
+    probe: &impl ProcessProbe,
+) -> Result<Vec<RuntimeEvent>> {
     let mut events = Vec::new();
     for lifecycle in state.store().running().await? {
         if let Some(evidence) = lost_evidence(&lifecycle, probe)? {
@@ -42,6 +110,7 @@ pub async fn reconcile_startup(
             .start_exit_watcher(lifecycle.session_id, runtime_pid)
             .await?;
     }
+    state.store().record_probe_sweep(Utc::now()).await?;
     Ok(events)
 }
 
@@ -128,6 +197,39 @@ mod tests {
         assert_lost(&store, reused.session_id, LostEvidence::PidReuseDetected).await;
     }
 
+    #[tokio::test]
+    async fn periodic_reconciliation_marks_dead_and_reused_pids_lost_once() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let store = LifecycleStore::open(StoreConfig {
+            db_path: temp.path().join("rtm.sqlite"),
+        })
+        .await
+        .expect("store");
+        let dead = persist_running(&store, 101, Utc.timestamp_opt(1_000, 0).unwrap()).await;
+        let reused = persist_running(&store, 202, Utc.timestamp_opt(2_000, 0).unwrap()).await;
+        let state = Arc::new(ServerState::new(test_config(), store.clone()));
+        let probe = FakeProbe {
+            alive: HashSet::from([202]),
+            start_times: HashMap::from([(202, Utc.timestamp_opt(2_001, 0).unwrap())]),
+        };
+        let (shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
+        let task = tokio::spawn(run_periodic_with_interval(
+            Arc::clone(&state),
+            probe,
+            shutdown_rx,
+            Duration::from_millis(20),
+        ));
+
+        wait_for_events(&state, 2).await;
+        let _ = shutdown_tx.send(());
+        task.await.expect("periodic task");
+
+        assert_lost(&store, dead.session_id, LostEvidence::PidNotAlive).await;
+        assert_lost(&store, reused.session_id, LostEvidence::PidReuseDetected).await;
+        assert_eq!(state.events().await.len(), 2);
+        assert_eq!(store.running().await.expect("running").len(), 0);
+    }
+
     async fn assert_lost(store: &LifecycleStore, session_id: Uuid, evidence: LostEvidence) {
         let lifecycle = store
             .get(session_id)
@@ -158,6 +260,19 @@ mod tests {
     fn forking_lifecycle() -> Lifecycle {
         let session_id = Uuid::now_v7();
         Lifecycle::forking(session_id, RuntimeKind::Claude)
+    }
+
+    async fn wait_for_events(state: &ServerState, expected: usize) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if state.events().await.len() == expected {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("events reached expected count");
     }
 
     fn test_config() -> DaemonConfig {

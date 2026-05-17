@@ -7,3 +7,19 @@ pub async fn migrate(pool: &SqlitePool) -> Result<()> {
         .await
         .context("failed to run rtm-store migrations")
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KnownMigration {
+    pub version: i64,
+    pub description: String,
+}
+
+pub fn known_migrations() -> Vec<KnownMigration> {
+    sqlx::migrate!("./migrations")
+        .iter()
+        .map(|migration| KnownMigration {
+            version: migration.version,
+            description: migration.description.to_string(),
+        })
+        .collect()
+}

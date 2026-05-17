@@ -1,3 +1,4 @@
+mod doctor;
 pub mod event_channel;
 mod handler;
 mod mcp_bridge;

@@ -7,7 +7,7 @@ use tokio::io::BufReader;
 use tokio::net::UnixStream;
 use tokio::sync::broadcast;
 
-use crate::{mcp_bridge, server::ServerState, shim_socket};
+use crate::{doctor, mcp_bridge, server::ServerState, shim_socket};
 
 pub(crate) async fn handle_connection(
     stream: UnixStream,
@@ -77,6 +77,9 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
         }),
         RuntimeRpc::Watchers => Ok(RuntimeResponse::Watchers {
             watchers: state.watcher_counts().await,
+        }),
+        RuntimeRpc::Doctor => Ok(RuntimeResponse::Doctor {
+            doctor: doctor::collect(state).await?,
         }),
         RuntimeRpc::Events => Ok(RuntimeResponse::Events {
             events: state.events().await,

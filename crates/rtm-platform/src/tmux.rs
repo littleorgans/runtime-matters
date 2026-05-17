@@ -5,6 +5,16 @@ use tokio::process::Command;
 pub struct TmuxGateway;
 
 impl TmuxGateway {
+    pub async fn version() -> Result<Option<String>> {
+        let Some(output) = tmux_output(["-V"]).await? else {
+            return Ok(None);
+        };
+        if !output.status.success() {
+            return Ok(None);
+        }
+        Ok(Some(stdout(output).trim().to_owned()))
+    }
+
     pub async fn discover(_session_id: impl std::fmt::Display) -> Result<Option<TmuxPane>> {
         let Some(target) = std::env::var("TMUX_PANE")
             .ok()

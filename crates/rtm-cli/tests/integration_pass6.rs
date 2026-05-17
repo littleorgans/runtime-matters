@@ -16,6 +16,7 @@ fn pass6_mcp_lists_admin_tools_and_reports_status_version_watchers() {
     assert_eq!(names, rtm_cli::generated::mcp_tools::TOOL_NAMES);
     assert!(!names.contains(&"spawn"));
     assert!(!names.contains(&"kill"));
+    assert!(!names.contains(&"rtm_doctor"));
 
     let status = call_tool(&harness, 2, "rtm_status", json!({}));
     let status_text = content_text(&status);

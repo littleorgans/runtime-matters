@@ -40,7 +40,7 @@ enum Command {
     Mcp,
     #[command(about = cli_help::VERSION_ABOUT)]
     Version,
-    #[command(about = cli_help::WATCHERS_ABOUT)]
+    #[command(about = "Print rtmd substrate health diagnostics.")]
     Doctor,
     Events,
     Initdb,
