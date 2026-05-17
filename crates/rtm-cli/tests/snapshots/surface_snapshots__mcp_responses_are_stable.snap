@@ -14,7 +14,7 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
       "protocolVersion": "2025-06-18",
       "serverInfo": {
         "name": "rtm",
-        "version": "0.1.0"
+        "version": "[version]"
       }
     }
   },
@@ -201,13 +201,13 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
     "result": {
       "content": [
         {
-          "text": "{\"git_sha\":\"[git_sha]\",\"version\":\"0.1.0\"}",
+          "text": "{\"git_sha\":\"[git_sha]\",\"version\":\"[version]\"}",
           "type": "text"
         }
       ],
       "structuredContent": {
         "git_sha": "[git_sha]",
-        "version": "0.1.0"
+        "version": "[version]"
       }
     }
   },
