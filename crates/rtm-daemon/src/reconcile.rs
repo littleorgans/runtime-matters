@@ -347,6 +347,7 @@ mod tests {
         DaemonConfig {
             socket_path: PathBuf::from("/tmp/rtm-test.sock"),
             shim_path: PathBuf::from("rtm"),
+            log_root: PathBuf::from("/tmp/rtm-test-logs"),
             store: StoreConfig {
                 db_path: PathBuf::from("/tmp/rtm-test.sqlite"),
             },

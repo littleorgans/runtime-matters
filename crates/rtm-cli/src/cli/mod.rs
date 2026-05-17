@@ -139,14 +139,19 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Spawned { lifecycle, event } => {
+        RuntimeResponse::Spawned {
+            lifecycle,
+            event,
+            log_dir,
+        } => {
             println!(
-                "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={}",
+                "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={}",
                 lifecycle.state,
                 event_name(&event),
                 lifecycle
                     .runtime_pid
-                    .expect("running lifecycle runtime pid")
+                    .expect("running lifecycle runtime pid"),
+                display_optional_path(log_dir.as_deref())
             );
         }
         other => anyhow::bail!("unexpected spawn response: {other:?}"),
@@ -362,5 +367,11 @@ fn display_optional_i32(value: Option<i32>) -> String {
 fn display_optional_tmux_pane(value: Option<&rtm_core::TmuxAddress>) -> String {
     value
         .map(ToString::to_string)
+        .unwrap_or_else(|| "-".to_owned())
+}
+
+fn display_optional_path(value: Option<&std::path::Path>) -> String {
+    value
+        .map(|path| path.display().to_string())
         .unwrap_or_else(|| "-".to_owned())
 }

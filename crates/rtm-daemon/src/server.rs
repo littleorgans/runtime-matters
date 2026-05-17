@@ -20,6 +20,7 @@ use crate::{event_channel, handler, reconcile, socket};
 pub struct DaemonConfig {
     pub socket_path: PathBuf,
     pub shim_path: PathBuf,
+    pub log_root: PathBuf,
     pub store: StoreConfig,
     pub reconcile: reconcile::ReconcileConfig,
 }
@@ -34,10 +35,30 @@ impl DaemonConfig {
         Ok(Self {
             socket_path,
             shim_path,
+            log_root: default_log_root()?,
             store: StoreConfig::from_env()?,
             reconcile: reconcile::ReconcileConfig::from_env()?,
         })
     }
+
+    pub fn session_log_dir(&self, session_id: Uuid) -> PathBuf {
+        self.log_root.join(session_id.to_string())
+    }
+}
+
+fn default_log_root() -> Result<PathBuf> {
+    Ok(default_rtm_home()?.join("logs"))
+}
+
+fn default_rtm_home() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("RTM_HOME")
+        && !path.as_os_str().is_empty()
+    {
+        return Ok(PathBuf::from(path));
+    }
+
+    let home = std::env::var_os("HOME").context("HOME is required for default rtm log path")?;
+    Ok(PathBuf::from(home).join(".rtm"))
 }
 
 pub async fn run_daemon(config: DaemonConfig) -> Result<()> {
@@ -280,7 +301,7 @@ impl ServerState {
             .ok_or_else(|| anyhow!("session {} not found", request.session_id))?;
         let tmux_pane = lifecycle.tmux_pane.as_ref().ok_or_else(|| {
             anyhow!(
-                "session {} has no tmux pane; nudge is not supported",
+                "nudge not supported for headless lifecycle {}",
                 request.session_id
             )
         })?;
@@ -522,6 +543,7 @@ mod tests {
             DaemonConfig {
                 socket_path: PathBuf::from("/tmp/rtm-test.sock"),
                 shim_path: PathBuf::from("rtm"),
+                log_root: temp.path().join("logs"),
                 store: store_config,
                 reconcile: reconcile::ReconcileConfig::default(),
             },

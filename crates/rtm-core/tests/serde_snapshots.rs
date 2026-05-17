@@ -1,8 +1,8 @@
 use chrono::{TimeZone, Utc};
 use rtm_core::{
-    KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, LostEvidence, McpBridgeRequest,
-    NudgeRequest, RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc,
-    RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget,
+    KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, Lifecycle, LostEvidence,
+    McpBridgeRequest, NudgeRequest, RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeResponse,
+    RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget,
     StatusRequest, TerminationEvidence, TmuxSpawnTarget,
 };
 use serde_json::json;
@@ -103,7 +103,18 @@ fn runtime_event_json_shapes_are_stable() {
 #[test]
 fn runtime_response_json_shapes_are_stable() {
     let session_id = session_id();
+    let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
+    assert!(lifecycle.mark_running(ready(session_id)));
     let responses = vec![
+        RuntimeResponse::Spawned {
+            lifecycle,
+            event: RuntimeEvent::Running {
+                session_id,
+                runtime_pid: 4242,
+                start_time: timestamp(),
+            },
+            log_dir: Some("/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001".into()),
+        },
         RuntimeResponse::ShimLaunch {
             launch: LaunchSpec {
                 argv: vec!["claude".to_owned(), "--resume".to_owned()],

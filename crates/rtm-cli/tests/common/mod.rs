@@ -20,40 +20,63 @@ pub struct RtmHarness {
     temp: TempDir,
     socket: PathBuf,
     db: PathBuf,
+    rtm_home: PathBuf,
     rtm: PathBuf,
     daemon: Child,
     reconcile_env: Vec<(&'static str, String)>,
+    start_outside_tmux: bool,
 }
 
 impl RtmHarness {
     pub fn start() -> Self {
-        Self::start_with_reconcile_env(Vec::new())
+        Self::start_with_options(Vec::new(), false)
+    }
+
+    pub fn start_outside_tmux() -> Self {
+        Self::start_with_options(Vec::new(), true)
     }
 
     pub fn start_with_fast_resume_probe() -> Self {
-        Self::start_with_reconcile_env(vec![
-            ("RTM_PROBE_SWEEP_INTERVAL_MS", "30000".to_owned()),
-            ("RTM_RESUME_POLL_INTERVAL_MS", "25".to_owned()),
-            ("RTM_RESUME_GAP_THRESHOLD_MS", "1".to_owned()),
-        ])
+        Self::start_with_options(
+            vec![
+                ("RTM_PROBE_SWEEP_INTERVAL_MS", "30000".to_owned()),
+                ("RTM_RESUME_POLL_INTERVAL_MS", "25".to_owned()),
+                ("RTM_RESUME_GAP_THRESHOLD_MS", "1".to_owned()),
+            ],
+            false,
+        )
     }
 
-    fn start_with_reconcile_env(reconcile_env: Vec<(&'static str, String)>) -> Self {
+    fn start_with_options(
+        reconcile_env: Vec<(&'static str, String)>,
+        start_outside_tmux: bool,
+    ) -> Self {
         let temp = TempDir::new().expect("temp dir");
         let socket = temp.path().join("rtm.sock");
         let db = temp.path().join("rtm.sqlite");
+        let rtm_home = temp.path().join("rtm-home");
         write_fake_runtime(temp.path(), "claude");
         write_fake_runtime(temp.path(), "codex");
         let rtm = default_rtm_path();
-        let daemon = start_daemon(&rtm, &socket, &db, temp.path(), &reconcile_env);
+        let daemon = start_daemon(
+            &rtm,
+            &socket,
+            &db,
+            &rtm_home,
+            temp.path(),
+            &reconcile_env,
+            start_outside_tmux,
+        );
         wait_for_socket(&socket);
         Self {
             temp,
             socket,
             db,
+            rtm_home,
             rtm,
             daemon,
             reconcile_env,
+            start_outside_tmux,
         }
     }
 
@@ -160,8 +183,10 @@ impl RtmHarness {
             &self.rtm,
             &self.socket,
             &self.db,
+            &self.rtm_home,
             self.temp.path(),
             &self.reconcile_env,
+            self.start_outside_tmux,
         );
         wait_for_socket(&self.socket);
     }
@@ -176,6 +201,10 @@ impl RtmHarness {
 
     pub fn socket_path(&self) -> &Path {
         &self.socket
+    }
+
+    pub fn rtm_home(&self) -> &Path {
+        &self.rtm_home
     }
 
     pub fn rtm_path(&self) -> &Path {
@@ -314,12 +343,16 @@ pub fn wait_for_status_timeout(
     needle: &str,
     timeout: Duration,
 ) -> String {
+    let mut last_status = String::new();
     wait_until(timeout, || {
         let output = harness.status(session_id);
-        let stdout = output_stdout(output);
+        let success = output.status.success();
+        let stdout = String::from_utf8(output.stdout).expect("stdout");
+        let stderr = String::from_utf8(output.stderr).expect("stderr");
+        last_status = format!("success={success} stdout={stdout:?} stderr={stderr:?}");
         stdout.contains(needle).then_some(stdout)
     })
-    .unwrap_or_else(|| panic!("status never contained {needle}"))
+    .unwrap_or_else(|| panic!("status never contained {needle}; last status: {last_status}"))
 }
 
 pub fn wait_for_events(harness: &RtmHarness, expected: usize) -> String {
@@ -407,7 +440,7 @@ fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
     std::fs::write(
         &path,
         format!(
-            "#!/bin/sh\nprintf '{}\\n'\nexec sleep 60\n",
+            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exit 0\nfi\nprintf '{}\\n'\nexec sleep 60\n",
             FAKE_RUNTIME_READY
         ),
     )
@@ -423,8 +456,10 @@ fn start_daemon(
     rtm: &Path,
     socket: &Path,
     db: &Path,
+    rtm_home: &Path,
     fake_bin_dir: &Path,
     reconcile_env: &[(&'static str, String)],
+    start_outside_tmux: bool,
 ) -> Child {
     let mut command = Command::new(rtm);
     command
@@ -432,9 +467,13 @@ fn start_daemon(
         .arg("start")
         .env("RTM_SOCKET_PATH", socket)
         .env("RTM_DB_PATH", db)
+        .env("RTM_HOME", rtm_home)
         .env("PATH", test_path(fake_bin_dir))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if start_outside_tmux {
+        command.env_remove("TMUX").env_remove("TMUX_PANE");
+    }
     for (key, value) in reconcile_env {
         command.env(key, value);
     }
