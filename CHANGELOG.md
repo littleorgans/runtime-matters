@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/littleorgans/runtime-matters/compare/v0.1.2...v0.1.3) (2026-05-17)
+
+
+### Bug Fixes
+
+* defer GitHub Release creation to release-please ([#7](https://github.com/littleorgans/runtime-matters/issues/7)) ([e9d338b](https://github.com/littleorgans/runtime-matters/commit/e9d338b62b27bf778806ab4a1c057e3ca9d5f0da))
+
 ## [0.1.2](https://github.com/littleorgans/runtime-matters/compare/v0.1.1...v0.1.2) (2026-05-17)
 
 
