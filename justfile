@@ -1,7 +1,25 @@
 set shell := ["bash", "-cu"]
 
+RTM_LOCAL_BIN := env_var_or_default("RTM_LOCAL_BIN", "/Users/alphab/.cargo/bin/rtm")
+
 build:
     cargo build --workspace
+
+release-build:
+    cargo build --workspace --release
+
+install-local: release-build
+    @set -eu; \
+    src="$(pwd)/target/release/rtm"; \
+    dest="{{RTM_LOCAL_BIN}}"; \
+    case "$dest" in /*) ;; *) dest="$(pwd)/$dest";; esac; \
+    if [ "$src" = "$dest" ]; then \
+        echo "Built $src"; \
+    else \
+        mkdir -p "$(dirname "$dest")"; \
+        install -m 755 "$src" "$dest"; \
+        echo "Installed $dest"; \
+    fi
 
 test:
     cargo test --workspace
