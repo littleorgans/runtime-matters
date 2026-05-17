@@ -14,6 +14,8 @@ use rtm_store::{LifecycleStore, StoreConfig};
 use tempfile::TempDir;
 use uuid::Uuid;
 
+pub const FAKE_RUNTIME_READY: &str = "rtm fake runtime ready";
+
 pub struct RtmHarness {
     temp: TempDir,
     socket: PathBuf,
@@ -60,12 +62,20 @@ impl RtmHarness {
     }
 
     pub fn spawn_runtime(&self, session_id: &str, runtime: &str) -> Output {
-        self.rtm_command()
-            .arg("spawn")
-            .arg("--runtime")
-            .arg(runtime)
-            .arg("--session-id")
-            .arg(session_id)
+        self.spawn_command(session_id, runtime)
+            .output()
+            .expect("spawn client")
+    }
+
+    pub fn spawn_runtime_in_tmux(
+        &self,
+        session_id: &str,
+        runtime: &str,
+        tmux_address: &str,
+    ) -> Output {
+        self.spawn_command(session_id, runtime)
+            .arg("--tmux-address")
+            .arg(tmux_address)
             .output()
             .expect("spawn client")
     }
@@ -188,6 +198,17 @@ impl RtmHarness {
         command
     }
 
+    fn spawn_command(&self, session_id: &str, runtime: &str) -> Command {
+        let mut command = self.rtm_command();
+        command
+            .arg("spawn")
+            .arg("--runtime")
+            .arg(runtime)
+            .arg("--session-id")
+            .arg(session_id);
+        command
+    }
+
     fn cleanup_processes(&self) {
         let output = self.rtm_command().arg("status").output();
         let Ok(output) = output else {
@@ -241,6 +262,10 @@ pub fn parse_status_pid(stdout: &str) -> u32 {
 
 pub fn spawn_ok(harness: &RtmHarness, session_id: &str, runtime: &str) -> String {
     let output = harness.spawn_runtime(session_id, runtime);
+    spawn_output_ok(output, runtime)
+}
+
+pub fn spawn_output_ok(output: Output, runtime: &str) -> String {
     assert!(
         output.status.success(),
         "{runtime} spawn failed: {output:?}"
@@ -379,7 +404,14 @@ pub fn unused_pid() -> u32 {
 
 fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
     let path = dir.join(name);
-    std::fs::write(&path, "#!/bin/sh\nexec sleep 60\n").expect("fake runtime");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nprintf '{}\\n'\nexec sleep 60\n",
+            FAKE_RUNTIME_READY
+        ),
+    )
+    .expect("fake runtime");
     let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
     use std::os::unix::fs::PermissionsExt;
     permissions.set_mode(0o755);

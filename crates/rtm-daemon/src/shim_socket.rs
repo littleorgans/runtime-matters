@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use rtm_core::{
-    LaunchSpec, RuntimeResponse, RuntimeRpc, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest,
-    read_json_line, read_json_line_blocking, write_json_line, write_json_line_blocking,
+    LaunchEnv, LaunchSpec, RuntimeResponse, RuntimeRpc, ShimExit, ShimLaunchRequest, ShimReady,
+    SpawnRequest, SpawnTarget, read_json_line, read_json_line_blocking, write_json_line,
+    write_json_line_blocking,
 };
 use std::io::BufReader as StdBufReader;
 use std::os::unix::net::UnixStream as StdUnixStream;
@@ -12,16 +13,51 @@ use tokio::process::Command;
 use crate::server::DaemonConfig;
 
 pub async fn launch_shim(config: &DaemonConfig, request: &SpawnRequest) -> Result<()> {
+    let env = shim_env(config);
+    match &request.target {
+        SpawnTarget::Tmux(target) => {
+            let argv = shim_argv(config, request);
+            rtm_platform::tmux::TmuxGateway::respawn_pane(&target.address, &argv, &env)
+                .await
+                .with_context(|| format!("failed to respawn tmux pane {}", target.address))
+        }
+        SpawnTarget::Headless(_) => launch_headless_shim(config, request, &env),
+    }
+}
+
+fn launch_headless_shim(
+    config: &DaemonConfig,
+    request: &SpawnRequest,
+    env: &[LaunchEnv],
+) -> Result<()> {
     let mut command = Command::new(&config.shim_path);
     command
         .arg("__shim")
         .arg("--session-id")
-        .arg(request.session_id.to_string())
-        .env("RTM_SOCKET_PATH", &config.socket_path);
+        .arg(request.session_id.to_string());
+    for entry in env {
+        command.env(&entry.key, &entry.value);
+    }
     command
         .spawn()
         .with_context(|| format!("failed to spawn shim {}", config.shim_path.display()))?;
     Ok(())
+}
+
+fn shim_argv(config: &DaemonConfig, request: &SpawnRequest) -> Vec<String> {
+    vec![
+        config.shim_path.to_string_lossy().into_owned(),
+        "__shim".to_owned(),
+        "--session-id".to_owned(),
+        request.session_id.to_string(),
+    ]
+}
+
+fn shim_env(config: &DaemonConfig) -> Vec<LaunchEnv> {
+    vec![LaunchEnv {
+        key: "RTM_SOCKET_PATH".to_owned(),
+        value: config.socket_path.to_string_lossy().into_owned(),
+    }]
 }
 
 pub async fn request_launch(

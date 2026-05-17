@@ -3,9 +3,9 @@ mod common;
 use std::time::Duration;
 
 use common::{
-    RtmHarness, output_stderr, output_stdout, persist_running, spawn_ok, status_pid,
-    terminate_process, unused_pid, wait_for_events, wait_for_status, wait_for_status_timeout,
-    wait_until, wait_until_not_alive,
+    FAKE_RUNTIME_READY, RtmHarness, output_stderr, output_stdout, persist_running, spawn_ok,
+    spawn_output_ok, status_pid, terminate_process, unused_pid, wait_for_events, wait_for_status,
+    wait_for_status_timeout, wait_until, wait_until_not_alive,
 };
 use uuid::Uuid;
 
@@ -105,9 +105,11 @@ fn tmux_pane_closed_while_session_alive_rejects_nudge() {
     let session_id = Uuid::now_v7().to_string();
     let expected_pane = tmux_session.pane();
 
-    tmux_session.send_spawn_command(&harness, &session_id);
+    let spawn = harness.spawn_runtime_in_tmux(&session_id, "claude", &expected_pane);
+    spawn_output_ok(spawn, "claude");
     let status = wait_for_json_status(&harness, &session_id, &expected_pane);
     assert!(status.contains(&expected_pane), "{status}");
+    tmux_session.wait_for_capture(FAKE_RUNTIME_READY);
     tmux_session.kill();
 
     let nudge = harness.nudge(&session_id, "closed-pane");
@@ -122,6 +124,33 @@ fn tmux_pane_closed_while_session_alive_rejects_nudge() {
     );
     let status = wait_for_status(&harness, &session_id, "state=Running");
     assert!(status.contains(&session_id), "{status}");
+}
+
+#[test]
+fn dead_tmux_address_rejects_spawn_without_lifecycle_row() {
+    let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-dead-pane") else {
+        eprintln!("skipping tmux dead-address scenario because tmux is unavailable");
+        return;
+    };
+    let address = tmux_session.pane();
+    tmux_session.kill();
+
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+    let spawn = harness.spawn_runtime_in_tmux(&session_id, "claude", &address);
+    assert!(
+        !spawn.status.success(),
+        "spawn unexpectedly succeeded: {spawn:?}"
+    );
+    let stderr = output_stderr(spawn);
+    assert!(
+        stderr.contains(&format!("tmux address {address} is not alive")),
+        "{stderr}"
+    );
+
+    let status = harness.status(&session_id);
+    assert!(status.status.success(), "status failed: {status:?}");
+    assert_eq!(output_stdout(status), "no lifecycles\n");
 }
 
 fn wait_for_json_status(harness: &RtmHarness, session_id: &str, needle: &str) -> String {

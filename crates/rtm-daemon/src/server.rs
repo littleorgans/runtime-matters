@@ -133,6 +133,7 @@ impl ServerState {
         if self.store.get(request.session_id).await?.is_some() {
             bail!("session {} already exists", request.session_id);
         }
+        self.validate_spawn_target(request).await?;
 
         let lifecycle = Lifecycle::forking(request.session_id, request.runtime.clone());
         self.store.insert_forking(&lifecycle).await?;
@@ -147,6 +148,15 @@ impl ServerState {
                 Err(error)
             }
         }
+    }
+
+    async fn validate_spawn_target(&self, request: &SpawnRequest) -> Result<()> {
+        if let Some(address) = request.target.tmux_address()
+            && !rtm_platform::tmux::TmuxGateway::is_alive(address).await?
+        {
+            bail!("tmux address {address} is not alive");
+        }
+        Ok(())
     }
 
     async fn begin_ready_wait(&self, session_id: Uuid) -> Result<oneshot::Receiver<ShimReady>> {

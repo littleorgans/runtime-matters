@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use rtm_core::TmuxAddress;
+use rtm_core::{LaunchEnv, TmuxAddress};
 use tokio::process::Command;
 
 pub struct TmuxGateway;
@@ -29,6 +29,33 @@ impl TmuxGateway {
         .await?
         .context("tmux is not installed")?;
         ensure_success(output, "tmux send-keys").map(|_| ())
+    }
+
+    pub async fn respawn_pane(
+        tmux_pane: &TmuxAddress,
+        argv: &[String],
+        env: &[LaunchEnv],
+    ) -> Result<()> {
+        if argv.is_empty() {
+            bail!("tmux respawn-pane requires argv");
+        }
+        let mut args = vec![
+            "respawn-pane".to_owned(),
+            "-k".to_owned(),
+            "-t".to_owned(),
+            tmux_pane.to_string(),
+        ];
+        for entry in env {
+            args.push("-e".to_owned());
+            args.push(format!("{}={}", entry.key, entry.value));
+        }
+        args.push("--".to_owned());
+        args.extend(argv.iter().cloned());
+
+        let output = tmux_output_owned(args)
+            .await?
+            .context("tmux is not installed")?;
+        ensure_success(output, "tmux respawn-pane").map(|_| ())
     }
 
     pub async fn is_alive(tmux_pane: &TmuxAddress) -> Result<bool> {
