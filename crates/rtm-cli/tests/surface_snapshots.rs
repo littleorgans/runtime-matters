@@ -31,7 +31,8 @@ fn doctor_output_is_stable() {
 #[test]
 fn mcp_responses_are_stable() {
     let harness = RtmHarness::start();
-    let initialize = mcp_json(&harness, request(1, "initialize", json!({})));
+    let mut initialize = mcp_json(&harness, request(1, "initialize", json!({})));
+    redact_initialize(&mut initialize);
     let tools = mcp_json(&harness, request(2, "tools/list", json!({})));
     let status = call_tool(&harness, 3, "rtm_status", json!({}));
     let mut version = call_tool(&harness, 4, "rtm_version", json!({}));
@@ -84,8 +85,18 @@ fn redact_tool_payload(response: &mut Value) {
     if structured.get("pid").is_some() {
         structured["pid"] = json!("[pid]");
     }
+    if structured.get("version").is_some() {
+        structured["version"] = json!("[version]");
+    }
     let text = serde_json::to_string(structured).expect("structured text");
     response["result"]["content"][0]["text"] = json!(text);
+}
+
+fn redact_initialize(response: &mut Value) {
+    let server_info = &mut response["result"]["serverInfo"];
+    if server_info.get("version").is_some() {
+        server_info["version"] = json!("[version]");
+    }
 }
 
 fn normalize_doctor(output: &str) -> String {
