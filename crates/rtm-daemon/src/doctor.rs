@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use rtm_core::{DoctorResponse, LauncherStatus, SpawnRequest, TmuxStatus};
+use rtm_core::{
+    DoctorResponse, HeadlessSpawnTarget, LauncherStatus, SpawnRequest, SpawnTarget, TmuxStatus,
+};
 use uuid::Uuid;
 
 use crate::{server::ServerState, socket};
@@ -41,6 +43,7 @@ fn launcher_status(launcher: &'static dyn rtm_core::RuntimeLauncher) -> Launcher
         runtime: runtime.clone(),
         env: Vec::new(),
         cwd: None,
+        target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
     };
     match launcher.argv(&request) {
         Ok(argv) => LauncherStatus {

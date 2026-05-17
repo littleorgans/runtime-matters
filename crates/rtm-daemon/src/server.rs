@@ -204,6 +204,7 @@ impl ServerState {
                 request.session_id
             );
         }
+        lifecycle.tmux_pane = request.target.tmux_address().cloned();
         self.store.update_lifecycle(&lifecycle).await?;
         let event = event_channel::running_event(&lifecycle)?;
 
@@ -267,10 +268,12 @@ impl ServerState {
             .get(request.session_id)
             .await?
             .ok_or_else(|| anyhow!("session {} not found", request.session_id))?;
-        let tmux_pane = lifecycle
-            .tmux_pane
-            .as_ref()
-            .ok_or_else(|| anyhow!("session {} has no tmux pane", request.session_id))?;
+        let tmux_pane = lifecycle.tmux_pane.as_ref().ok_or_else(|| {
+            anyhow!(
+                "session {} has no tmux pane; nudge is not supported",
+                request.session_id
+            )
+        })?;
         rtm_platform::tmux::TmuxGateway::nudge(tmux_pane, &request.content).await
     }
 

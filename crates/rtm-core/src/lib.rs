@@ -22,8 +22,9 @@ pub use proto::{
     write_json_line, write_json_line_blocking,
 };
 pub use types::{
-    KillRequest, Lifecycle, LifecycleState, LostEvidence, NudgeRequest, RuntimeEvent, RuntimeExit,
-    RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit, ShimLaunchRequest, ShimReady,
-    SpawnRequest, TerminationEvidence, TmuxAddress, TmuxAddressParseError,
+    HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, NudgeRequest,
+    RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit,
+    ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, TerminationEvidence, TmuxAddress,
+    TmuxAddressParseError, TmuxSpawnTarget,
 };
 pub use version::{VersionInfo, version_info};

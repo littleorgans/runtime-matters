@@ -5,7 +5,10 @@ use std::sync::OnceLock;
 
 pub use claude::ClaudeLauncher;
 pub use codex::CodexLauncher;
-use rtm_core::{LaunchEnv, LauncherError, RuntimeKind, RuntimeLauncher, SpawnRequest};
+use rtm_core::{
+    HeadlessSpawnTarget, LaunchEnv, LauncherError, RuntimeKind, RuntimeLauncher, SpawnRequest,
+    SpawnTarget,
+};
 
 static CLAUDE: ClaudeLauncher = ClaudeLauncher;
 static CODEX: CodexLauncher = CodexLauncher;
@@ -31,6 +34,7 @@ pub fn warm_registry() -> Result<(), LauncherError> {
             runtime: launcher.kind(),
             env: Vec::new(),
             cwd: None,
+            target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
         };
         launcher.argv(&request)?;
     }

@@ -1,6 +1,8 @@
 use anyhow::{Result, bail};
 use clap::Parser;
-use rtm_core::{RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest};
+use rtm_core::{
+    HeadlessSpawnTarget, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget,
+};
 use uuid::Uuid;
 
 #[derive(Debug, Parser)]
@@ -21,8 +23,9 @@ async fn main() -> Result<()> {
             request: SpawnRequest {
                 session_id: args.session_id,
                 runtime: args.runtime,
-                env: rtm_cli::shared::client_launch_env(),
+                env: Vec::new(),
                 cwd: None,
+                target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
             },
         },
     )

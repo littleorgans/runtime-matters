@@ -1,8 +1,9 @@
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use rtm_core::{
-    KillByPidRequest, KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse,
-    RuntimeRpc, RuntimeSignal, SpawnRequest, StatusFilter,
+    HeadlessSpawnTarget, KillByPidRequest, KillRequest, Lifecycle, NudgeRequest, RuntimeKind,
+    RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
+    TmuxAddress, TmuxSpawnTarget,
 };
 use uuid::Uuid;
 
@@ -54,6 +55,8 @@ pub struct SpawnArgs {
     runtime: RuntimeKind,
     #[arg(long)]
     session_id: Uuid,
+    #[arg(long, value_name = "SESSION:WINDOW.PANE")]
+    tmux_address: Option<TmuxAddress>,
 }
 
 #[derive(Debug, Args)]
@@ -120,14 +123,16 @@ impl Cli {
 
 async fn spawn(args: SpawnArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
+    let target = spawn_target(args.tmux_address);
     let response = crate::shared::request(
         &socket_path,
         RuntimeRpc::Spawn {
             request: SpawnRequest {
                 session_id: args.session_id,
                 runtime: args.runtime,
-                env: crate::shared::client_launch_env(),
+                env: Vec::new(),
                 cwd: None,
+                target,
             },
         },
     )
@@ -147,6 +152,13 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
         other => anyhow::bail!("unexpected spawn response: {other:?}"),
     }
     Ok(())
+}
+
+fn spawn_target(tmux_address: Option<TmuxAddress>) -> SpawnTarget {
+    tmux_address.map_or_else(
+        || SpawnTarget::Headless(HeadlessSpawnTarget {}),
+        |address| SpawnTarget::Tmux(TmuxSpawnTarget { address }),
+    )
 }
 
 async fn kill(args: KillArgs) -> Result<()> {

@@ -3,7 +3,10 @@ mod common;
 
 use std::process::Command;
 
-use rtm_core::{Lifecycle, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest};
+use rtm_core::{
+    HeadlessSpawnTarget, Lifecycle, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest,
+    SpawnTarget,
+};
 use uuid::Uuid;
 
 const DEFAULT_SESSIONS: usize = 50;
@@ -63,6 +66,7 @@ fn spawn_one(runtime: &tokio::runtime::Runtime, harness: &common::RtmHarness) ->
                     runtime: RuntimeKind::Claude,
                     env: Vec::new(),
                     cwd: None,
+                    target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
                 },
             },
         ))

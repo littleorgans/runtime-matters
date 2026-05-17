@@ -15,26 +15,6 @@ impl TmuxGateway {
         Ok(Some(stdout(output).trim().to_owned()))
     }
 
-    pub async fn discover(_session_id: impl std::fmt::Display) -> Result<Option<TmuxAddress>> {
-        let Some(target) = std::env::var("TMUX_PANE")
-            .ok()
-            .filter(|value| !value.is_empty())
-        else {
-            return Ok(None);
-        };
-        display_current_pane(&target).await
-    }
-
-    pub fn discover_blocking(_session_id: impl std::fmt::Display) -> Result<Option<TmuxAddress>> {
-        let Some(target) = std::env::var("TMUX_PANE")
-            .ok()
-            .filter(|value| !value.is_empty())
-        else {
-            return Ok(None);
-        };
-        display_current_pane_blocking(&target)
-    }
-
     pub async fn nudge(tmux_pane: &TmuxAddress, content: &str) -> Result<()> {
         if !Self::is_alive(tmux_pane).await? {
             bail!("tmux pane {tmux_pane} is not alive");
@@ -78,38 +58,6 @@ impl TmuxGateway {
     }
 }
 
-async fn display_current_pane(target: &str) -> Result<Option<TmuxAddress>> {
-    pane_from_output(tmux_output_owned(display_current_pane_args(target)).await?)
-}
-
-fn display_current_pane_args(target: &str) -> Vec<String> {
-    vec![
-        "display-message".to_owned(),
-        "-p".to_owned(),
-        "-t".to_owned(),
-        target.to_owned(),
-        "#S:#I.#P".to_owned(),
-    ]
-}
-
-fn pane_from_output(output: Option<std::process::Output>) -> Result<Option<TmuxAddress>> {
-    let Some(output) = output else {
-        return Ok(None);
-    };
-    if !output.status.success() {
-        return Ok(None);
-    }
-
-    let pane = stdout(output).trim().to_owned();
-    if pane.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(
-        pane.parse()
-            .with_context(|| format!("invalid tmux pane {pane}"))?,
-    ))
-}
-
 async fn tmux_output<const N: usize>(args: [&str; N]) -> Result<Option<std::process::Output>> {
     tmux_output_owned(args.into_iter().map(str::to_owned).collect()).await
 }
@@ -132,18 +80,4 @@ fn ensure_success(output: std::process::Output, label: &'static str) -> Result<S
 
 fn stdout(output: std::process::Output) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
-}
-
-fn display_current_pane_blocking(target: &str) -> Result<Option<TmuxAddress>> {
-    pane_from_output(tmux_output_owned_blocking(display_current_pane_args(
-        target,
-    ))?)
-}
-
-fn tmux_output_owned_blocking(args: Vec<String>) -> Result<Option<std::process::Output>> {
-    match std::process::Command::new("tmux").args(args).output() {
-        Ok(output) => Ok(Some(output)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error).context("failed to run tmux"),
-    }
 }

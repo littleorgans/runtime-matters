@@ -205,7 +205,32 @@ pub struct SpawnRequest {
     pub env: Vec<LaunchEnv>,
     #[serde(default)]
     pub cwd: Option<std::path::PathBuf>,
+    pub target: SpawnTarget,
 }
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
+pub enum SpawnTarget {
+    Tmux(TmuxSpawnTarget),
+    Headless(HeadlessSpawnTarget),
+}
+
+impl SpawnTarget {
+    pub fn tmux_address(&self) -> Option<&TmuxAddress> {
+        match self {
+            Self::Tmux(target) => Some(&target.address),
+            Self::Headless(_) => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TmuxSpawnTarget {
+    pub address: TmuxAddress,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct HeadlessSpawnTarget {}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct KillRequest {

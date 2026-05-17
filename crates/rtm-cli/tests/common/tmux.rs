@@ -32,12 +32,14 @@ impl TmuxSession {
     }
 
     pub fn send_spawn_command(&self, harness: &RtmHarness, session_id: &str) {
+        let pane = self.pane();
         let command = format!(
-            "RTM_SOCKET_PATH={} RTM_DB_PATH={} {} spawn --runtime claude --session-id {}",
+            "RTM_SOCKET_PATH={} RTM_DB_PATH={} {} spawn --runtime claude --session-id {} --tmux-address {}",
             harness.socket_path().display(),
             harness.db_path().display(),
             harness.rtm_path().display(),
-            session_id
+            session_id,
+            pane
         );
         tmux(["send-keys", "-t", &self.name, "-l", &command]);
         tmux(["send-keys", "-t", &self.name, "Enter"]);

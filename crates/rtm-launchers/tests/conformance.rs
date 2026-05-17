@@ -1,4 +1,4 @@
-use rtm_core::{RuntimeKind, RuntimeLauncher, SpawnRequest};
+use rtm_core::{HeadlessSpawnTarget, RuntimeKind, RuntimeLauncher, SpawnRequest, SpawnTarget};
 use uuid::Uuid;
 
 #[test]
@@ -27,6 +27,7 @@ fn assert_launcher_conforms(launcher: &'static dyn RuntimeLauncher) {
         runtime: launcher.kind(),
         env: Vec::new(),
         cwd: None,
+        target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
     };
 
     let argv = launcher.argv(&request).expect("argv");
