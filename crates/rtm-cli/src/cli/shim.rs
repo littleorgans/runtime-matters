@@ -32,6 +32,13 @@ pub async fn run(args: ShimArgs) -> Result<()> {
     let runtime_pid = child
         .id()
         .ok_or_else(|| anyhow!("spawned runtime has no pid"))?;
+    let tmux_pane = match rtm_platform::tmux::TmuxGateway::discover(args.session_id).await {
+        Ok(tmux_pane) => tmux_pane,
+        Err(error) => {
+            tracing::warn!(%error, "failed to discover tmux pane");
+            None
+        }
+    };
 
     let ready = ShimReady {
         session_id: args.session_id,
@@ -39,6 +46,7 @@ pub async fn run(args: ShimArgs) -> Result<()> {
         runtime_pid,
         start_time: rtm_platform::process::start_time_for_pid(runtime_pid)?
             .unwrap_or_else(chrono::Utc::now),
+        tmux_pane,
     };
     reconnecting("ShimReady", || {
         rtm_daemon::shim_socket::send_ready(&socket_path, ready.clone())

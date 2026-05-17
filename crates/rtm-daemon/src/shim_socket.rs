@@ -10,14 +10,23 @@ use tokio::process::Command;
 use crate::server::DaemonConfig;
 
 pub async fn launch_shim(config: &DaemonConfig, request: &SpawnRequest) -> Result<()> {
-    Command::new(&config.shim_path)
+    let mut command = Command::new(&config.shim_path);
+    command
         .arg("__shim")
         .arg("--session-id")
         .arg(request.session_id.to_string())
-        .env("RTM_SOCKET_PATH", &config.socket_path)
+        .env("RTM_SOCKET_PATH", &config.socket_path);
+    for env in request.env.iter().filter(|env| shim_env_key(&env.key)) {
+        command.env(&env.key, &env.value);
+    }
+    command
         .spawn()
         .with_context(|| format!("failed to spawn shim {}", config.shim_path.display()))?;
     Ok(())
+}
+
+fn shim_env_key(key: &str) -> bool {
+    matches!(key, "TMUX" | "TMUX_PANE")
 }
 
 pub async fn request_launch(

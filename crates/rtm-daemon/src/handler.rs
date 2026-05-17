@@ -62,6 +62,10 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             state.kill_runtime(request).await?;
             Ok(RuntimeResponse::Ack)
         }
+        RuntimeRpc::Nudge { request } => {
+            state.nudge_runtime(request).await?;
+            Ok(RuntimeResponse::Ack)
+        }
         RuntimeRpc::Status {
             request: StatusRequest { session_id },
         } => Ok(RuntimeResponse::Status {

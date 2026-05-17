@@ -4,8 +4,8 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
 use crate::{
-    KillRequest, LaunchSpec, Lifecycle, ProtocolError, RuntimeEvent, ShimExit, ShimLaunchRequest,
-    ShimReady, SpawnRequest,
+    KillRequest, LaunchSpec, Lifecycle, NudgeRequest, ProtocolError, RuntimeEvent, ShimExit,
+    ShimLaunchRequest, ShimReady, SpawnRequest,
 };
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
@@ -18,6 +18,7 @@ pub struct StatusRequest {
 pub enum RuntimeRpc {
     Spawn { request: SpawnRequest },
     Kill { request: KillRequest },
+    Nudge { request: NudgeRequest },
     Status { request: StatusRequest },
     Events,
     Stop,

@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
             request: SpawnRequest {
                 session_id: args.session_id,
                 runtime: args.runtime,
-                env: Vec::new(),
+                env: rtm_cli::shared::client_launch_env(),
                 cwd: None,
             },
         },

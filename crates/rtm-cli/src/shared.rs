@@ -3,7 +3,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use rtm_core::{
-    RuntimeEvent, RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line, write_json_line,
+    LaunchEnv, RuntimeEvent, RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line,
+    write_json_line,
 };
 use tokio::io::BufReader;
 use tokio::net::UnixStream;
@@ -11,6 +12,17 @@ use uuid::Uuid;
 
 pub fn socket_path() -> Result<PathBuf> {
     rtm_daemon::socket::socket_path_from_env()
+}
+
+pub fn client_launch_env() -> Vec<LaunchEnv> {
+    ["TMUX", "TMUX_PANE"]
+        .into_iter()
+        .filter_map(|key| {
+            std::env::var(key)
+                .ok()
+                .map(|value| LaunchEnv::new(key, value))
+        })
+        .collect()
 }
 
 pub async fn request(socket_path: &Path, rpc: RuntimeRpc) -> Result<RuntimeResponse> {

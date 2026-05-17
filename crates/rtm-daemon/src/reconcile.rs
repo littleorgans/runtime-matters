@@ -149,6 +149,7 @@ mod tests {
             shim_pid: pid + 10_000,
             runtime_pid: pid,
             start_time,
+            tmux_pane: None,
         });
         store.update_lifecycle(&lifecycle).await.expect("running");
         lifecycle

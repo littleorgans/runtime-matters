@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
-use rtm_core::{Lifecycle, LifecycleState, LostEvidence, RuntimeExit, RuntimeKind};
+use rtm_core::{Lifecycle, LifecycleState, LostEvidence, RuntimeExit, RuntimeKind, TmuxPane};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Executor, SqlitePool};
 use uuid::Uuid;
@@ -233,7 +233,7 @@ impl EncodedLifecycle {
             shim_pid: lifecycle.shim_pid.map(i64::from),
             runtime_pid: lifecycle.runtime_pid.map(i64::from),
             start_time: lifecycle.start_time.map(|time| time.to_rfc3339()),
-            tmux_pane: lifecycle.tmux_pane.clone(),
+            tmux_pane: encode_tmux_pane(lifecycle.tmux_pane.as_ref())?,
             exit_code: exit_code.map(i64::from),
             exit_signal: exit_signal.map(i64::from),
             lost_evidence,
@@ -253,9 +253,25 @@ impl TryFrom<LifecycleRow> for Lifecycle {
             shim_pid: decode_u32(row.shim_pid, "shim_pid")?,
             runtime_pid: decode_u32(row.runtime_pid, "runtime_pid")?,
             start_time: row.start_time.map(|time| parse_time(&time)).transpose()?,
-            tmux_pane: row.tmux_pane,
+            tmux_pane: decode_tmux_pane(row.tmux_pane)?,
         })
     }
+}
+
+fn encode_tmux_pane(tmux_pane: Option<&TmuxPane>) -> Result<Option<String>> {
+    Ok(tmux_pane.map(serde_json::to_string).transpose()?)
+}
+
+fn decode_tmux_pane(tmux_pane: Option<String>) -> Result<Option<TmuxPane>> {
+    tmux_pane
+        .map(|value| -> Result<TmuxPane> {
+            if let Ok(pane) = serde_json::from_str::<TmuxPane>(&value) {
+                return Ok(pane);
+            }
+            Ok(value.parse()?)
+        })
+        .transpose()
+        .context("invalid stored tmux pane")
 }
 
 fn encode_state(
@@ -321,6 +337,7 @@ fn parse_time(value: &str) -> Result<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rtm_core::ShimReady;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -342,6 +359,32 @@ mod tests {
             LifecycleState::Lost(LostEvidence::PidNotAlive)
         );
         assert_eq!(store.running().await.expect("running").len(), 0);
+    }
+
+    #[tokio::test]
+    async fn tmux_pane_round_trips_through_sqlite() {
+        let temp = TempDir::new().expect("temp dir");
+        let store = LifecycleStore::path_open(temp.path().join("rtm.sqlite"))
+            .await
+            .expect("store");
+        let session_id = Uuid::now_v7();
+        let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
+        lifecycle.mark_running(ShimReady {
+            session_id,
+            shim_pid: 10,
+            runtime_pid: 20,
+            start_time: Utc::now(),
+            tmux_pane: Some("test:0.1".parse().expect("tmux pane")),
+        });
+
+        store
+            .insert_forking(&Lifecycle::forking(session_id, RuntimeKind::Claude))
+            .await
+            .expect("insert");
+        store.update_lifecycle(&lifecycle).await.expect("update");
+
+        let restored = store.get(session_id).await.expect("get").expect("row");
+        assert_eq!(restored.tmux_pane, lifecycle.tmux_pane);
     }
 
     #[tokio::test]

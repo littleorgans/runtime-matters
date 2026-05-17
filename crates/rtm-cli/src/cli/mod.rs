@@ -1,7 +1,8 @@
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use rtm_core::{
-    KillRequest, Lifecycle, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest,
+    KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal,
+    SpawnRequest,
 };
 use uuid::Uuid;
 
@@ -27,6 +28,7 @@ enum Command {
     },
     Spawn(SpawnArgs),
     Kill(KillArgs),
+    Nudge(NudgeArgs),
     Status(StatusArgs),
     Events,
     Initdb,
@@ -72,12 +74,21 @@ pub struct KillArgs {
     grace_secs: u64,
 }
 
+#[derive(Debug, Args)]
+pub struct NudgeArgs {
+    #[arg(long)]
+    session_id: Uuid,
+    #[arg(long)]
+    content: String,
+}
+
 impl Cli {
     pub async fn run(self) -> Result<()> {
         match self.command {
             Command::Daemon { command } => command.run().await,
             Command::Spawn(args) => spawn(args).await,
             Command::Kill(args) => kill(args).await,
+            Command::Nudge(args) => nudge(args).await,
             Command::Status(args) => status(args).await,
             Command::Events => events().await,
             Command::Initdb => initdb::run().await,
@@ -94,7 +105,7 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
             request: SpawnRequest {
                 session_id: args.session_id,
                 runtime: args.runtime,
-                env: Vec::new(),
+                env: crate::shared::client_launch_env(),
                 cwd: None,
             },
         },
@@ -136,6 +147,28 @@ async fn kill(args: KillArgs) -> Result<()> {
             println!("kill OK; session_id={}", args.session_id);
         }
         other => bail!("unexpected kill response: {other:?}"),
+    }
+    Ok(())
+}
+
+async fn nudge(args: NudgeArgs) -> Result<()> {
+    let socket_path = crate::shared::socket_path()?;
+    let response = crate::shared::request(
+        &socket_path,
+        RuntimeRpc::Nudge {
+            request: NudgeRequest {
+                session_id: args.session_id,
+                content: args.content,
+            },
+        },
+    )
+    .await?;
+
+    match response {
+        RuntimeResponse::Ack => {
+            println!("nudge OK; session_id={}", args.session_id);
+        }
+        other => bail!("unexpected nudge response: {other:?}"),
     }
     Ok(())
 }
@@ -207,7 +240,7 @@ fn print_status(format: StatusFormat, lifecycles: &[Lifecycle]) -> Result<()> {
         StatusFormat::Summary => {
             for lifecycle in lifecycles {
                 println!(
-                    "session_id={} state={} runtime={} shim_pid={} runtime_pid={} start_time={}",
+                    "session_id={} state={} runtime={} shim_pid={} runtime_pid={} start_time={} tmux_pane={}",
                     lifecycle.session_id,
                     lifecycle.state,
                     lifecycle.runtime,
@@ -216,7 +249,8 @@ fn print_status(format: StatusFormat, lifecycles: &[Lifecycle]) -> Result<()> {
                     lifecycle
                         .start_time
                         .map(|time| time.to_rfc3339())
-                        .unwrap_or_else(|| "-".to_owned())
+                        .unwrap_or_else(|| "-".to_owned()),
+                    display_optional_tmux_pane(lifecycle.tmux_pane.as_ref())
                 );
             }
         }
@@ -249,5 +283,11 @@ fn display_optional_u32(value: Option<u32>) -> String {
 fn display_optional_i32(value: Option<i32>) -> String {
     value
         .map(|inner| inner.to_string())
+        .unwrap_or_else(|| "-".to_owned())
+}
+
+fn display_optional_tmux_pane(value: Option<&rtm_core::TmuxPane>) -> String {
+    value
+        .map(ToString::to_string)
         .unwrap_or_else(|| "-".to_owned())
 }

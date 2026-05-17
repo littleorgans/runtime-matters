@@ -82,6 +82,17 @@ impl RtmHarness {
             .expect("status client")
     }
 
+    pub fn nudge(&self, session_id: &str, content: &str) -> Output {
+        self.rtm_command()
+            .arg("nudge")
+            .arg("--session-id")
+            .arg(session_id)
+            .arg("--content")
+            .arg(content)
+            .output()
+            .expect("nudge client")
+    }
+
     pub fn events(&self) -> Output {
         self.rtm_command()
             .arg("events")
@@ -100,6 +111,10 @@ impl RtmHarness {
 
     pub fn db_path(&self) -> &Path {
         &self.db
+    }
+
+    pub fn socket_path(&self) -> &Path {
+        &self.socket
     }
 
     pub fn stop(mut self) {

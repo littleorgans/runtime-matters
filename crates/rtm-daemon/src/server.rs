@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use rtm_core::{
-    KillRequest, LaunchSpec, Lifecycle, LifecycleState, LostEvidence, RuntimeEvent, RuntimeExit,
-    RuntimeSignal, ShimExit, ShimReady, SpawnRequest, TerminationEvidence,
+    KillRequest, LaunchSpec, Lifecycle, LifecycleState, LostEvidence, NudgeRequest, RuntimeEvent,
+    RuntimeExit, RuntimeSignal, ShimExit, ShimReady, SpawnRequest, TerminationEvidence,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use tokio::net::UnixListener;
@@ -212,6 +212,19 @@ impl ServerState {
             rtm_platform::signal::send_signal(runtime_pid, RuntimeSignal::Kill)?;
         }
         Ok(())
+    }
+
+    pub(crate) async fn nudge_runtime(&self, request: NudgeRequest) -> Result<()> {
+        let lifecycle = self
+            .store
+            .get(request.session_id)
+            .await?
+            .ok_or_else(|| anyhow!("session {} not found", request.session_id))?;
+        let tmux_pane = lifecycle
+            .tmux_pane
+            .as_ref()
+            .ok_or_else(|| anyhow!("session {} has no tmux pane", request.session_id))?;
+        rtm_platform::tmux::TmuxGateway::nudge(tmux_pane, &request.content).await
     }
 
     pub(crate) async fn record_shim_exit(&self, exit: ShimExit) -> Result<Option<RuntimeEvent>> {
