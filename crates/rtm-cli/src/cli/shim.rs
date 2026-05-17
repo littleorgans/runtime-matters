@@ -1,10 +1,15 @@
 use std::os::unix::process::ExitStatusExt;
 use std::process::ExitStatus;
+use std::time::Duration;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
 use rtm_core::{LaunchSpec, RuntimeExit, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady};
 use uuid::Uuid;
+
+pub const SHIM_RECONNECT_MAX_ATTEMPTS: usize = 10;
+const SHIM_RECONNECT_INITIAL_DELAY: Duration = Duration::from_secs(1);
+const SHIM_RECONNECT_MAX_DELAY: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Args)]
 pub struct ShimArgs {
@@ -14,12 +19,12 @@ pub struct ShimArgs {
 
 pub async fn run(args: ShimArgs) -> Result<()> {
     let socket_path = rtm_daemon::socket::socket_path_from_env()?;
-    let launch = rtm_daemon::shim_socket::request_launch(
-        &socket_path,
-        ShimLaunchRequest {
-            session_id: args.session_id,
-        },
-    )
+    let launch_request = ShimLaunchRequest {
+        session_id: args.session_id,
+    };
+    let launch = reconnecting("ShimLaunch", || {
+        rtm_daemon::shim_socket::request_launch(&socket_path, launch_request.clone())
+    })
     .await?;
     let mut child = runtime_command(&launch)?
         .spawn()
@@ -35,15 +40,43 @@ pub async fn run(args: ShimArgs) -> Result<()> {
         start_time: rtm_platform::process::start_time_for_pid(runtime_pid)?
             .unwrap_or_else(chrono::Utc::now),
     };
-    rtm_daemon::shim_socket::send_ready(&socket_path, ready).await?;
+    reconnecting("ShimReady", || {
+        rtm_daemon::shim_socket::send_ready(&socket_path, ready.clone())
+    })
+    .await?;
 
     let status = wait_for_runtime(&mut child).await?;
     let exit = ShimExit {
         session_id: args.session_id,
         exit: runtime_exit(status),
     };
-    rtm_daemon::shim_socket::send_exit(&socket_path, exit).await?;
+    reconnecting("ShimExit", || {
+        rtm_daemon::shim_socket::send_exit(&socket_path, exit.clone())
+    })
+    .await?;
     Ok(())
+}
+
+async fn reconnecting<T, F, Fut>(label: &'static str, mut operation: F) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    let mut delay = SHIM_RECONNECT_INITIAL_DELAY;
+    for attempt in 1..=SHIM_RECONNECT_MAX_ATTEMPTS {
+        match operation().await {
+            Ok(value) => return Ok(value),
+            Err(error) if attempt == SHIM_RECONNECT_MAX_ATTEMPTS => {
+                bail!("{label} failed after {SHIM_RECONNECT_MAX_ATTEMPTS} attempts: {error}");
+            }
+            Err(error) => {
+                tracing::warn!(%error, attempt, label, "shim reconnect attempt failed");
+                tokio::time::sleep(delay).await;
+                delay = std::cmp::min(delay * 2, SHIM_RECONNECT_MAX_DELAY);
+            }
+        }
+    }
+    unreachable!("reconnect loop returns on success or final failure")
 }
 
 fn runtime_command(launch: &LaunchSpec) -> Result<tokio::process::Command> {

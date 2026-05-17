@@ -207,7 +207,7 @@ impl Lifecycle {
 
     pub fn mark_exited(&mut self, exit: RuntimeExit) -> bool {
         match self.state {
-            LifecycleState::Forking | LifecycleState::Running | LifecycleState::Lost(_) => {
+            LifecycleState::Forking | LifecycleState::Running => {
                 self.state = LifecycleState::Exited(exit);
                 true
             }
@@ -217,6 +217,7 @@ impl Lifecycle {
                 }
                 false
             }
+            LifecycleState::Lost(_) => false,
         }
     }
 
@@ -257,12 +258,16 @@ impl Display for RuntimeExit {
 #[serde(rename_all = "snake_case")]
 pub enum LostEvidence {
     ShimDiedBeforeReport,
+    PidNotAlive,
+    PidReuseDetected,
 }
 
 impl Display for LostEvidence {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ShimDiedBeforeReport => formatter.write_str("ShimDiedBeforeReport"),
+            Self::PidNotAlive => formatter.write_str("PidNotAlive"),
+            Self::PidReuseDetected => formatter.write_str("PidReuseDetected"),
         }
     }
 }
@@ -298,6 +303,10 @@ pub enum RuntimeEvent {
         exit_code: Option<i32>,
         signal: Option<i32>,
         evidence: TerminationEvidence,
+    },
+    Lost {
+        session_id: Uuid,
+        evidence: LostEvidence,
     },
 }
 

@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use rtm_core::{Lifecycle, LifecycleState, RuntimeEvent, TerminationEvidence};
+use rtm_core::{Lifecycle, LifecycleState, LostEvidence, RuntimeEvent, TerminationEvidence};
 
 pub(crate) fn running_event(lifecycle: &Lifecycle) -> Result<RuntimeEvent> {
     let runtime_pid = lifecycle
@@ -27,6 +27,13 @@ pub(crate) fn terminated_event(
         session_id: lifecycle.session_id,
         exit_code,
         signal,
+        evidence,
+    }
+}
+
+pub(crate) fn lost_event(lifecycle: &Lifecycle, evidence: LostEvidence) -> RuntimeEvent {
+    RuntimeEvent::Lost {
+        session_id: lifecycle.session_id,
         evidence,
     }
 }

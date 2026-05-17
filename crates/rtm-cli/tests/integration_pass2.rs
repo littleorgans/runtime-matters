@@ -73,7 +73,7 @@ fn kqueue_reports_lost_when_shim_dies_before_exit_report() {
         "{status}"
     );
     let events = wait_for_events(&harness, 2);
-    assert!(events.contains("runtime event=Terminated"), "{events}");
+    assert!(events.contains("runtime event=Lost"), "{events}");
 }
 
 fn spawn_runtime(harness: &RtmHarness, session_id: &str) -> String {

@@ -3,12 +3,14 @@
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
+use std::{fmt::Write as _, io::Read};
 
 use tempfile::TempDir;
 
 pub struct RtmHarness {
-    _temp: TempDir,
+    temp: TempDir,
     socket: PathBuf,
+    db: PathBuf,
     rtm: &'static str,
     daemon: Child,
 }
@@ -17,14 +19,16 @@ impl RtmHarness {
     pub fn start() -> Self {
         let temp = TempDir::new().expect("temp dir");
         let socket = temp.path().join("rtm.sock");
+        let db = temp.path().join("rtm.sqlite");
         write_fake_runtime(temp.path(), "claude");
         write_fake_runtime(temp.path(), "codex");
         let rtm = env!("CARGO_BIN_EXE_rtm");
-        let daemon = start_daemon(rtm, &socket, temp.path());
+        let daemon = start_daemon(rtm, &socket, &db, temp.path());
         wait_for_socket(&socket);
         Self {
-            _temp: temp,
+            temp,
             socket,
+            db,
             rtm,
             daemon,
         }
@@ -85,23 +89,55 @@ impl RtmHarness {
             .expect("events client")
     }
 
+    pub fn start_rtmd(&mut self) {
+        self.daemon = start_daemon(self.rtm, &self.socket, &self.db, self.temp.path());
+        wait_for_socket(&self.socket);
+    }
+
+    pub fn stop_rtmd(&mut self) {
+        stop_daemon(self.rtm, &self.socket, &mut self.daemon);
+    }
+
+    pub fn db_path(&self) -> &Path {
+        &self.db
+    }
+
     pub fn stop(mut self) {
+        self.cleanup_processes();
         stop_daemon(self.rtm, &self.socket, &mut self.daemon);
     }
 
     fn rtm_command(&self) -> Command {
         let mut command = Command::new(self.rtm);
         command.env("RTM_SOCKET_PATH", &self.socket);
+        command.env("RTM_DB_PATH", &self.db);
         command
+    }
+
+    fn cleanup_processes(&self) {
+        let output = self.rtm_command().arg("status").output();
+        let Ok(output) = output else {
+            return;
+        };
+        let stdout = output_stdout(output);
+        for line in stdout.lines() {
+            for key in ["runtime_pid", "shim_pid"] {
+                if let Some(pid) = parse_status_field(line, key) {
+                    terminate_process(pid, "KILL");
+                }
+            }
+        }
     }
 }
 
 impl Drop for RtmHarness {
     fn drop(&mut self) {
+        self.cleanup_processes();
         let _ = Command::new(self.rtm)
             .arg("daemon")
             .arg("stop")
             .env("RTM_SOCKET_PATH", &self.socket)
+            .env("RTM_DB_PATH", &self.db)
             .output();
         let _ = self.daemon.kill();
         let _ = self.daemon.wait();
@@ -127,6 +163,14 @@ pub fn parse_runtime_pid(stdout: &str) -> u32 {
 
 pub fn parse_status_pid(stdout: &str) -> u32 {
     stdout.trim().parse().expect("status pid")
+}
+
+fn parse_status_field(line: &str, key: &str) -> Option<u32> {
+    line.split(&format!("{key}="))
+        .nth(1)
+        .and_then(|tail| tail.split_whitespace().next())
+        .and_then(|value| (value != "-").then_some(value))
+        .and_then(|value| value.parse().ok())
 }
 
 pub fn assert_process_alive(pid: u32) {
@@ -194,11 +238,12 @@ fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
     path
 }
 
-fn start_daemon(rtm: &'static str, socket: &Path, fake_bin_dir: &Path) -> Child {
+fn start_daemon(rtm: &'static str, socket: &Path, db: &Path, fake_bin_dir: &Path) -> Child {
     Command::new(rtm)
         .arg("daemon")
         .arg("start")
         .env("RTM_SOCKET_PATH", socket)
+        .env("RTM_DB_PATH", db)
         .env("PATH", test_path(fake_bin_dir))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -233,9 +278,27 @@ fn stop_daemon(rtm: &str, socket: &Path, daemon: &mut Child) {
         .env("RTM_SOCKET_PATH", socket)
         .output()
         .expect("daemon stop");
-    assert!(output.status.success(), "stop failed: {output:?}");
+    assert!(
+        output.status.success(),
+        "stop failed: {output:?}{}",
+        daemon_debug(daemon)
+    );
     wait_for_child(daemon);
     assert!(!socket.exists(), "socket was not removed");
+}
+
+fn daemon_debug(daemon: &mut Child) -> String {
+    let Ok(Some(status)) = daemon.try_wait() else {
+        return String::new();
+    };
+    let mut debug = String::new();
+    let _ = write!(debug, "; daemon exited with {status}");
+    if let Some(stderr) = daemon.stderr.as_mut() {
+        let mut contents = String::new();
+        let _ = stderr.read_to_string(&mut contents);
+        let _ = write!(debug, "; daemon stderr: {contents}");
+    }
+    debug
 }
 
 fn wait_for_child(child: &mut Child) {

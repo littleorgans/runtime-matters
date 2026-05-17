@@ -11,6 +11,10 @@ chrono.workspace = true
 rtm-core.workspace = true
 rtm-launchers.workspace = true
 rtm-platform.workspace = true
+rtm-store.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

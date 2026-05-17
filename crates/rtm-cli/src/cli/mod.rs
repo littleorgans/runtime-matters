@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::cli::daemon::DaemonCommand;
 
 pub mod daemon;
+pub mod initdb;
 pub mod shim;
 
 #[derive(Debug, Parser)]
@@ -28,6 +29,7 @@ enum Command {
     Kill(KillArgs),
     Status(StatusArgs),
     Events,
+    Initdb,
     #[command(name = "__shim", hide = true)]
     Shim(shim::ShimArgs),
 }
@@ -78,6 +80,7 @@ impl Cli {
             Command::Kill(args) => kill(args).await,
             Command::Status(args) => status(args).await,
             Command::Events => events().await,
+            Command::Initdb => initdb::run().await,
             Command::Shim(args) => shim::run(args).await,
         }
     }
@@ -179,6 +182,13 @@ async fn events() -> Result<()> {
                 display_optional_i32(signal),
                 evidence
             ),
+            rtm_core::RuntimeEvent::Lost {
+                session_id,
+                evidence,
+            } => println!(
+                "runtime event=Lost session_id={} evidence={}",
+                session_id, evidence
+            ),
         }
     }
     Ok(())
@@ -188,6 +198,7 @@ pub fn event_name(event: &rtm_core::RuntimeEvent) -> &'static str {
     match event {
         rtm_core::RuntimeEvent::Running { .. } => "Running",
         rtm_core::RuntimeEvent::Terminated { .. } => "Terminated",
+        rtm_core::RuntimeEvent::Lost { .. } => "Lost",
     }
 }
 

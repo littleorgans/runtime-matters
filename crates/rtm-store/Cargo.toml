@@ -1,27 +1,17 @@
 [package]
-name = "rtm-cli"
-default-run = "rtm"
+name = "rtm-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[[bin]]
-name = "rtm"
-path = "src/main.rs"
-
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
-clap.workspace = true
 rtm-core.workspace = true
-rtm-daemon.workspace = true
-rtm-platform.workspace = true
-rtm-store.workspace = true
 serde_json.workspace = true
+sqlx.workspace = true
 tokio.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
