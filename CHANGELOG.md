@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/littleorgans/runtime-matters/compare/v0.1.1...v0.1.2) (2026-05-17)
+
+
+### Bug Fixes
+
+* define [profile.dist] and upgrade cargo-dist to 0.31.0 ([#5](https://github.com/littleorgans/runtime-matters/issues/5)) ([da660eb](https://github.com/littleorgans/runtime-matters/commit/da660eb1df488b333507f448f305ee32c7909031))
+
 ## [0.1.1](https://github.com/littleorgans/runtime-matters/compare/v0.1.0...v0.1.1) (2026-05-17)
 
 
