@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.1](https://github.com/littleorgans/runtime-matters/compare/v0.1.0...v0.1.1) (2026-05-17)
+
+
+### Features
+
+* ship runtime-matters v1 (per-host kubelet + container runtime) ([#2](https://github.com/littleorgans/runtime-matters/issues/2)) ([28babac](https://github.com/littleorgans/runtime-matters/commit/28babacd727f0c468434cf21858c0932f6b5d00f))
+
+
+### Bug Fixes
+
+* redact binary version in mcp_responses snapshot ([#4](https://github.com/littleorgans/runtime-matters/issues/4)) ([4b83716](https://github.com/littleorgans/runtime-matters/commit/4b8371613891712294b52b6293230c02dab0cab2))
+
 ## 0.1.0
 
 Initial v1 substrate for runtime-matters.
