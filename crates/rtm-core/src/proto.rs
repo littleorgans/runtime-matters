@@ -1,3 +1,5 @@
+use std::io::{BufRead, Write};
+
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
@@ -95,7 +97,7 @@ where
     if read == 0 {
         return Err(ProtocolError::Eof);
     }
-    Ok(serde_json::from_str(line.trim_end())?)
+    parse_json_line(&line)
 }
 
 pub async fn write_json_line<W, T>(writer: &mut W, message: &T) -> Result<(), ProtocolError>
@@ -103,9 +105,48 @@ where
     W: AsyncWrite + Unpin,
     T: Serialize,
 {
-    let mut bytes = serde_json::to_vec(message)?;
-    bytes.push(b'\n');
+    let bytes = json_line_bytes(message)?;
     writer.write_all(&bytes).await?;
     writer.flush().await?;
     Ok(())
+}
+
+pub fn read_json_line_blocking<R, T>(reader: &mut R) -> Result<T, ProtocolError>
+where
+    R: BufRead,
+    T: DeserializeOwned,
+{
+    let mut line = String::new();
+    let read = reader.read_line(&mut line)?;
+    if read == 0 {
+        return Err(ProtocolError::Eof);
+    }
+    parse_json_line(&line)
+}
+
+pub fn write_json_line_blocking<W, T>(writer: &mut W, message: &T) -> Result<(), ProtocolError>
+where
+    W: Write,
+    T: Serialize,
+{
+    let bytes = json_line_bytes(message)?;
+    writer.write_all(&bytes)?;
+    writer.flush()?;
+    Ok(())
+}
+
+fn parse_json_line<T>(line: &str) -> Result<T, ProtocolError>
+where
+    T: DeserializeOwned,
+{
+    Ok(serde_json::from_str(line.trim_end())?)
+}
+
+fn json_line_bytes<T>(message: &T) -> Result<Vec<u8>, ProtocolError>
+where
+    T: Serialize,
+{
+    let mut bytes = serde_json::to_vec(message)?;
+    bytes.push(b'\n');
+    Ok(bytes)
 }

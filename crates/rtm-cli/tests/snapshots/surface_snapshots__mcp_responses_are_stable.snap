@@ -1,0 +1,230 @@
+---
+source: crates/rtm-cli/tests/surface_snapshots.rs
+expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status\": status, \"version\":\n    version, \"watchers\": watchers, \"kill_by_pid\": kill,\n})"
+---
+{
+  "initialize": {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "tools": {}
+      },
+      "instructions": "runtime-matters admin MCP exposes rtmd substrate operations only.",
+      "protocolVersion": "2025-06-18",
+      "serverInfo": {
+        "name": "rtm",
+        "version": "0.1.0"
+      }
+    }
+  },
+  "kill_by_pid": {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "{\"killed_after_grace\":true,\"pid\":\"[pid]\",\"signal\":15}",
+          "type": "text"
+        }
+      ],
+      "structuredContent": {
+        "killed_after_grace": true,
+        "pid": "[pid]",
+        "signal": 15
+      }
+    }
+  },
+  "status": {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "[]",
+          "type": "text"
+        }
+      ],
+      "structuredContent": {
+        "lifecycles": []
+      }
+    }
+  },
+  "tools": {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "tools": [
+        {
+          "description": "Admin escape hatch that signals a runtime process by pid, waits for the grace period, then sends SIGKILL if the process remains alive.",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "grace_secs": {
+                "description": "Seconds to wait before SIGKILL fallback.",
+                "format": "u32",
+                "type": "integer"
+              },
+              "pid": {
+                "description": "Runtime process id to signal.",
+                "format": "u32",
+                "type": "integer"
+              },
+              "signal": {
+                "description": "POSIX signal number to send.",
+                "format": "i32",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "pid",
+              "signal",
+              "grace_secs"
+            ],
+            "type": "object"
+          },
+          "name": "rtm_kill_by_pid",
+          "outputSchema": {
+            "additionalProperties": false,
+            "description": "Signal delivery outcome for the requested pid.",
+            "properties": {
+              "killed_after_grace": {
+                "description": "Whether SIGKILL was sent after the grace period.",
+                "type": "boolean"
+              },
+              "pid": {
+                "description": "Process id that was signaled.",
+                "type": "integer"
+              },
+              "signal": {
+                "description": "Signal number sent first.",
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        },
+        {
+          "description": "Return rtmd Lifecycle rows, optionally filtered by session id, runtime, and lifecycle state.",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "runtime": {
+                "description": "Optional runtime kind filter.",
+                "type": "string"
+              },
+              "session_id": {
+                "description": "Optional session id filter.",
+                "format": "uuid",
+                "type": "string"
+              },
+              "state": {
+                "description": "Optional lifecycle state filter.",
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "name": "rtm_status",
+          "outputSchema": {
+            "additionalProperties": false,
+            "description": "Lifecycle rows visible to rtmd.",
+            "properties": {
+              "lifecycles": {
+                "description": "Matching Lifecycle rows.",
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        {
+          "description": "Return the rtmd package version and build git sha.",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "name": "rtm_version",
+          "outputSchema": {
+            "additionalProperties": false,
+            "description": "Version metadata for the running daemon.",
+            "properties": {
+              "git_sha": {
+                "description": "Build git sha.",
+                "type": "string"
+              },
+              "version": {
+                "description": "Package version.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        {
+          "description": "Return rtmd operator visibility counters for kqueue watchers and pending shim socket waiters.",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "name": "rtm_watchers",
+          "outputSchema": {
+            "additionalProperties": false,
+            "description": "Watcher counters for the running daemon.",
+            "properties": {
+              "kqueue_watchers": {
+                "description": "Active kqueue process exit watchers.",
+                "type": "integer"
+              },
+              "shim_sockets": {
+                "description": "Pending shim socket waiters.",
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        }
+      ]
+    }
+  },
+  "version": {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "{\"git_sha\":\"[git_sha]\",\"version\":\"0.1.0\"}",
+          "type": "text"
+        }
+      ],
+      "structuredContent": {
+        "git_sha": "[git_sha]",
+        "version": "0.1.0"
+      }
+    }
+  },
+  "watchers": {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "{\"kqueue_watchers\":0,\"shim_sockets\":0}",
+          "type": "text"
+        }
+      ],
+      "structuredContent": {
+        "kqueue_watchers": 0,
+        "shim_sockets": 0
+      }
+    }
+  }
+}

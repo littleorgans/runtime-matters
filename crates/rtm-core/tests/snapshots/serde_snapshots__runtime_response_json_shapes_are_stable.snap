@@ -1,0 +1,50 @@
+---
+source: crates/rtm-core/tests/serde_snapshots.rs
+expression: responses
+---
+[
+  {
+    "type": "shim_launch",
+    "payload": {
+      "launch": {
+        "argv": [
+          "claude",
+          "--resume"
+        ],
+        "env": [
+          {
+            "key": "RTM",
+            "value": "1"
+          }
+        ],
+        "cwd": null
+      }
+    }
+  },
+  {
+    "type": "ack"
+  },
+  {
+    "type": "stopping"
+  },
+  {
+    "type": "error",
+    "payload": {
+      "message": "failed"
+    }
+  },
+  {
+    "type": "events",
+    "payload": {
+      "events": [
+        {
+          "type": "lost",
+          "payload": {
+            "session_id": "018f6e28-0000-7000-8000-000000000001",
+            "evidence": "pid_not_alive"
+          }
+        }
+      ]
+    }
+  }
+]

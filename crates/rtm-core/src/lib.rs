@@ -17,7 +17,10 @@ pub use mcp::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION, McpBridgeRequest,
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,
 };
-pub use proto::{RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line, write_json_line};
+pub use proto::{
+    RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line, read_json_line_blocking,
+    write_json_line, write_json_line_blocking,
+};
 pub use types::{
     KillRequest, Lifecycle, LifecycleState, LostEvidence, NudgeRequest, RuntimeEvent, RuntimeExit,
     RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit, ShimLaunchRequest, ShimReady,

@@ -21,6 +21,7 @@ pub struct DaemonConfig {
     pub socket_path: PathBuf,
     pub shim_path: PathBuf,
     pub store: StoreConfig,
+    pub reconcile: reconcile::ReconcileConfig,
 }
 
 impl DaemonConfig {
@@ -34,6 +35,7 @@ impl DaemonConfig {
             socket_path,
             shim_path,
             store: StoreConfig::from_env()?,
+            reconcile: reconcile::ReconcileConfig::from_env()?,
         })
     }
 }
@@ -56,6 +58,7 @@ pub async fn run_daemon(config: DaemonConfig) -> Result<()> {
         Arc::clone(&state),
         reconcile::SystemProcessProbe,
         shutdown_tx.subscribe(),
+        config.reconcile,
     ));
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
 
@@ -507,6 +510,7 @@ mod tests {
                 socket_path: PathBuf::from("/tmp/rtm-test.sock"),
                 shim_path: PathBuf::from("rtm"),
                 store: store_config,
+                reconcile: reconcile::ReconcileConfig::default(),
             },
             store,
         );

@@ -13,6 +13,39 @@ pub const PROBE_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 const RESUME_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const RESUME_GAP_THRESHOLD: chrono::Duration = chrono::Duration::seconds(3);
 
+#[derive(Clone, Copy, Debug)]
+pub struct ReconcileConfig {
+    pub sweep_interval: Duration,
+    pub resume_poll_interval: Duration,
+    pub resume_gap_threshold: chrono::Duration,
+}
+
+impl ReconcileConfig {
+    pub fn from_env() -> Result<Self> {
+        Ok(Self {
+            sweep_interval: duration_env("RTM_PROBE_SWEEP_INTERVAL_MS", PROBE_SWEEP_INTERVAL)?,
+            resume_poll_interval: duration_env(
+                "RTM_RESUME_POLL_INTERVAL_MS",
+                RESUME_POLL_INTERVAL,
+            )?,
+            resume_gap_threshold: chrono_duration_env(
+                "RTM_RESUME_GAP_THRESHOLD_MS",
+                RESUME_GAP_THRESHOLD,
+            )?,
+        })
+    }
+}
+
+impl Default for ReconcileConfig {
+    fn default() -> Self {
+        Self {
+            sweep_interval: PROBE_SWEEP_INTERVAL,
+            resume_poll_interval: RESUME_POLL_INTERVAL,
+            resume_gap_threshold: RESUME_GAP_THRESHOLD,
+        }
+    }
+}
+
 pub trait ProcessProbe {
     fn pid_alive(&self, pid: u32) -> bool;
     fn start_time_for_pid(&self, pid: u32) -> Result<Option<DateTime<Utc>>>;
@@ -41,31 +74,33 @@ pub async fn run_periodic<P>(
     state: Arc<ServerState>,
     probe: P,
     shutdown_rx: broadcast::Receiver<()>,
+    config: ReconcileConfig,
 ) where
     P: ProcessProbe + Send + Sync + 'static,
 {
-    run_periodic_with_interval(state, probe, shutdown_rx, PROBE_SWEEP_INTERVAL).await;
+    run_periodic_with_config(state, probe, shutdown_rx, config).await;
 }
 
-async fn run_periodic_with_interval<P>(
+async fn run_periodic_with_config<P>(
     state: Arc<ServerState>,
     probe: P,
     mut shutdown_rx: broadcast::Receiver<()>,
-    interval: Duration,
+    config: ReconcileConfig,
 ) where
     P: ProcessProbe + Send + Sync + 'static,
 {
-    let mut next_deadline = Instant::now() + interval;
+    let mut next_deadline = Instant::now() + config.sweep_interval;
     let mut last_wall_tick = Utc::now();
 
     loop {
-        let poll_deadline = std::cmp::min(next_deadline, Instant::now() + RESUME_POLL_INTERVAL);
+        let poll_deadline =
+            std::cmp::min(next_deadline, Instant::now() + config.resume_poll_interval);
         tokio::select! {
             _ = shutdown_rx.recv() => break,
             _ = sleep_until(poll_deadline) => {
                 let now = Instant::now();
                 let wall_now = Utc::now();
-                let resumed = wall_now - last_wall_tick > RESUME_GAP_THRESHOLD;
+                let resumed = wall_now - last_wall_tick > config.resume_gap_threshold;
                 last_wall_tick = wall_now;
 
                 if now >= next_deadline || resumed {
@@ -73,9 +108,9 @@ async fn run_periodic_with_interval<P>(
                         tracing::warn!(%error, "periodic reconciliation failed");
                     }
                     next_deadline = if now >= next_deadline {
-                        advance_deadline(next_deadline, interval, now)
+                        advance_deadline(next_deadline, config.sweep_interval, now)
                     } else {
-                        now + interval
+                        now + config.sweep_interval
                     };
                 }
             }
@@ -132,6 +167,28 @@ fn lost_evidence(lifecycle: &Lifecycle, probe: &impl ProcessProbe) -> Result<Opt
         return Ok(Some(LostEvidence::PidReuseDetected));
     }
     Ok(None)
+}
+
+fn duration_env(name: &'static str, default: Duration) -> Result<Duration> {
+    let Some(value) = std::env::var_os(name) else {
+        return Ok(default);
+    };
+    let millis = value
+        .to_string_lossy()
+        .parse::<u64>()
+        .map_err(|error| anyhow!("{name} must be milliseconds: {error}"))?;
+    Ok(Duration::from_millis(millis))
+}
+
+fn chrono_duration_env(name: &'static str, default: chrono::Duration) -> Result<chrono::Duration> {
+    let Some(value) = std::env::var_os(name) else {
+        return Ok(default);
+    };
+    let millis = value
+        .to_string_lossy()
+        .parse::<i64>()
+        .map_err(|error| anyhow!("{name} must be milliseconds: {error}"))?;
+    Ok(chrono::Duration::milliseconds(millis))
 }
 
 #[cfg(test)]
@@ -213,11 +270,14 @@ mod tests {
             start_times: HashMap::from([(202, Utc.timestamp_opt(2_001, 0).unwrap())]),
         };
         let (shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
-        let task = tokio::spawn(run_periodic_with_interval(
+        let task = tokio::spawn(run_periodic_with_config(
             Arc::clone(&state),
             probe,
             shutdown_rx,
-            Duration::from_millis(20),
+            ReconcileConfig {
+                sweep_interval: Duration::from_millis(20),
+                ..ReconcileConfig::default()
+            },
         ));
 
         wait_for_events(&state, 2).await;
@@ -228,6 +288,14 @@ mod tests {
         assert_lost(&store, reused.session_id, LostEvidence::PidReuseDetected).await;
         assert_eq!(state.events().await.len(), 2);
         assert_eq!(store.running().await.expect("running").len(), 0);
+    }
+
+    #[test]
+    fn resume_gap_threshold_detects_wall_clock_jump() {
+        let last_wall_tick = Utc.timestamp_opt(1_000, 0).unwrap();
+        let wall_now = Utc.timestamp_opt(1_004, 0).unwrap();
+
+        assert!(wall_now - last_wall_tick > RESUME_GAP_THRESHOLD);
     }
 
     async fn assert_lost(store: &LifecycleStore, session_id: Uuid, evidence: LostEvidence) {
@@ -282,6 +350,7 @@ mod tests {
             store: StoreConfig {
                 db_path: PathBuf::from("/tmp/rtm-test.sqlite"),
             },
+            reconcile: ReconcileConfig::default(),
         }
     }
 }

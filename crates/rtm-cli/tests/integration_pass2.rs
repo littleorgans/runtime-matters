@@ -3,7 +3,7 @@ mod common;
 use std::time::Duration;
 
 use common::{
-    RtmHarness, output_stdout, parse_runtime_pid, parse_status_pid, terminate_process,
+    RtmHarness, output_stdout, parse_runtime_pid, parse_status_pid, status_pid, terminate_process,
     wait_for_events, wait_for_status, wait_for_status_timeout,
 };
 use uuid::Uuid;
@@ -80,10 +80,4 @@ fn spawn_runtime(harness: &RtmHarness, session_id: &str) -> String {
     let spawn = harness.spawn(session_id);
     assert!(spawn.status.success(), "spawn failed: {spawn:?}");
     output_stdout(spawn)
-}
-
-fn status_pid(harness: &RtmHarness, session_id: &str, format: &str) -> u32 {
-    let output = harness.status_format(session_id, format);
-    assert!(output.status.success(), "status failed: {output:?}");
-    parse_status_pid(&output_stdout(output))
 }

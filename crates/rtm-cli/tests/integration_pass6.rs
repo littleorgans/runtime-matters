@@ -1,5 +1,6 @@
 mod common;
 
+use common::mcp::{call_tool, content_text, mcp_json, request, tool_names};
 use common::{RtmHarness, output_stdout, parse_runtime_pid, wait_for_status};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -64,52 +65,4 @@ fn pass6_mcp_kill_by_pid_signals_runtime() {
     wait_for_status(&harness, &session_id, "Exited");
 
     harness.stop();
-}
-
-fn call_tool(harness: &RtmHarness, id: u32, name: &str, arguments: Value) -> Value {
-    mcp_json(
-        harness,
-        request(
-            id,
-            "tools/call",
-            json!({
-                "name": name,
-                "arguments": arguments
-            }),
-        ),
-    )
-}
-
-fn request(id: u32, method: &str, params: Value) -> String {
-    json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "method": method,
-        "params": params
-    })
-    .to_string()
-}
-
-fn mcp_json(harness: &RtmHarness, request: String) -> Value {
-    let output = harness.mcp_line(&request);
-    let success = output.status.success();
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    let stderr = String::from_utf8(output.stderr).expect("stderr");
-    assert!(success, "mcp failed: stdout={} stderr={}", stdout, stderr);
-    serde_json::from_str(stdout.trim()).expect("mcp json")
-}
-
-fn tool_names(response: &Value) -> Vec<&str> {
-    response["result"]["tools"]
-        .as_array()
-        .expect("tools array")
-        .iter()
-        .map(|tool| tool["name"].as_str().expect("tool name"))
-        .collect()
-}
-
-fn content_text(response: &Value) -> &str {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .expect("content text")
 }

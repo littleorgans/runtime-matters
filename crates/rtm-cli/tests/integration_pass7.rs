@@ -1,13 +1,11 @@
 mod common;
 
-use std::path::Path;
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use chrono::{TimeZone, Utc};
-use common::{RtmHarness, output_stdout, wait_for_events, wait_for_status_timeout};
-use rtm_core::{Lifecycle, RuntimeKind, ShimReady};
-use rtm_store::{LifecycleStore, StoreConfig};
+use common::{
+    RtmHarness, output_stdout, persist_running, unused_pid, wait_for_events,
+    wait_for_status_timeout,
+};
 use uuid::Uuid;
 
 #[test]
@@ -45,43 +43,4 @@ fn pass7_periodic_reconciliation_marks_lost_and_doctor_reports_it() {
     assert!(doctor.contains("PidNotAlive"), "{doctor}");
 
     harness.stop();
-}
-
-fn persist_running(db_path: &Path, session_id: Uuid, runtime_pid: u32) {
-    tokio::runtime::Runtime::new()
-        .expect("tokio runtime")
-        .block_on(async {
-            let store = LifecycleStore::open(StoreConfig {
-                db_path: db_path.to_path_buf(),
-            })
-            .await
-            .expect("store");
-            let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
-            store.insert_forking(&lifecycle).await.expect("insert");
-            lifecycle.mark_running(ShimReady {
-                session_id,
-                shim_pid: runtime_pid + 1,
-                runtime_pid,
-                start_time: Utc.timestamp_opt(1_000, 0).unwrap(),
-                tmux_pane: None,
-            });
-            store.update_lifecycle(&lifecycle).await.expect("running");
-        });
-}
-
-fn unused_pid() -> u32 {
-    (60_000..61_000)
-        .find(|pid| !process_alive(*pid))
-        .expect("unused pid")
-}
-
-fn process_alive(pid: u32) -> bool {
-    Command::new("ps")
-        .arg("-p")
-        .arg(pid.to_string())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .expect("ps")
-        .success()
 }

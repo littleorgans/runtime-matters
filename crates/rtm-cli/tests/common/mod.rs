@@ -1,29 +1,49 @@
 #![allow(dead_code)]
 
+pub mod mcp;
+pub mod tmux;
+
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 use std::{fmt::Write as _, io::Read, io::Write};
 
+use chrono::{DateTime, TimeZone, Utc};
+use rtm_core::{Lifecycle, RuntimeKind, ShimReady};
+use rtm_store::{LifecycleStore, StoreConfig};
 use tempfile::TempDir;
+use uuid::Uuid;
 
 pub struct RtmHarness {
     temp: TempDir,
     socket: PathBuf,
     db: PathBuf,
-    rtm: &'static str,
+    rtm: PathBuf,
     daemon: Child,
+    reconcile_env: Vec<(&'static str, String)>,
 }
 
 impl RtmHarness {
     pub fn start() -> Self {
+        Self::start_with_reconcile_env(Vec::new())
+    }
+
+    pub fn start_with_fast_resume_probe() -> Self {
+        Self::start_with_reconcile_env(vec![
+            ("RTM_PROBE_SWEEP_INTERVAL_MS", "30000".to_owned()),
+            ("RTM_RESUME_POLL_INTERVAL_MS", "25".to_owned()),
+            ("RTM_RESUME_GAP_THRESHOLD_MS", "1".to_owned()),
+        ])
+    }
+
+    fn start_with_reconcile_env(reconcile_env: Vec<(&'static str, String)>) -> Self {
         let temp = TempDir::new().expect("temp dir");
         let socket = temp.path().join("rtm.sock");
         let db = temp.path().join("rtm.sqlite");
         write_fake_runtime(temp.path(), "claude");
         write_fake_runtime(temp.path(), "codex");
-        let rtm = env!("CARGO_BIN_EXE_rtm");
-        let daemon = start_daemon(rtm, &socket, &db, temp.path());
+        let rtm = default_rtm_path();
+        let daemon = start_daemon(&rtm, &socket, &db, temp.path(), &reconcile_env);
         wait_for_socket(&socket);
         Self {
             temp,
@@ -31,6 +51,7 @@ impl RtmHarness {
             db,
             rtm,
             daemon,
+            reconcile_env,
         }
     }
 
@@ -125,12 +146,18 @@ impl RtmHarness {
     }
 
     pub fn start_rtmd(&mut self) {
-        self.daemon = start_daemon(self.rtm, &self.socket, &self.db, self.temp.path());
+        self.daemon = start_daemon(
+            &self.rtm,
+            &self.socket,
+            &self.db,
+            self.temp.path(),
+            &self.reconcile_env,
+        );
         wait_for_socket(&self.socket);
     }
 
     pub fn stop_rtmd(&mut self) {
-        stop_daemon(self.rtm, &self.socket, &mut self.daemon);
+        stop_daemon(&self.rtm, &self.socket, &mut self.daemon);
     }
 
     pub fn db_path(&self) -> &Path {
@@ -141,13 +168,21 @@ impl RtmHarness {
         &self.socket
     }
 
+    pub fn rtm_path(&self) -> &Path {
+        &self.rtm
+    }
+
+    pub fn daemon_pid(&self) -> u32 {
+        self.daemon.id()
+    }
+
     pub fn stop(mut self) {
         self.cleanup_processes();
-        stop_daemon(self.rtm, &self.socket, &mut self.daemon);
+        stop_daemon(&self.rtm, &self.socket, &mut self.daemon);
     }
 
     fn rtm_command(&self) -> Command {
-        let mut command = Command::new(self.rtm);
+        let mut command = Command::new(&self.rtm);
         command.env("RTM_SOCKET_PATH", &self.socket);
         command.env("RTM_DB_PATH", &self.db);
         command
@@ -172,7 +207,7 @@ impl RtmHarness {
 impl Drop for RtmHarness {
     fn drop(&mut self) {
         self.cleanup_processes();
-        let _ = Command::new(self.rtm)
+        let _ = Command::new(&self.rtm)
             .arg("daemon")
             .arg("stop")
             .env("RTM_SOCKET_PATH", &self.socket)
@@ -202,6 +237,21 @@ pub fn parse_runtime_pid(stdout: &str) -> u32 {
 
 pub fn parse_status_pid(stdout: &str) -> u32 {
     stdout.trim().parse().expect("status pid")
+}
+
+pub fn spawn_ok(harness: &RtmHarness, session_id: &str, runtime: &str) -> String {
+    let output = harness.spawn_runtime(session_id, runtime);
+    assert!(
+        output.status.success(),
+        "{runtime} spawn failed: {output:?}"
+    );
+    output_stdout(output)
+}
+
+pub fn status_pid(harness: &RtmHarness, session_id: &str, format: &str) -> u32 {
+    let output = harness.status_format(session_id, format);
+    assert!(output.status.success(), "status failed: {output:?}");
+    parse_status_pid(&output_stdout(output))
 }
 
 fn parse_status_field(line: &str, key: &str) -> Option<u32> {
@@ -256,7 +306,7 @@ pub fn wait_for_events(harness: &RtmHarness, expected: usize) -> String {
     .unwrap_or_else(|| panic!("events never reached {expected}"))
 }
 
-fn wait_until<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) -> Option<T> {
+pub fn wait_until<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) -> Option<T> {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         if let Some(value) = check() {
@@ -265,6 +315,66 @@ fn wait_until<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) -> Opt
         std::thread::sleep(Duration::from_millis(25));
     }
     None
+}
+
+pub fn wait_until_not_alive(pid: u32) {
+    wait_until(Duration::from_secs(5), || {
+        (!process_alive(pid)).then_some(())
+    })
+    .unwrap_or_else(|| panic!("pid {pid} was still alive after SIGKILL"));
+}
+
+pub fn process_alive(pid: u32) -> bool {
+    Command::new("ps")
+        .arg("-p")
+        .arg(pid.to_string())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("ps")
+        .success()
+}
+
+pub fn persist_running(db_path: &Path, session_id: Uuid, runtime_pid: u32) {
+    persist_running_with_start_time(
+        db_path,
+        session_id,
+        runtime_pid,
+        Utc.timestamp_opt(1_000, 0).unwrap(),
+    )
+}
+
+pub fn persist_running_with_start_time(
+    db_path: &Path,
+    session_id: Uuid,
+    runtime_pid: u32,
+    start_time: DateTime<Utc>,
+) {
+    tokio::runtime::Runtime::new()
+        .expect("tokio runtime")
+        .block_on(async {
+            let store = LifecycleStore::open(StoreConfig {
+                db_path: db_path.to_path_buf(),
+            })
+            .await
+            .expect("store");
+            let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
+            store.insert_forking(&lifecycle).await.expect("insert");
+            lifecycle.mark_running(ShimReady {
+                session_id,
+                shim_pid: runtime_pid + 1,
+                runtime_pid,
+                start_time,
+                tmux_pane: None,
+            });
+            store.update_lifecycle(&lifecycle).await.expect("running");
+        });
+}
+
+pub fn unused_pid() -> u32 {
+    (60_000..61_000)
+        .find(|pid| !process_alive(*pid))
+        .expect("unused pid")
 }
 
 fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
@@ -277,17 +387,26 @@ fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
     path
 }
 
-fn start_daemon(rtm: &'static str, socket: &Path, db: &Path, fake_bin_dir: &Path) -> Child {
-    Command::new(rtm)
+fn start_daemon(
+    rtm: &Path,
+    socket: &Path,
+    db: &Path,
+    fake_bin_dir: &Path,
+    reconcile_env: &[(&'static str, String)],
+) -> Child {
+    let mut command = Command::new(rtm);
+    command
         .arg("daemon")
         .arg("start")
         .env("RTM_SOCKET_PATH", socket)
         .env("RTM_DB_PATH", db)
         .env("PATH", test_path(fake_bin_dir))
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("daemon start")
+        .stderr(Stdio::piped());
+    for (key, value) in reconcile_env {
+        command.env(key, value);
+    }
+    command.spawn().expect("daemon start")
 }
 
 fn test_path(fake_bin_dir: &Path) -> String {
@@ -310,7 +429,7 @@ fn wait_for_socket(socket: &Path) {
     panic!("daemon socket never appeared at {}", socket.display());
 }
 
-fn stop_daemon(rtm: &str, socket: &Path, daemon: &mut Child) {
+fn stop_daemon(rtm: &Path, socket: &Path, daemon: &mut Child) {
     let output = Command::new(rtm)
         .arg("daemon")
         .arg("stop")
@@ -350,4 +469,18 @@ fn wait_for_child(child: &mut Child) {
     }
     let _ = child.kill();
     panic!("daemon did not exit");
+}
+
+fn default_rtm_path() -> PathBuf {
+    if let Some(path) = option_env!("CARGO_BIN_EXE_rtm") {
+        return PathBuf::from(path);
+    }
+
+    let current = std::env::current_exe().expect("current exe");
+    let dir = current.parent().expect("executable parent");
+    let candidate_dir = match dir.file_name().and_then(|name| name.to_str()) {
+        Some("deps" | "examples") => dir.parent().expect("target profile dir"),
+        _ => dir,
+    };
+    candidate_dir.join(format!("rtm{}", std::env::consts::EXE_SUFFIX))
 }

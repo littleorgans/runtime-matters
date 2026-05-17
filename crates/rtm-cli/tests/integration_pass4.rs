@@ -5,8 +5,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use common::{
-    RtmHarness, output_stdout, parse_status_pid, terminate_process, wait_for_events,
-    wait_for_status, wait_for_status_timeout,
+    RtmHarness, status_pid, terminate_process, wait_for_events, wait_for_status,
+    wait_for_status_timeout, wait_until_not_alive,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use uuid::Uuid;
@@ -61,32 +61,6 @@ fn spawn(harness: &RtmHarness, session_id: &str, runtime: &str) {
         output.status.success(),
         "{runtime} spawn failed: {output:?}"
     );
-}
-
-fn status_pid(harness: &RtmHarness, session_id: &str, format: &str) -> u32 {
-    let output = harness.status_format(session_id, format);
-    assert!(output.status.success(), "status failed: {output:?}");
-    parse_status_pid(&output_stdout(output))
-}
-
-fn wait_until_not_alive(pid: u32) {
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    while std::time::Instant::now() < deadline {
-        if !process_alive(pid) {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-    panic!("pid {pid} was still alive after SIGKILL");
-}
-
-fn process_alive(pid: u32) -> bool {
-    std::process::Command::new("ps")
-        .arg("-p")
-        .arg(pid.to_string())
-        .status()
-        .expect("ps")
-        .success()
 }
 
 fn persisted_states(db_path: &Path) -> HashMap<String, String> {
