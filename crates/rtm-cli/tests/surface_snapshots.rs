@@ -72,6 +72,7 @@ fn redact_lifecycles(rows: &mut Value) {
         row["shim_pid"] = json!("[pid]");
         row["runtime_pid"] = json!("[pid]");
         row["start_time"] = json!("[timestamp]");
+        row["tmux_pane"] = json!("[tmux_pane]");
     }
 }
 
