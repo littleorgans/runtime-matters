@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use rtm_core::TmuxPane;
+use rtm_core::TmuxAddress;
 use tokio::process::Command;
 
 pub struct TmuxGateway;
@@ -15,7 +15,7 @@ impl TmuxGateway {
         Ok(Some(stdout(output).trim().to_owned()))
     }
 
-    pub async fn discover(_session_id: impl std::fmt::Display) -> Result<Option<TmuxPane>> {
+    pub async fn discover(_session_id: impl std::fmt::Display) -> Result<Option<TmuxAddress>> {
         let Some(target) = std::env::var("TMUX_PANE")
             .ok()
             .filter(|value| !value.is_empty())
@@ -25,7 +25,7 @@ impl TmuxGateway {
         display_current_pane(&target).await
     }
 
-    pub fn discover_blocking(_session_id: impl std::fmt::Display) -> Result<Option<TmuxPane>> {
+    pub fn discover_blocking(_session_id: impl std::fmt::Display) -> Result<Option<TmuxAddress>> {
         let Some(target) = std::env::var("TMUX_PANE")
             .ok()
             .filter(|value| !value.is_empty())
@@ -35,7 +35,7 @@ impl TmuxGateway {
         display_current_pane_blocking(&target)
     }
 
-    pub async fn nudge(tmux_pane: &TmuxPane, content: &str) -> Result<()> {
+    pub async fn nudge(tmux_pane: &TmuxAddress, content: &str) -> Result<()> {
         if !Self::is_alive(tmux_pane).await? {
             bail!("tmux pane {tmux_pane} is not alive");
         }
@@ -51,7 +51,7 @@ impl TmuxGateway {
         ensure_success(output, "tmux send-keys").map(|_| ())
     }
 
-    pub async fn is_alive(tmux_pane: &TmuxPane) -> Result<bool> {
+    pub async fn is_alive(tmux_pane: &TmuxAddress) -> Result<bool> {
         let has_session = tmux_output(["has-session", "-t", &tmux_pane.session]).await?;
         let Some(has_session) = has_session else {
             return Ok(false);
@@ -78,7 +78,7 @@ impl TmuxGateway {
     }
 }
 
-async fn display_current_pane(target: &str) -> Result<Option<TmuxPane>> {
+async fn display_current_pane(target: &str) -> Result<Option<TmuxAddress>> {
     pane_from_output(tmux_output_owned(display_current_pane_args(target)).await?)
 }
 
@@ -92,7 +92,7 @@ fn display_current_pane_args(target: &str) -> Vec<String> {
     ]
 }
 
-fn pane_from_output(output: Option<std::process::Output>) -> Result<Option<TmuxPane>> {
+fn pane_from_output(output: Option<std::process::Output>) -> Result<Option<TmuxAddress>> {
     let Some(output) = output else {
         return Ok(None);
     };
@@ -134,7 +134,7 @@ fn stdout(output: std::process::Output) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
-fn display_current_pane_blocking(target: &str) -> Result<Option<TmuxPane>> {
+fn display_current_pane_blocking(target: &str) -> Result<Option<TmuxAddress>> {
     pane_from_output(tmux_output_owned_blocking(display_current_pane_args(
         target,
     ))?)

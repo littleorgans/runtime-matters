@@ -347,7 +347,7 @@ fn display_optional_i32(value: Option<i32>) -> String {
         .unwrap_or_else(|| "-".to_owned())
 }
 
-fn display_optional_tmux_pane(value: Option<&rtm_core::TmuxPane>) -> String {
+fn display_optional_tmux_pane(value: Option<&rtm_core::TmuxAddress>) -> String {
     value
         .map(ToString::to_string)
         .unwrap_or_else(|| "-".to_owned())

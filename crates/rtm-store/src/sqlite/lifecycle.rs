@@ -5,7 +5,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use rtm_core::{
     Lifecycle, LifecycleCounts, LifecycleState, LostEvidence, MigrationState, RecentLostEvent,
-    RuntimeExit, RuntimeKind, TmuxPane,
+    RuntimeExit, RuntimeKind, TmuxAddress,
 };
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Executor, SqlitePool};
@@ -396,14 +396,14 @@ impl TryFrom<RecentLostRow> for RecentLostEvent {
     }
 }
 
-fn encode_tmux_pane(tmux_pane: Option<&TmuxPane>) -> Result<Option<String>> {
+fn encode_tmux_pane(tmux_pane: Option<&TmuxAddress>) -> Result<Option<String>> {
     Ok(tmux_pane.map(serde_json::to_string).transpose()?)
 }
 
-fn decode_tmux_pane(tmux_pane: Option<String>) -> Result<Option<TmuxPane>> {
+fn decode_tmux_pane(tmux_pane: Option<String>) -> Result<Option<TmuxAddress>> {
     tmux_pane
-        .map(|value| -> Result<TmuxPane> {
-            if let Ok(pane) = serde_json::from_str::<TmuxPane>(&value) {
+        .map(|value| -> Result<TmuxAddress> {
+            if let Ok(pane) = serde_json::from_str::<TmuxAddress>(&value) {
                 return Ok(pane);
             }
             Ok(value.parse()?)
