@@ -60,9 +60,16 @@ impl TmuxGateway {
             return Ok(false);
         }
 
-        let panes = tmux_output(["list-panes", "-t", &tmux_pane.session, "-F", "#S:#I.#P"])
-            .await?
-            .context("tmux is not installed")?;
+        let panes = tmux_output([
+            "list-panes",
+            "-s",
+            "-t",
+            &tmux_pane.session,
+            "-F",
+            "#S:#I.#P",
+        ])
+        .await?
+        .context("tmux is not installed")?;
         ensure_success(panes, "tmux list-panes").map(|stdout| {
             stdout
                 .lines()
