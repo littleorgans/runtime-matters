@@ -348,8 +348,8 @@ impl ServerState {
     }
 
     pub(crate) async fn status(&self, filter: StatusFilter) -> Vec<Lifecycle> {
-        match self.store.list(filter.session_id).await {
-            Ok(rows) => filter_lifecycles(rows, &filter),
+        match self.store.list(&filter).await {
+            Ok(rows) => rows,
             Err(error) => {
                 tracing::warn!(%error, "failed to read lifecycle status");
                 Vec::new()
@@ -512,30 +512,6 @@ impl ServerState {
                 bail!("session {} is already terminal", lifecycle.session_id)
             }
         }
-    }
-}
-
-fn filter_lifecycles(rows: Vec<Lifecycle>, filter: &StatusFilter) -> Vec<Lifecycle> {
-    rows.into_iter()
-        .filter(|row| runtime_matches(row, filter.runtime.as_deref()))
-        .filter(|row| state_matches(row, filter.state.as_deref()))
-        .collect()
-}
-
-fn runtime_matches(row: &Lifecycle, runtime: Option<&str>) -> bool {
-    runtime.is_none_or(|runtime| row.runtime.as_str() == runtime)
-}
-
-fn state_matches(row: &Lifecycle, state: Option<&str>) -> bool {
-    state.is_none_or(|state| state_name(&row.state).eq_ignore_ascii_case(state))
-}
-
-fn state_name(state: &LifecycleState) -> &'static str {
-    match state {
-        LifecycleState::Forking => "Forking",
-        LifecycleState::Running => "Running",
-        LifecycleState::Exited(_) => "Exited",
-        LifecycleState::Lost(_) => "Lost",
     }
 }
 

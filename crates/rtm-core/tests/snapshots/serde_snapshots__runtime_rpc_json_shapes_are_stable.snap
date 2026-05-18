@@ -54,6 +54,10 @@ expression: rpcs
     "payload": {
       "request": {
         "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "session_ids": [
+          "018f6e28-0000-7000-8000-000000000002"
+        ],
+        "updated_since": "2023-11-14T22:13:20Z",
         "runtime": "claude",
         "state": "Running"
       }

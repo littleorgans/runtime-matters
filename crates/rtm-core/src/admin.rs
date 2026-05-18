@@ -22,6 +22,10 @@ pub struct KillByPidResponse {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct StatusFilter {
     pub session_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub session_ids: Vec<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_since: Option<DateTime<Utc>>,
     pub runtime: Option<String>,
     pub state: Option<String>,
 }
@@ -30,9 +34,27 @@ impl StatusFilter {
     pub const fn empty() -> Self {
         Self {
             session_id: None,
+            session_ids: Vec::new(),
+            updated_since: None,
             runtime: None,
             state: None,
         }
+    }
+
+    pub fn requested_session_ids(&self) -> Vec<Uuid> {
+        let mut ids = self.session_ids.clone();
+        if let Some(session_id) = self.session_id
+            && !ids.contains(&session_id)
+        {
+            ids.push(session_id);
+        }
+        ids
+    }
+}
+
+impl Default for StatusFilter {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 

@@ -47,6 +47,8 @@ fn runtime_rpc_json_shapes_are_stable() {
         RuntimeRpc::Status {
             request: StatusRequest {
                 session_id: Some(session_id),
+                session_ids: vec![other_session_id()],
+                updated_since: Some(timestamp()),
                 runtime: Some("claude".to_owned()),
                 state: Some("Running".to_owned()),
             },
@@ -174,6 +176,20 @@ fn error_code_json_names_are_stable() {
 }
 
 #[test]
+fn status_request_accepts_legacy_single_session_id() {
+    let request = serde_json::from_value::<StatusRequest>(json!({
+        "session_id": session_id(),
+        "runtime": "claude",
+        "state": "Running"
+    }))
+    .expect("legacy status request");
+
+    assert_eq!(request.session_id, Some(session_id()));
+    assert!(request.session_ids.is_empty());
+    assert_eq!(request.updated_since, None);
+}
+
+#[test]
 fn spawn_request_json_requires_target() {
     let error = serde_json::from_value::<SpawnRequest>(json!({
         "session_id": session_id(),
@@ -214,6 +230,10 @@ fn ready(session_id: Uuid) -> ShimReady {
 
 fn session_id() -> Uuid {
     Uuid::parse_str("018f6e28-0000-7000-8000-000000000001").expect("uuid")
+}
+
+fn other_session_id() -> Uuid {
+    Uuid::parse_str("018f6e28-0000-7000-8000-000000000002").expect("uuid")
 }
 
 fn timestamp() -> chrono::DateTime<Utc> {

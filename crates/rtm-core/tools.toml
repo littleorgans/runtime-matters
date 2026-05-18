@@ -55,7 +55,7 @@ description = "Whether SIGKILL was sent after the grace period."
 [tools.rtm_status]
 cli_name = "status"
 cli_about = "List lifecycle rows from rtmd."
-mcp_description = "Return rtmd Lifecycle rows, optionally filtered by session id, runtime, and lifecycle state."
+mcp_description = "Return rtmd Lifecycle rows, optionally filtered by session id, session set, runtime, lifecycle state, and updated time."
 args_type = "RtmStatusArgs"
 response_type = "RtmStatusResponse"
 response_description = "Lifecycle rows visible to rtmd."
@@ -68,6 +68,23 @@ required = false
 cli_flag = "session-id"
 cli_help = "Filter to one session id."
 mcp_description = "Optional session id filter."
+
+[[tools.rtm_status.params]]
+name = "session_ids"
+kind = "array"
+items_kind = "string"
+items_format = "uuid"
+required = false
+mcp_description = "Optional session id set filter."
+
+[[tools.rtm_status.params]]
+name = "updated_since"
+kind = "string"
+format = "date-time"
+required = false
+cli_flag = "updated-since"
+cli_help = "Filter to lifecycles updated at or after this RFC3339 timestamp."
+mcp_description = "Optional RFC3339 updated_at lower bound."
 
 [[tools.rtm_status.params]]
 name = "runtime"

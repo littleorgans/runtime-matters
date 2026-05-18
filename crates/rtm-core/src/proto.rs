@@ -1,6 +1,7 @@
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
@@ -15,6 +16,10 @@ use crate::{
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 pub struct StatusRequest {
     pub session_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub session_ids: Vec<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_since: Option<DateTime<Utc>>,
     #[serde(default)]
     pub runtime: Option<String>,
     #[serde(default)]
@@ -25,8 +30,22 @@ impl From<StatusRequest> for StatusFilter {
     fn from(request: StatusRequest) -> Self {
         Self {
             session_id: request.session_id,
+            session_ids: request.session_ids,
+            updated_since: request.updated_since,
             runtime: request.runtime,
             state: request.state,
+        }
+    }
+}
+
+impl From<StatusFilter> for StatusRequest {
+    fn from(filter: StatusFilter) -> Self {
+        Self {
+            session_id: filter.session_id,
+            session_ids: filter.session_ids,
+            updated_since: filter.updated_since,
+            runtime: filter.runtime,
+            state: filter.state,
         }
     }
 }

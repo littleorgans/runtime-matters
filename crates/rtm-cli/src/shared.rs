@@ -34,6 +34,8 @@ pub async fn status(socket_path: &Path, session_id: Option<Uuid>) -> Result<Runt
         socket_path,
         StatusFilter {
             session_id,
+            session_ids: Vec::new(),
+            updated_since: None,
             runtime: None,
             state: None,
         },
@@ -45,11 +47,7 @@ pub async fn status_filtered(socket_path: &Path, filter: StatusFilter) -> Result
     request(
         socket_path,
         RuntimeRpc::Status {
-            request: StatusRequest {
-                session_id: filter.session_id,
-                runtime: filter.runtime,
-                state: filter.state,
-            },
+            request: StatusRequest::from(filter),
         },
     )
     .await

@@ -5,10 +5,10 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use lilo_rm_core::{
     Lifecycle, LifecycleCounts, LifecycleState, LostEvidence, MigrationState, RecentLostEvent,
-    RuntimeExit, RuntimeKind, TmuxAddress,
+    RuntimeExit, RuntimeKind, StatusFilter, TmuxAddress,
 };
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use sqlx::{Executor, SqlitePool};
+use sqlx::{Executor, QueryBuilder, Sqlite, SqlitePool};
 use uuid::Uuid;
 
 use crate::{StoreConfig, schema};
@@ -138,36 +138,50 @@ impl LifecycleStore {
         row.map(TryInto::try_into).transpose()
     }
 
-    pub async fn list(&self, session_id: Option<Uuid>) -> Result<Vec<Lifecycle>> {
-        let rows = match session_id {
-            Some(id) => {
-                sqlx::query_as::<_, LifecycleRow>(
-                    r#"
-                    SELECT session_id, runtime, state, shim_pid, runtime_pid, start_time,
-                           tmux_pane, exit_code, exit_signal, lost_evidence
-                    FROM lifecycle
-                    WHERE session_id = ?
-                    ORDER BY session_id
-                    "#,
-                )
-                .bind(id.to_string())
-                .fetch_all(&self.pool)
-                .await
+    pub async fn list(&self, filter: &StatusFilter) -> Result<Vec<Lifecycle>> {
+        let session_ids = filter.requested_session_ids();
+        let mut query = QueryBuilder::<Sqlite>::new(
+            r#"
+            SELECT session_id, runtime, state, shim_pid, runtime_pid, start_time,
+                   tmux_pane, exit_code, exit_signal, lost_evidence
+            FROM lifecycle
+            "#,
+        );
+        let mut has_where = false;
+        if !session_ids.is_empty() {
+            push_where(&mut query, &mut has_where);
+            query.push("session_id IN (");
+            {
+                let mut separated = query.separated(", ");
+                for session_id in session_ids {
+                    separated.push_bind(session_id.to_string());
+                }
             }
-            None => {
-                sqlx::query_as::<_, LifecycleRow>(
-                    r#"
-                    SELECT session_id, runtime, state, shim_pid, runtime_pid, start_time,
-                           tmux_pane, exit_code, exit_signal, lost_evidence
-                    FROM lifecycle
-                    ORDER BY session_id
-                    "#,
-                )
-                .fetch_all(&self.pool)
-                .await
-            }
+            query.push(")");
         }
-        .context("failed to list lifecycles")?;
+        if let Some(runtime) = &filter.runtime {
+            push_where(&mut query, &mut has_where);
+            query.push("runtime = ");
+            query.push_bind(runtime);
+        }
+        if let Some(state) = &filter.state {
+            push_where(&mut query, &mut has_where);
+            query.push("LOWER(state) = LOWER(");
+            query.push_bind(state);
+            query.push(")");
+        }
+        if let Some(updated_since) = &filter.updated_since {
+            push_where(&mut query, &mut has_where);
+            query.push("updated_at >= ");
+            query.push_bind(updated_since.to_rfc3339());
+        }
+        query.push(" ORDER BY session_id");
+
+        let rows = query
+            .build_query_as::<LifecycleRow>()
+            .fetch_all(&self.pool)
+            .await
+            .context("failed to list lifecycles")?;
         rows.into_iter().map(TryInto::try_into).collect()
     }
 
@@ -472,9 +486,19 @@ fn parse_time(value: &str) -> Result<DateTime<Utc>> {
     Ok(DateTime::parse_from_rfc3339(value)?.with_timezone(&Utc))
 }
 
+fn push_where(query: &mut QueryBuilder<'_, Sqlite>, has_where: &mut bool) {
+    if *has_where {
+        query.push(" AND ");
+    } else {
+        query.push(" WHERE ");
+        *has_where = true;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
     use lilo_rm_core::ShimReady;
     use tempfile::TempDir;
 
@@ -526,6 +550,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn lists_lifecycles_with_composed_status_filters() {
+        let temp = TempDir::new().expect("temp dir");
+        let store = LifecycleStore::path_open(temp.path().join("rtm.sqlite"))
+            .await
+            .expect("store");
+        let old_claude = Uuid::now_v7();
+        let wanted = Uuid::now_v7();
+        let wrong_state = Uuid::now_v7();
+
+        insert_running(&store, old_claude, RuntimeKind::Claude, 10).await;
+        insert_running(&store, wanted, RuntimeKind::Codex, 20).await;
+        insert_lost(&store, wrong_state, RuntimeKind::Codex).await;
+        set_updated_at(&store, old_claude, test_time(0)).await;
+        set_updated_at(&store, wanted, test_time(10)).await;
+        set_updated_at(&store, wrong_state, test_time(20)).await;
+
+        let rows = store
+            .list(&StatusFilter {
+                session_id: Some(old_claude),
+                session_ids: vec![wanted, wrong_state],
+                updated_since: Some(test_time(10)),
+                runtime: Some("codex".to_owned()),
+                state: Some("running".to_owned()),
+            })
+            .await
+            .expect("filtered lifecycles");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session_id, wanted);
+    }
+
+    #[tokio::test]
     async fn reports_counts_migrations_probe_sweep_and_recent_lost() {
         let temp = TempDir::new().expect("temp dir");
         let store = LifecycleStore::path_open(temp.path().join("rtm.sqlite"))
@@ -570,5 +626,43 @@ mod tests {
             .await
             .expect("first open");
         LifecycleStore::path_open(path).await.expect("second open");
+    }
+
+    async fn insert_running(
+        store: &LifecycleStore,
+        session_id: Uuid,
+        runtime: RuntimeKind,
+        runtime_pid: u32,
+    ) {
+        let mut lifecycle = Lifecycle::forking(session_id, runtime);
+        store.insert_forking(&lifecycle).await.expect("insert");
+        assert!(lifecycle.mark_running(ShimReady {
+            session_id,
+            shim_pid: runtime_pid - 1,
+            runtime_pid,
+            start_time: test_time(0),
+            tmux_pane: None,
+        }));
+        store.update_lifecycle(&lifecycle).await.expect("update");
+    }
+
+    async fn insert_lost(store: &LifecycleStore, session_id: Uuid, runtime: RuntimeKind) {
+        let mut lifecycle = Lifecycle::forking(session_id, runtime);
+        store.insert_forking(&lifecycle).await.expect("insert");
+        assert!(lifecycle.mark_lost(LostEvidence::PidNotAlive));
+        store.update_lifecycle(&lifecycle).await.expect("update");
+    }
+
+    async fn set_updated_at(store: &LifecycleStore, session_id: Uuid, updated_at: DateTime<Utc>) {
+        sqlx::query("UPDATE lifecycle SET updated_at = ? WHERE session_id = ?")
+            .bind(updated_at.to_rfc3339())
+            .bind(session_id.to_string())
+            .execute(store.pool())
+            .await
+            .expect("set updated_at");
+    }
+
+    fn test_time(seconds: i64) -> DateTime<Utc> {
+        Utc.timestamp_opt(1_700_000_000 + seconds, 0).unwrap()
     }
 }

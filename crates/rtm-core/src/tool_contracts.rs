@@ -35,6 +35,10 @@ pub struct ToolParam {
     #[serde(default)]
     pub format: Option<String>,
     #[serde(default)]
+    pub items_kind: Option<SchemaKind>,
+    #[serde(default)]
+    pub items_format: Option<String>,
+    #[serde(default)]
     pub cli_flag: Option<String>,
     #[serde(default)]
     pub cli_help: Option<String>,
@@ -137,7 +141,12 @@ impl ToolContract {
 
 impl ToolParam {
     fn schema_value(&self) -> Value {
-        let mut schema = kind_schema(&self.kind, self.format.as_deref(), None);
+        let mut schema = kind_schema(
+            &self.kind,
+            self.format.as_deref(),
+            self.items_kind.as_ref(),
+            self.items_format.as_deref(),
+        );
         schema["description"] = Value::String(self.mcp_description.clone());
         schema
     }
@@ -145,19 +154,28 @@ impl ToolParam {
 
 impl ToolOutput {
     fn schema_value(&self) -> Value {
-        let mut schema = kind_schema(&self.kind, None, self.items_kind.as_ref());
+        let mut schema = kind_schema(&self.kind, None, self.items_kind.as_ref(), None);
         schema["description"] = Value::String(self.description.clone());
         schema
     }
 }
 
-fn kind_schema(kind: &SchemaKind, format: Option<&str>, items_kind: Option<&SchemaKind>) -> Value {
+fn kind_schema(
+    kind: &SchemaKind,
+    format: Option<&str>,
+    items_kind: Option<&SchemaKind>,
+    items_format: Option<&str>,
+) -> Value {
     let mut schema = json!({ "type": kind.as_json_type() });
     if let Some(format) = format {
         schema["format"] = Value::String(format.to_owned());
     }
     if let (SchemaKind::Array, Some(items_kind)) = (kind, items_kind) {
-        schema["items"] = json!({ "type": items_kind.as_json_type() });
+        let mut items = json!({ "type": items_kind.as_json_type() });
+        if let Some(items_format) = items_format {
+            items["format"] = Value::String(items_format.to_owned());
+        }
+        schema["items"] = items;
     }
     schema
 }

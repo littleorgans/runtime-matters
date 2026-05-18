@@ -52,7 +52,7 @@ pub const TOOL_LIST_JSON: &str = r#"{
       }
     },
     {
-      "description": "Return rtmd Lifecycle rows, optionally filtered by session id, runtime, and lifecycle state.",
+      "description": "Return rtmd Lifecycle rows, optionally filtered by session id, session set, runtime, lifecycle state, and updated time.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -65,8 +65,21 @@ pub const TOOL_LIST_JSON: &str = r#"{
             "format": "uuid",
             "type": "string"
           },
+          "session_ids": {
+            "description": "Optional session id set filter.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "state": {
             "description": "Optional lifecycle state filter.",
+            "type": "string"
+          },
+          "updated_since": {
+            "description": "Optional RFC3339 updated_at lower bound.",
+            "format": "date-time",
             "type": "string"
           }
         },

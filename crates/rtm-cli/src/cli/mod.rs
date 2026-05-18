@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use lilo_rm_core::{
     KillByPidRequest, KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse,
@@ -61,8 +62,10 @@ pub struct SpawnArgs {
 
 #[derive(Debug, Args)]
 pub struct StatusArgs {
-    #[arg(long)]
-    session_id: Option<Uuid>,
+    #[arg(long = "session-id", value_name = "UUID")]
+    session_ids: Vec<Uuid>,
+    #[arg(long, value_parser = parse_updated_since)]
+    updated_since: Option<DateTime<Utc>>,
     #[arg(long)]
     runtime: Option<String>,
     #[arg(long)]
@@ -246,7 +249,9 @@ async fn status(args: StatusArgs) -> Result<()> {
     let response = crate::shared::status_filtered(
         &socket_path,
         StatusFilter {
-            session_id: args.session_id,
+            session_id: None,
+            session_ids: args.session_ids,
+            updated_since: args.updated_since,
             runtime: args.runtime,
             state: args.state,
         },
@@ -360,6 +365,10 @@ fn display_optional_i32(value: Option<i32>) -> String {
     value
         .map(|inner| inner.to_string())
         .unwrap_or_else(|| "-".to_owned())
+}
+
+fn parse_updated_since(value: &str) -> std::result::Result<DateTime<Utc>, chrono::ParseError> {
+    DateTime::parse_from_rfc3339(value).map(|time| time.with_timezone(&Utc))
 }
 
 fn display_optional_tmux_pane(value: Option<&lilo_rm_core::TmuxAddress>) -> String {

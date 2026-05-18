@@ -8,6 +8,7 @@ use common::{
     RtmHarness, status_pid, terminate_process, wait_for_events, wait_for_headless_runtime_ready,
     wait_for_status, wait_for_status_timeout, wait_until_not_alive,
 };
+use lilo_rm_core::StatusFilter;
 use rtm_store::{LifecycleStore, StoreConfig};
 use uuid::Uuid;
 
@@ -75,7 +76,7 @@ fn persisted_states(db_path: &Path) -> HashMap<String, String> {
         .await
         .expect("store");
         store
-            .list(None)
+            .list(&StatusFilter::empty())
             .await
             .expect("lifecycles")
             .into_iter()
