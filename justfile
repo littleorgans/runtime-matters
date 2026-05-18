@@ -2,8 +2,7 @@ set shell := ["bash", "-cu"]
 
 RTM_LOCAL_BIN := env_var_or_default("RTM_LOCAL_BIN", "/Users/alphab/.cargo/bin/rtm")
 
-install:
-    cargo fetch --locked
+install: install-release
 
 build:
     cargo build --workspace
@@ -34,7 +33,8 @@ _install-bin src:
         mkdir -p "$(dirname "$dest")"; \
         install -m 755 "$src" "$dest"; \
         echo "Installed $dest"; \
-    fi
+    fi; \
+    "$dest" --version
 
 test:
     cargo test --workspace
