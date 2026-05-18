@@ -15,3 +15,11 @@ categories = ["api-bindings", "development-tools"]
 [lib]
 name = "lilo_rm_client"
 path = "src/lib.rs"
+
+[dependencies]
+lilo-rm-core.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

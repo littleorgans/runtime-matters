@@ -2,4 +2,11 @@
 
 Public client crate for talking to the Runtime Matters daemon over its Unix socket.
 
-This package currently reserves the stable client boundary for the v0.2 contract. The typed socket helper will live here while process execution remains delegated to rtmd.
+This package owns the v0.2 client side transport contract:
+
+- connect to the rtmd Unix socket
+- send `RuntimeRpc` values as newline delimited JSON
+- receive `RuntimeResponse` values
+- normalize connection, framing, and daemon error responses into typed errors
+
+Protocol types live in `lilo-rm-core`. Process execution remains delegated to rtmd.
