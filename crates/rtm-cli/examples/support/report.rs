@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use anyhow::{Result, bail};
 use rtm_core::{Lifecycle, RuntimeResponse};
 
@@ -20,13 +18,8 @@ pub fn print_spawned(response: RuntimeResponse) -> Result<Lifecycle> {
         lifecycle
             .runtime_pid
             .expect("running lifecycle runtime pid"),
-        display_optional_path(log_dir.as_deref())
+        rtm_cli::cli::display_optional_path(log_dir.as_deref())
     );
 
     Ok(lifecycle)
-}
-
-fn display_optional_path(path: Option<&Path>) -> String {
-    path.map(|path| path.display().to_string())
-        .unwrap_or_else(|| "-".to_owned())
 }

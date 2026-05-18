@@ -361,7 +361,7 @@ fn display_optional_tmux_pane(value: Option<&rtm_core::TmuxAddress>) -> String {
         .unwrap_or_else(|| "-".to_owned())
 }
 
-fn display_optional_path(value: Option<&std::path::Path>) -> String {
+pub fn display_optional_path(value: Option<&std::path::Path>) -> String {
     value
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| "-".to_owned())
