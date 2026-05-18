@@ -2,6 +2,12 @@
 
 All notable changes documented here.
 
+## [0.3.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.2.0...lilo-rm-core-v0.3.0) - 2026-05-18
+
+### Features
+
+- runtime contract v0.3 for session-matters integration ([#23](https://github.com/littleorgans/runtime-matters/pull/23))
+
 ## [0.2.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.0.0...lilo-rm-core-v0.2.0) - 2026-05-18
 
 ### Bug Fixes
