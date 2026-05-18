@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/littleorgans/runtime-matters/compare/v0.1.4...v0.1.5) (2026-05-18)
+
+
+### Bug Fixes
+
+* forward caller env and cwd to spawned runtimes ([#11](https://github.com/littleorgans/runtime-matters/issues/11)) ([5a254c9](https://github.com/littleorgans/runtime-matters/commit/5a254c92eb8ea6dd31c7a09c77d333b7e2424dc6))
+
 ## [0.1.4](https://github.com/littleorgans/runtime-matters/compare/v0.1.3...v0.1.4) (2026-05-18)
 
 
