@@ -43,16 +43,14 @@ async fn launch_headless_shim(
     request: &SpawnRequest,
     env: &[LaunchEnv],
 ) -> Result<HeadlessLogPaths> {
-    let log_dir = config.session_log_dir(request.session_id);
-    let stdout_path = log_dir.join("stdout.log");
-    let stderr_path = log_dir.join("stderr.log");
-    tokio::fs::create_dir_all(&log_dir)
+    let paths = config.session_log_paths(request.session_id);
+    tokio::fs::create_dir_all(&paths.log_dir)
         .await
-        .with_context(|| format!("failed to create log directory {}", log_dir.display()))?;
-    let stdout = File::create(&stdout_path)
+        .with_context(|| format!("failed to create log directory {}", paths.log_dir.display()))?;
+    let stdout = File::create(&paths.stdout_path)
         .await
         .context("failed to create headless stdout log")?;
-    let stderr = File::create(&stderr_path)
+    let stderr = File::create(&paths.stderr_path)
         .await
         .context("failed to create headless stderr log")?;
 
@@ -80,11 +78,7 @@ async fn launch_headless_shim(
         .context("headless shim stderr missing")?;
     spawn_log_copy(request.session_id, "stdout", child_stdout, stdout);
     spawn_log_copy(request.session_id, "stderr", child_stderr, stderr);
-    Ok(HeadlessLogPaths {
-        log_dir,
-        stdout_path,
-        stderr_path,
-    })
+    Ok(paths)
 }
 
 fn spawn_log_copy<R>(session_id: uuid::Uuid, stream: &'static str, reader: R, file: File)
@@ -246,5 +240,19 @@ mod tests {
         assert_eq!(env.len(), 1, "bootstrap env widened unexpectedly: {env:?}");
         assert_eq!(env[0].key, "RTM_SOCKET_PATH");
         assert_eq!(env[0].value, "/tmp/rtm.sock");
+    }
+
+    #[test]
+    fn session_log_paths_are_config_owned() {
+        let session_id = uuid::Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
+        let paths = test_config().session_log_paths(session_id);
+
+        assert_eq!(
+            paths.log_dir,
+            PathBuf::from("/tmp/rtm/logs/11111111-1111-1111-1111-111111111111")
+        );
+        assert_eq!(paths.stdout_path.parent(), Some(paths.log_dir.as_path()));
+        assert_eq!(paths.stderr_path.parent(), Some(paths.log_dir.as_path()));
+        assert_ne!(paths.stdout_path, paths.stderr_path);
     }
 }

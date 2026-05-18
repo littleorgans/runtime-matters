@@ -53,6 +53,15 @@ impl DaemonConfig {
         self.log_root.join(session_id.to_string())
     }
 
+    pub fn session_log_paths(&self, session_id: Uuid) -> crate::shim_socket::HeadlessLogPaths {
+        let log_dir = self.session_log_dir(session_id);
+        crate::shim_socket::HeadlessLogPaths {
+            stdout_path: log_dir.join("stdout.log"),
+            stderr_path: log_dir.join("stderr.log"),
+            log_dir,
+        }
+    }
+
     pub fn data_dir(&self) -> PathBuf {
         self.store
             .db_path
@@ -465,10 +474,10 @@ impl ServerState {
                 },
             },
             None => {
-                let log_dir = self.config.session_log_dir(lifecycle.session_id);
+                let paths = self.config.session_log_paths(lifecycle.session_id);
                 LogAvailability::Headless {
-                    stdout_path: log_dir.join("stdout.log"),
-                    stderr_path: log_dir.join("stderr.log"),
+                    stdout_path: paths.stdout_path,
+                    stderr_path: paths.stderr_path,
                 }
             }
         });
