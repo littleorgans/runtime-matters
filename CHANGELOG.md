@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/littleorgans/runtime-matters/compare/v0.1.3...v0.1.4) (2026-05-18)
+
+
+### Features
+
+* introduce strict deterministic spawn API ([#9](https://github.com/littleorgans/runtime-matters/issues/9)) ([ba7058a](https://github.com/littleorgans/runtime-matters/commit/ba7058a04d6182d226f0d6dfef19a106f624d452))
+
 ## [0.1.3](https://github.com/littleorgans/runtime-matters/compare/v0.1.2...v0.1.3) (2026-05-17)
 
 
