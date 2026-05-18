@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/littleorgans/runtime-matters/compare/v0.1.9...v0.1.10) (2026-05-18)
+
+
+### Features
+
+* runtime contract v0.3 for session-matters integration ([#23](https://github.com/littleorgans/runtime-matters/issues/23)) ([7c269da](https://github.com/littleorgans/runtime-matters/commit/7c269daa293485b6050f568c6b1e7a7ec57a04da))
+
 ## [0.1.9](https://github.com/littleorgans/runtime-matters/compare/v0.1.8...v0.1.9) (2026-05-18)
 
 
