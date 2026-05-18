@@ -2,8 +2,9 @@ use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use lilo_rm_core::{
-    KillByPidRequest, KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse,
-    RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
+    KillByPidRequest, KillRequest, Lifecycle, NudgeFailureReason, NudgeOutcome, NudgeRequest,
+    NudgeResponse, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest,
+    SpawnTarget, StatusFilter,
 };
 use uuid::Uuid;
 
@@ -236,8 +237,43 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Ack => {
-            println!("nudge OK; session_id={}", args.session_id);
+        RuntimeResponse::Nudge {
+            response:
+                NudgeResponse {
+                    delivered: true,
+                    outcome: NudgeOutcome::Delivered,
+                },
+        } => {
+            println!("nudge delivered; session_id={}", args.session_id);
+        }
+        RuntimeResponse::Nudge {
+            response:
+                NudgeResponse {
+                    delivered: false,
+                    outcome: NudgeOutcome::Unsupported(reason),
+                },
+        } => {
+            bail!(
+                "nudge unsupported; reason={} session_id={}",
+                nudge_failure_reason(reason),
+                args.session_id
+            );
+        }
+        RuntimeResponse::Nudge {
+            response:
+                NudgeResponse {
+                    delivered: false,
+                    outcome: NudgeOutcome::Failed(reason),
+                },
+        } => {
+            bail!(
+                "nudge failed; reason={} session_id={}",
+                nudge_failure_reason(reason),
+                args.session_id
+            );
+        }
+        RuntimeResponse::Nudge { response } => {
+            bail!("inconsistent nudge response: {response:?}");
         }
         other => bail!("unexpected nudge response: {other:?}"),
     }
@@ -313,6 +349,13 @@ pub fn event_name(event: &lilo_rm_core::RuntimeEvent) -> &'static str {
         lilo_rm_core::RuntimeEvent::Running { .. } => "Running",
         lilo_rm_core::RuntimeEvent::Terminated { .. } => "Terminated",
         lilo_rm_core::RuntimeEvent::Lost { .. } => "Lost",
+    }
+}
+
+fn nudge_failure_reason(reason: NudgeFailureReason) -> &'static str {
+    match reason {
+        NudgeFailureReason::HeadlessLifecycle => "headless_lifecycle",
+        NudgeFailureReason::TmuxPaneDead => "tmux_pane_dead",
     }
 }
 

@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use crate::{
     ErrorCode, KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle,
-    McpBridgeRequest, McpBridgeResponse, NudgeRequest, ProtocolError, RuntimeEvent, ShimExit,
-    ShimLaunchRequest, ShimReady, SpawnRequest, StatusFilter, WatcherCounts,
+    McpBridgeRequest, McpBridgeResponse, NudgeRequest, NudgeResponse, ProtocolError, RuntimeEvent,
+    ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, StatusFilter, WatcherCounts,
 };
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
@@ -84,6 +84,9 @@ pub enum RuntimeResponse {
     },
     KillByPid {
         response: KillByPidResponse,
+    },
+    Nudge {
+        response: NudgeResponse,
     },
     Version {
         version: crate::VersionInfo,

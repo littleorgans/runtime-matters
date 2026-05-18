@@ -12,7 +12,6 @@ pub(crate) enum RpcErrorContext {
 
 #[derive(Debug)]
 pub(crate) enum RuntimeFailure {
-    HeadlessNudgeUnsupported { session_id: Uuid },
     ProtocolMismatch { message: String },
     SessionAlreadyExists { session_id: Uuid },
     SessionNotFound { session_id: Uuid },
@@ -20,10 +19,6 @@ pub(crate) enum RuntimeFailure {
 }
 
 impl RuntimeFailure {
-    pub(crate) fn headless_nudge_unsupported(session_id: Uuid) -> anyhow::Error {
-        Self::HeadlessNudgeUnsupported { session_id }.into()
-    }
-
     pub(crate) fn protocol_mismatch(message: impl Into<String>) -> anyhow::Error {
         Self::ProtocolMismatch {
             message: message.into(),
@@ -45,7 +40,6 @@ impl RuntimeFailure {
 
     fn code(&self) -> ErrorCode {
         match self {
-            Self::HeadlessNudgeUnsupported { .. } => ErrorCode::HeadlessNudgeUnsupported,
             Self::ProtocolMismatch { .. } => ErrorCode::ProtocolMismatch,
             Self::SessionAlreadyExists { .. } => ErrorCode::InvalidTarget,
             Self::SessionNotFound { .. } => ErrorCode::SessionNotFound,
@@ -57,12 +51,6 @@ impl RuntimeFailure {
 impl Display for RuntimeFailure {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::HeadlessNudgeUnsupported { session_id } => {
-                write!(
-                    formatter,
-                    "nudge not supported for headless lifecycle {session_id}"
-                )
-            }
             Self::ProtocolMismatch { message } => formatter.write_str(message),
             Self::SessionAlreadyExists { session_id } => {
                 write!(formatter, "session {session_id} already exists")
@@ -145,10 +133,6 @@ mod tests {
             (
                 RuntimeFailure::session_not_found(session_id),
                 ErrorCode::SessionNotFound,
-            ),
-            (
-                RuntimeFailure::headless_nudge_unsupported(session_id),
-                ErrorCode::HeadlessNudgeUnsupported,
             ),
             (
                 RuntimeFailure::tmux_pane_dead(address),

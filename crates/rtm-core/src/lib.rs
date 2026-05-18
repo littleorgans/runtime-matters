@@ -33,9 +33,10 @@ pub use spawn_context::{
     capture_env_from, capture_env_from_os, launcher_probe_cwd,
 };
 pub use types::{
-    HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, NudgeRequest,
-    RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit,
-    ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, SpawnTargetParseError,
-    TerminationEvidence, TmuxAddress, TmuxAddressParseError, TmuxSpawnTarget,
+    HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, NudgeFailureReason,
+    NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeKind,
+    RuntimeSignal, RuntimeSignalParseError, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest,
+    SpawnTarget, SpawnTargetParseError, TerminationEvidence, TmuxAddress, TmuxAddressParseError,
+    TmuxSpawnTarget,
 };
 pub use version::{VersionInfo, version_info};

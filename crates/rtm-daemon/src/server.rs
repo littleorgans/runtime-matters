@@ -6,8 +6,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use lilo_rm_core::{
     KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, LifecycleState,
-    LostEvidence, NudgeRequest, RuntimeEvent, RuntimeExit, RuntimeSignal, ShimExit, ShimReady,
-    SpawnRequest, StatusFilter, TerminationEvidence, WatcherCounts,
+    LostEvidence, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent,
+    RuntimeExit, RuntimeSignal, ShimExit, ShimReady, SpawnRequest, StatusFilter,
+    TerminationEvidence, WatcherCounts,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use tokio::net::UnixListener;
@@ -305,20 +306,30 @@ impl ServerState {
         })
     }
 
-    pub(crate) async fn nudge_runtime(&self, request: NudgeRequest) -> Result<()> {
+    pub(crate) async fn nudge_runtime(&self, request: NudgeRequest) -> Result<NudgeResponse> {
         let lifecycle = self
             .store
             .get(request.session_id)
             .await?
             .ok_or_else(|| RuntimeFailure::session_not_found(request.session_id))?;
-        let tmux_pane = lifecycle
-            .tmux_pane
-            .as_ref()
-            .ok_or_else(|| RuntimeFailure::headless_nudge_unsupported(request.session_id))?;
-        if !rtm_platform::tmux::TmuxGateway::is_alive(tmux_pane).await? {
-            return Err(RuntimeFailure::tmux_pane_dead(tmux_pane.clone()));
+        let Some(tmux_pane) = lifecycle.tmux_pane.as_ref() else {
+            return Ok(NudgeResponse {
+                delivered: false,
+                outcome: NudgeOutcome::Unsupported(NudgeFailureReason::HeadlessLifecycle),
+            });
+        };
+
+        if !rtm_platform::tmux::TmuxGateway::nudge(tmux_pane, &request.content).await? {
+            return Ok(NudgeResponse {
+                delivered: false,
+                outcome: NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead),
+            });
         }
-        rtm_platform::tmux::TmuxGateway::nudge(tmux_pane, &request.content).await
+
+        Ok(NudgeResponse {
+            delivered: true,
+            outcome: NudgeOutcome::Delivered,
+        })
     }
 
     pub(crate) async fn record_shim_exit(&self, exit: ShimExit) -> Result<Option<RuntimeEvent>> {

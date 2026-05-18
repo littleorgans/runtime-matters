@@ -1,9 +1,13 @@
 mod common;
 
+use std::io::BufReader;
+use std::os::unix::net::UnixStream;
+
 use common::{RtmHarness, output_stderr, output_stdout, spawn_ok, wait_for_log};
 use lilo_rm_core::{
-    HeadlessSpawnTarget, LaunchEnv, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest,
-    SpawnTarget,
+    ErrorCode, HeadlessSpawnTarget, LaunchEnv, NudgeFailureReason, NudgeOutcome, NudgeRequest,
+    NudgeResponse, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget,
+    read_json_line_blocking, write_json_line_blocking,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -19,15 +23,55 @@ fn explicit_headless_spawn_records_no_tmux_pane_and_rejects_nudge() {
     let lifecycles: Value = serde_json::from_str(&output_stdout(status)).expect("status json");
     assert_eq!(lifecycles[0]["tmux_pane"], Value::Null);
 
+    let response = request_raw(
+        &harness,
+        RuntimeRpc::Nudge {
+            request: NudgeRequest {
+                session_id: session_id.parse().expect("session id"),
+                content: "headless".to_owned(),
+            },
+        },
+    );
+    assert_eq!(
+        response,
+        RuntimeResponse::Nudge {
+            response: NudgeResponse {
+                delivered: false,
+                outcome: NudgeOutcome::Unsupported(NudgeFailureReason::HeadlessLifecycle),
+            },
+        }
+    );
+
     let nudge = harness.nudge(&session_id, "headless");
     assert!(!nudge.status.success(), "nudge succeeded: {nudge:?}");
     let stderr = output_stderr(nudge);
     assert!(
         stderr.contains(&format!(
-            "nudge not supported for headless lifecycle {session_id}"
+            "nudge unsupported; reason=headless_lifecycle session_id={session_id}"
         )),
         "{stderr}"
     );
+}
+
+#[test]
+fn missing_session_nudge_uses_structured_error_code() {
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7();
+
+    let response = request_raw(
+        &harness,
+        RuntimeRpc::Nudge {
+            request: NudgeRequest {
+                session_id,
+                content: "missing".to_owned(),
+            },
+        },
+    );
+    let RuntimeResponse::Error { code, message } = response else {
+        panic!("unexpected missing-session response: {response:?}");
+    };
+    assert_eq!(code, ErrorCode::SessionNotFound);
+    assert!(message.contains(&format!("session {session_id} not found")));
 }
 
 #[test]
@@ -72,4 +116,11 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
     assert_eq!(stderr_path, log_dir.join("stderr.log"));
     wait_for_log(stdout_path, "HELLO\n");
     wait_for_log(stderr_path, "WORLD\n");
+}
+
+fn request_raw(harness: &RtmHarness, rpc: RuntimeRpc) -> RuntimeResponse {
+    let mut stream = UnixStream::connect(harness.socket_path()).expect("connect daemon");
+    write_json_line_blocking(&mut stream, &rpc).expect("write request");
+    let mut reader = BufReader::new(stream);
+    read_json_line_blocking(&mut reader).expect("read response")
 }

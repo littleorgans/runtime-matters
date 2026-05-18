@@ -1,9 +1,10 @@
 use chrono::{TimeZone, Utc};
 use lilo_rm_core::{
     ErrorCode, KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, Lifecycle, LostEvidence,
-    McpBridgeRequest, NudgeRequest, RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeResponse,
-    RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget,
-    StatusRequest, TerminationEvidence, TmuxSpawnTarget,
+    McpBridgeRequest, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent,
+    RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit,
+    ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, StatusRequest, TerminationEvidence,
+    TmuxSpawnTarget,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -144,6 +145,24 @@ fn runtime_response_json_shapes_are_stable() {
             },
         },
         RuntimeResponse::Ack,
+        RuntimeResponse::Nudge {
+            response: NudgeResponse {
+                delivered: true,
+                outcome: NudgeOutcome::Delivered,
+            },
+        },
+        RuntimeResponse::Nudge {
+            response: NudgeResponse {
+                delivered: false,
+                outcome: NudgeOutcome::Unsupported(NudgeFailureReason::HeadlessLifecycle),
+            },
+        },
+        RuntimeResponse::Nudge {
+            response: NudgeResponse {
+                delivered: false,
+                outcome: NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead),
+            },
+        },
         RuntimeResponse::Stopping,
         RuntimeResponse::Error {
             code: ErrorCode::LaunchFailed,

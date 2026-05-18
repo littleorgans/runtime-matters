@@ -267,6 +267,27 @@ pub struct NudgeRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct NudgeResponse {
+    pub delivered: bool,
+    pub outcome: NudgeOutcome,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "reason", rename_all = "snake_case")]
+pub enum NudgeOutcome {
+    Delivered,
+    Unsupported(NudgeFailureReason),
+    Failed(NudgeFailureReason),
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NudgeFailureReason {
+    HeadlessLifecycle,
+    TmuxPaneDead,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ShimReady {
     pub session_id: Uuid,
     pub shim_pid: u32,

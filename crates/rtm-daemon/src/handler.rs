@@ -93,8 +93,8 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             response: state.kill_pid(request).await?,
         }),
         RuntimeRpc::Nudge { request } => {
-            state.nudge_runtime(request).await?;
-            Ok(RuntimeResponse::Ack)
+            let response = state.nudge_runtime(request).await?;
+            Ok(RuntimeResponse::Nudge { response })
         }
         RuntimeRpc::Status { request } => Ok(RuntimeResponse::Status {
             lifecycles: state.status(request.into()).await,
