@@ -24,7 +24,7 @@ pub use proto::{
 pub use types::{
     HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, NudgeRequest,
     RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit,
-    ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, TerminationEvidence, TmuxAddress,
-    TmuxAddressParseError, TmuxSpawnTarget,
+    ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, SpawnTargetParseError,
+    TerminationEvidence, TmuxAddress, TmuxAddressParseError, TmuxSpawnTarget,
 };
 pub use version::{VersionInfo, version_info};

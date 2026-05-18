@@ -11,7 +11,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 #[test]
-fn default_headless_spawn_records_no_tmux_pane_and_rejects_nudge() {
+fn explicit_headless_spawn_records_no_tmux_pane_and_rejects_nudge() {
     let harness = RtmHarness::start();
     let session_id = Uuid::now_v7().to_string();
     spawn_ok(&harness, &session_id, "claude");

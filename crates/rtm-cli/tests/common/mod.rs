@@ -3,6 +3,7 @@
 pub mod mcp;
 pub mod tmux;
 
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -58,7 +59,7 @@ impl RtmHarness {
         write_fake_runtime(temp.path(), "claude");
         write_fake_runtime(temp.path(), "codex");
         let rtm = default_rtm_path();
-        let daemon = start_daemon(
+        let mut daemon = start_daemon(
             &rtm,
             &socket,
             &db,
@@ -67,7 +68,7 @@ impl RtmHarness {
             &reconcile_env,
             start_outside_tmux,
         );
-        wait_for_socket(&socket);
+        wait_for_socket(&socket, &mut daemon);
         Self {
             temp,
             socket,
@@ -85,7 +86,7 @@ impl RtmHarness {
     }
 
     pub fn spawn_runtime(&self, session_id: &str, runtime: &str) -> Output {
-        self.spawn_command(session_id, runtime)
+        self.spawn_command(session_id, runtime, "headless")
             .output()
             .expect("spawn client")
     }
@@ -96,9 +97,7 @@ impl RtmHarness {
         runtime: &str,
         tmux_address: &str,
     ) -> Output {
-        self.spawn_command(session_id, runtime)
-            .arg("--tmux-address")
-            .arg(tmux_address)
+        self.spawn_command(session_id, runtime, &format!("tmux:{tmux_address}"))
             .output()
             .expect("spawn client")
     }
@@ -188,7 +187,7 @@ impl RtmHarness {
             &self.reconcile_env,
             self.start_outside_tmux,
         );
-        wait_for_socket(&self.socket);
+        wait_for_socket(&self.socket, &mut self.daemon);
     }
 
     pub fn stop_rtmd(&mut self) {
@@ -227,14 +226,16 @@ impl RtmHarness {
         command
     }
 
-    fn spawn_command(&self, session_id: &str, runtime: &str) -> Command {
+    fn spawn_command(&self, session_id: &str, runtime: &str, target: &str) -> Command {
         let mut command = self.rtm_command();
         command
             .arg("spawn")
             .arg("--runtime")
             .arg(runtime)
             .arg("--session-id")
-            .arg(session_id);
+            .arg(session_id)
+            .arg("--target")
+            .arg(target);
         command
     }
 
@@ -489,15 +490,27 @@ fn test_path(fake_bin_dir: &Path) -> String {
         .into_owned()
 }
 
-fn wait_for_socket(socket: &Path) {
+fn wait_for_socket(socket: &Path, daemon: &mut Child) {
     let deadline = Instant::now() + Duration::from_secs(5);
+    let mut last_error = None;
     while Instant::now() < deadline {
-        if socket.exists() {
-            return;
+        match UnixStream::connect(socket) {
+            Ok(_) => return,
+            Err(error) => last_error = Some(error),
+        }
+        if daemon.try_wait().expect("daemon try_wait").is_some() {
+            panic!(
+                "daemon exited before socket accepted connections at {}{}",
+                socket.display(),
+                daemon_debug(daemon)
+            );
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    panic!("daemon socket never appeared at {}", socket.display());
+    panic!(
+        "daemon socket never accepted connections at {}; last error={last_error:?}",
+        socket.display()
+    );
 }
 
 fn stop_daemon(rtm: &Path, socket: &Path, daemon: &mut Child) {

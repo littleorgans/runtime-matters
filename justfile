@@ -40,7 +40,7 @@ bench-status:
     cargo bench -p rtm-cli --bench status_query
 
 load-test:
-    cargo run --release -p rtm-cli --example load_test -- --sessions 50
+    cargo run --release -p rtm-cli --example load_test -- --target headless --sessions 50
 
 dist-plan:
     dist plan

@@ -197,6 +197,10 @@ impl<'de> Deserialize<'de> for TmuxAddress {
 #[error("invalid tmux pane target {0}")]
 pub struct TmuxAddressParseError(pub String);
 
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("invalid spawn target {0}; expected headless or tmux:<session>:<window>.<pane>")]
+pub struct SpawnTargetParseError(pub String);
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SpawnRequest {
     pub session_id: Uuid,
@@ -221,6 +225,24 @@ impl SpawnTarget {
             Self::Tmux(target) => Some(&target.address),
             Self::Headless(_) => None,
         }
+    }
+}
+
+impl FromStr for SpawnTarget {
+    type Err = SpawnTargetParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value == "headless" {
+            return Ok(Self::Headless(HeadlessSpawnTarget {}));
+        }
+
+        let Some(address) = value.strip_prefix("tmux:") else {
+            return Err(SpawnTargetParseError(value.to_owned()));
+        };
+        let address = address
+            .parse()
+            .map_err(|_| SpawnTargetParseError(value.to_owned()))?;
+        Ok(Self::Tmux(TmuxSpawnTarget { address }))
     }
 }
 
@@ -481,6 +503,34 @@ mod tests {
             assert!(
                 value.parse::<TmuxAddress>().is_err(),
                 "accepted malformed pane target {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn spawn_target_parses_headless_and_tmux() {
+        assert_eq!(
+            "headless".parse::<SpawnTarget>().expect("headless target"),
+            SpawnTarget::Headless(HeadlessSpawnTarget {})
+        );
+        assert_eq!(
+            "tmux:test:0.1".parse::<SpawnTarget>().expect("tmux target"),
+            SpawnTarget::Tmux(TmuxSpawnTarget {
+                address: TmuxAddress {
+                    session: "test".to_owned(),
+                    window: 0,
+                    pane: 1,
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn spawn_target_rejects_missing_mode() {
+        for value in ["", "test:0.1", "tmux:", "tmux:test", "other:test:0.1"] {
+            assert!(
+                value.parse::<SpawnTarget>().is_err(),
+                "accepted malformed spawn target {value}"
             );
         }
     }

@@ -27,30 +27,38 @@ just test
 just insta-test
 ```
 
-## Pass 1 tracer
+## Strict Spawn Quickstart
 
-Start the daemon:
+Build the local `rtm` binary and start the daemon:
 
 ```bash
-rtm daemon start
+cargo build -p rtm-cli
+rtm_bin="$PWD/target/debug/rtm"
+"$rtm_bin" daemon start &
+rtm_daemon_pid=$!
+until "$rtm_bin" status >/dev/null 2>&1; do sleep 0.1; done
 ```
 
-Spawn a Claude runtime:
+From inside an existing tmux session, create the pane outside rtm and pass that exact target:
 
 ```bash
-cargo run -p rtm-cli --example test_spawn -- --runtime claude --session-id "$(uuidgen)"
+target="$(tmux split-window -P -F '#S:#I.#P' -d)"
+cargo run -p rtm-cli --example test_spawn -- --target "tmux:${target}" --runtime claude --session-id "$(uuidgen)"
+"$rtm_bin" status
 ```
 
-Check status:
+For a headless runtime, pass the target explicitly. The spawn response prints the session log directory.
 
 ```bash
-rtm status
+cargo run -p rtm-cli --example test_spawn -- --target headless --runtime claude --session-id "$(uuidgen)"
+"$rtm_bin" status
 ```
 
 Stop the daemon:
 
 ```bash
-rtm daemon stop
+"$rtm_bin" daemon stop
+wait "$rtm_daemon_pid"
 ```
 
 ## Hardening Gates
