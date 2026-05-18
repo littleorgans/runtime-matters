@@ -18,7 +18,7 @@ pub use admin::{
     DoctorResponse, KillByPidRequest, KillByPidResponse, LauncherStatus, LifecycleCounts,
     MigrationState, RecentLostEvent, StatusFilter, StatusResponse, TmuxStatus, WatcherCounts,
 };
-pub use error::{ProtocolError, RuntimeKindParseError};
+pub use error::{ErrorCode, ProtocolError, RuntimeKindParseError};
 pub use launcher::{LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher};
 pub use mcp::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION, McpBridgeRequest,

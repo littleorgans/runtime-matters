@@ -53,6 +53,7 @@ expression: responses
   {
     "type": "error",
     "payload": {
+      "code": "launch_failed",
       "message": "failed"
     }
   },

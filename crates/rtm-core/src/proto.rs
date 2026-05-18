@@ -7,9 +7,9 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
 use crate::{
-    KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, McpBridgeRequest,
-    McpBridgeResponse, NudgeRequest, ProtocolError, RuntimeEvent, ShimExit, ShimLaunchRequest,
-    ShimReady, SpawnRequest, StatusFilter, WatcherCounts,
+    ErrorCode, KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle,
+    McpBridgeRequest, McpBridgeResponse, NudgeRequest, ProtocolError, RuntimeEvent, ShimExit,
+    ShimLaunchRequest, ShimReady, SpawnRequest, StatusFilter, WatcherCounts,
 };
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
@@ -85,8 +85,18 @@ pub enum RuntimeResponse {
     Ack,
     Stopping,
     Error {
+        code: ErrorCode,
         message: String,
     },
+}
+
+impl RuntimeResponse {
+    pub fn error(code: ErrorCode, message: impl Into<String>) -> Self {
+        Self::Error {
+            code,
+            message: message.into(),
+        }
+    }
 }
 
 pub async fn read_json_line<R, T>(reader: &mut R) -> Result<T, ProtocolError>

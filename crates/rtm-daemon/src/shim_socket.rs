@@ -190,7 +190,7 @@ fn send_shim_rpc_blocking(
 fn launch_from_response(response: RuntimeResponse) -> Result<LaunchSpec> {
     match response {
         RuntimeResponse::ShimLaunch { launch } => Ok(launch),
-        RuntimeResponse::Error { message } => anyhow::bail!(message),
+        RuntimeResponse::Error { message, .. } => anyhow::bail!(message),
         response => anyhow::bail!("unexpected ShimLaunch response: {response:?}"),
     }
 }
@@ -198,6 +198,7 @@ fn launch_from_response(response: RuntimeResponse) -> Result<LaunchSpec> {
 fn ack_from_response(response: RuntimeResponse, label: &'static str) -> Result<()> {
     match response {
         RuntimeResponse::Ack => Ok(()),
+        RuntimeResponse::Error { message, .. } => anyhow::bail!(message),
         response => anyhow::bail!("unexpected {label} response: {response:?}"),
     }
 }

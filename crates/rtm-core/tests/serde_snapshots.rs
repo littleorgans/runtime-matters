@@ -1,6 +1,6 @@
 use chrono::{TimeZone, Utc};
 use lilo_rm_core::{
-    KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, Lifecycle, LostEvidence,
+    ErrorCode, KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, Lifecycle, LostEvidence,
     McpBridgeRequest, NudgeRequest, RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeResponse,
     RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget,
     StatusRequest, TerminationEvidence, TmuxSpawnTarget,
@@ -125,6 +125,7 @@ fn runtime_response_json_shapes_are_stable() {
         RuntimeResponse::Ack,
         RuntimeResponse::Stopping,
         RuntimeResponse::Error {
+            code: ErrorCode::LaunchFailed,
             message: "failed".to_owned(),
         },
         RuntimeResponse::Events {
@@ -136,6 +137,21 @@ fn runtime_response_json_shapes_are_stable() {
     ];
 
     insta::assert_json_snapshot!(responses);
+}
+
+#[test]
+fn error_code_json_names_are_stable() {
+    let codes = vec![
+        ErrorCode::RuntimeUnavailable,
+        ErrorCode::SessionNotFound,
+        ErrorCode::TmuxPaneDead,
+        ErrorCode::HeadlessNudgeUnsupported,
+        ErrorCode::LaunchFailed,
+        ErrorCode::InvalidTarget,
+        ErrorCode::ProtocolMismatch,
+    ];
+
+    insta::assert_json_snapshot!(codes);
 }
 
 #[test]

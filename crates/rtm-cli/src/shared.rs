@@ -24,7 +24,7 @@ pub async fn request(socket_path: &Path, rpc: RuntimeRpc) -> Result<RuntimeRespo
     let mut reader = BufReader::new(read_half);
     let response = read_json_line(&mut reader).await?;
     match response {
-        RuntimeResponse::Error { message } => bail!(message),
+        RuntimeResponse::Error { message, .. } => bail!(message),
         other => Ok(other),
     }
 }

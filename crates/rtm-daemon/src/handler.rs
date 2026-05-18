@@ -7,7 +7,13 @@ use tokio::io::BufReader;
 use tokio::net::UnixStream;
 use tokio::sync::broadcast;
 
-use crate::{doctor, mcp_bridge, server::ServerState, shim_socket};
+use crate::{
+    doctor,
+    error::{RpcErrorContext, protocol_error_response, rpc_error_response},
+    mcp_bridge,
+    server::ServerState,
+    shim_socket,
+};
 
 pub(crate) async fn handle_connection(
     stream: UnixStream,
@@ -19,9 +25,7 @@ pub(crate) async fn handle_connection(
 
     let response = match read_json_line::<_, RuntimeRpc>(&mut reader).await {
         Ok(rpc) => handle_rpc(rpc, state).await,
-        Err(error) => RuntimeResponse::Error {
-            message: error.to_string(),
-        },
+        Err(error) => protocol_error_response(error),
     };
     let should_stop = matches!(response, RuntimeResponse::Stopping);
 
@@ -33,11 +37,17 @@ pub(crate) async fn handle_connection(
 }
 
 async fn handle_rpc(rpc: RuntimeRpc, state: Arc<ServerState>) -> RuntimeResponse {
+    let error_context = error_context(&rpc);
     match handle_rpc_result(rpc, state).await {
         Ok(response) => response,
-        Err(error) => RuntimeResponse::Error {
-            message: error.to_string(),
-        },
+        Err(error) => rpc_error_response(error_context, error),
+    }
+}
+
+fn error_context(rpc: &RuntimeRpc) -> RpcErrorContext {
+    match rpc {
+        RuntimeRpc::Spawn { .. } => RpcErrorContext::Spawn,
+        _ => RpcErrorContext::Other,
     }
 }
 

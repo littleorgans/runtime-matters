@@ -14,7 +14,7 @@ use tokio::net::UnixListener;
 use tokio::sync::{Mutex, broadcast, oneshot};
 use uuid::Uuid;
 
-use crate::{event_channel, handler, reconcile, socket};
+use crate::{error::RuntimeFailure, event_channel, handler, reconcile, socket};
 
 #[derive(Clone, Debug)]
 pub struct DaemonConfig {
@@ -152,7 +152,7 @@ impl ServerState {
         launch: LaunchSpec,
     ) -> Result<oneshot::Receiver<ShimReady>> {
         if self.store.get(request.session_id).await?.is_some() {
-            bail!("session {} already exists", request.session_id);
+            return Err(RuntimeFailure::session_already_exists(request.session_id));
         }
         self.validate_spawn_target(request).await?;
 
@@ -175,7 +175,7 @@ impl ServerState {
         if let Some(address) = request.target.tmux_address()
             && !rtm_platform::tmux::TmuxGateway::is_alive(address).await?
         {
-            bail!("tmux address {address} is not alive");
+            return Err(RuntimeFailure::tmux_pane_dead(address.clone()));
         }
         Ok(())
     }
@@ -184,7 +184,9 @@ impl ServerState {
         let (sender, receiver) = oneshot::channel();
         let previous = self.pending_ready.lock().await.insert(session_id, sender);
         if previous.is_some() {
-            bail!("session {session_id} already has a pending shim");
+            return Err(RuntimeFailure::protocol_mismatch(format!(
+                "session {session_id} already has a pending shim"
+            )));
         }
         Ok(receiver)
     }
@@ -202,15 +204,22 @@ impl ServerState {
             .lock()
             .await
             .remove(&session_id)
-            .ok_or_else(|| anyhow!("no pending launch for session {session_id}"))
+            .ok_or_else(|| {
+                RuntimeFailure::protocol_mismatch(format!(
+                    "no pending launch for session {session_id}"
+                ))
+            })
     }
 
     pub(crate) async fn complete_shim_ready(self: &Arc<Self>, ready: ShimReady) -> Result<()> {
         let sender = self.pending_ready.lock().await.remove(&ready.session_id);
         if let Some(sender) = sender {
-            return sender
-                .send(ready)
-                .map_err(|ready| anyhow!("spawn waiter dropped for session {}", ready.session_id));
+            return sender.send(ready).map_err(|ready| {
+                RuntimeFailure::protocol_mismatch(format!(
+                    "spawn waiter dropped for session {}",
+                    ready.session_id
+                ))
+            });
         }
         self.record_reconnected_ready(ready).await.map(|_| ())
     }
@@ -225,15 +234,18 @@ impl ServerState {
             .store
             .get(request.session_id)
             .await?
-            .ok_or_else(|| anyhow!("no lifecycle for session {}", request.session_id))?;
+            .ok_or_else(|| RuntimeFailure::session_not_found(request.session_id))?;
         if lifecycle.runtime != request.runtime {
-            bail!("runtime mismatch for session {}", request.session_id);
+            return Err(RuntimeFailure::protocol_mismatch(format!(
+                "runtime mismatch for session {}",
+                request.session_id
+            )));
         }
         if !lifecycle.mark_running(ready) {
-            bail!(
+            return Err(RuntimeFailure::protocol_mismatch(format!(
                 "session {} is not waiting for ShimReady",
                 request.session_id
-            );
+            )));
         }
         lifecycle.tmux_pane = request.target.tmux_address().cloned();
         self.store.update_lifecycle(&lifecycle).await?;
@@ -298,13 +310,14 @@ impl ServerState {
             .store
             .get(request.session_id)
             .await?
-            .ok_or_else(|| anyhow!("session {} not found", request.session_id))?;
-        let tmux_pane = lifecycle.tmux_pane.as_ref().ok_or_else(|| {
-            anyhow!(
-                "nudge not supported for headless lifecycle {}",
-                request.session_id
-            )
-        })?;
+            .ok_or_else(|| RuntimeFailure::session_not_found(request.session_id))?;
+        let tmux_pane = lifecycle
+            .tmux_pane
+            .as_ref()
+            .ok_or_else(|| RuntimeFailure::headless_nudge_unsupported(request.session_id))?;
+        if !rtm_platform::tmux::TmuxGateway::is_alive(tmux_pane).await? {
+            return Err(RuntimeFailure::tmux_pane_dead(tmux_pane.clone()));
+        }
         rtm_platform::tmux::TmuxGateway::nudge(tmux_pane, &request.content).await
     }
 
@@ -381,7 +394,7 @@ impl ServerState {
             .get(session_id)
             .await?
             .and_then(|lifecycle| lifecycle.runtime_pid)
-            .ok_or_else(|| anyhow!("session {session_id} not found"))
+            .ok_or_else(|| RuntimeFailure::session_not_found(session_id))
     }
 
     async fn is_terminal(&self, session_id: Uuid) -> bool {
@@ -424,7 +437,7 @@ impl ServerState {
             .store
             .get(session_id)
             .await?
-            .ok_or_else(|| anyhow!("session {session_id} not found"))?;
+            .ok_or_else(|| RuntimeFailure::session_not_found(session_id))?;
         if !lifecycle.mark_exited(exit) {
             return Ok(None);
         }
@@ -441,7 +454,7 @@ impl ServerState {
             .store
             .get(session_id)
             .await?
-            .ok_or_else(|| anyhow!("session {session_id} not found"))?;
+            .ok_or_else(|| RuntimeFailure::session_not_found(session_id))?;
         if !lifecycle.mark_lost(evidence) {
             return Ok(None);
         }
@@ -479,7 +492,7 @@ impl ServerState {
             .store
             .get(ready.session_id)
             .await?
-            .ok_or_else(|| anyhow!("session {} not found", ready.session_id))?;
+            .ok_or_else(|| RuntimeFailure::session_not_found(ready.session_id))?;
         match lifecycle.state {
             LifecycleState::Forking => {
                 lifecycle.mark_running(ready);
