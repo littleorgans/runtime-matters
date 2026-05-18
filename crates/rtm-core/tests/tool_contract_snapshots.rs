@@ -1,4 +1,4 @@
-use rtm_core::tool_contracts::contract_registry;
+use lilo_rm_core::tool_contracts::contract_registry;
 
 #[test]
 fn mcp_tool_list_contract_is_stable() {

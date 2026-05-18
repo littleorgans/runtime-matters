@@ -3,7 +3,7 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use rtm_core::{RuntimeResponse, StatusFilter};
+use lilo_rm_core::{RuntimeResponse, StatusFilter};
 use uuid::Uuid;
 
 const DEFAULT_SAMPLES: usize = 100;

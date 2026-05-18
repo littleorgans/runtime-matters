@@ -838,6 +838,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "lilo-rm-client"
+version = "0.2.0"
+dependencies = [
+ "lilo-rm-core",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "lilo-rm-core"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "insta",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1239,7 +1263,8 @@ dependencies = [
  "clap",
  "insta",
  "libc",
- "rtm-core",
+ "lilo-rm-client",
+ "lilo-rm-core",
  "rtm-daemon",
  "rtm-platform",
  "rtm-store",
@@ -1252,26 +1277,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "rtm-core"
-version = "0.1.7"
-dependencies = [
- "chrono",
- "insta",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "toml",
- "uuid",
-]
-
-[[package]]
 name = "rtm-daemon"
 version = "0.1.7"
 dependencies = [
  "anyhow",
  "chrono",
- "rtm-core",
+ "lilo-rm-core",
  "rtm-launchers",
  "rtm-platform",
  "rtm-store",
@@ -1286,7 +1297,7 @@ dependencies = [
 name = "rtm-launchers"
 version = "0.1.7"
 dependencies = [
- "rtm-core",
+ "lilo-rm-core",
  "uuid",
 ]
 
@@ -1297,7 +1308,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "libc",
- "rtm-core",
+ "lilo-rm-core",
  "tokio",
 ]
 
@@ -1307,7 +1318,7 @@ version = "0.1.7"
 dependencies = [
  "anyhow",
  "chrono",
- "rtm-core",
+ "lilo-rm-core",
  "serde_json",
  "sqlx",
  "tempfile",

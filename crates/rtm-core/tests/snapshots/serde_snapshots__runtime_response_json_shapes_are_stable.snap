@@ -23,7 +23,81 @@ expression: responses
           "start_time": "2023-11-14T22:13:20Z"
         }
       },
-      "log_dir": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001"
+      "log_dir": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001",
+      "stdout_path": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stdout.log",
+      "stderr_path": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stderr.log"
+    }
+  },
+  {
+    "type": "spawned",
+    "payload": {
+      "lifecycle": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "runtime": "claude",
+        "state": "running",
+        "shim_pid": 4241,
+        "runtime_pid": 4242,
+        "start_time": "2023-11-14T22:13:20Z",
+        "tmux_pane": "rtm:0.1"
+      },
+      "event": {
+        "type": "running",
+        "payload": {
+          "session_id": "018f6e28-0000-7000-8000-000000000001",
+          "runtime_pid": 4243,
+          "start_time": "2023-11-14T22:13:20Z"
+        }
+      },
+      "log_dir": null,
+      "stdout_path": null,
+      "stderr_path": null
+    }
+  },
+  {
+    "type": "validate_target",
+    "payload": {
+      "response": {
+        "valid": true,
+        "outcome": {
+          "kind": "valid"
+        }
+      }
+    }
+  },
+  {
+    "type": "validate_target",
+    "payload": {
+      "response": {
+        "valid": false,
+        "outcome": {
+          "kind": "invalid_target",
+          "message": "invalid spawn target tmux:not-a-pane; expected headless or tmux:<session>:<window>.<pane>"
+        }
+      }
+    }
+  },
+  {
+    "type": "validate_target",
+    "payload": {
+      "response": {
+        "valid": false,
+        "outcome": {
+          "kind": "tmux_pane_dead",
+          "address": "rtm:0.1"
+        }
+      }
+    }
+  },
+  {
+    "type": "validate_target",
+    "payload": {
+      "response": {
+        "valid": false,
+        "outcome": {
+          "kind": "unsupported_target",
+          "target": "ssh:remote"
+        }
+      }
     }
   },
   {
@@ -48,11 +122,126 @@ expression: responses
     "type": "ack"
   },
   {
+    "type": "nudge",
+    "payload": {
+      "response": {
+        "delivered": true,
+        "outcome": {
+          "kind": "delivered"
+        }
+      }
+    }
+  },
+  {
+    "type": "nudge",
+    "payload": {
+      "response": {
+        "delivered": false,
+        "outcome": {
+          "kind": "unsupported",
+          "reason": "headless_lifecycle"
+        }
+      }
+    }
+  },
+  {
+    "type": "nudge",
+    "payload": {
+      "response": {
+        "delivered": false,
+        "outcome": {
+          "kind": "failed",
+          "reason": "tmux_pane_dead"
+        }
+      }
+    }
+  },
+  {
+    "type": "version",
+    "payload": {
+      "version": {
+        "version": "0.1.6",
+        "git_sha": "0123456",
+        "protocol_version": "0.2",
+        "capabilities": [
+          "structured_protocol_errors",
+          "headless_stdio_log_paths",
+          "status_session_set_filter",
+          "status_updated_since_filter",
+          "typed_nudge_outcomes",
+          "validate_target_preflight"
+        ]
+      }
+    }
+  },
+  {
+    "type": "doctor",
+    "payload": {
+      "doctor": {
+        "version": {
+          "version": "0.1.6",
+          "git_sha": "0123456",
+          "protocol_version": "0.2",
+          "capabilities": [
+            "structured_protocol_errors",
+            "headless_stdio_log_paths",
+            "status_session_set_filter",
+            "status_updated_since_filter",
+            "typed_nudge_outcomes",
+            "validate_target_preflight"
+          ]
+        },
+        "socket_path": "/tmp/rtmd.sock",
+        "uptime_secs": 12,
+        "sqlite": {
+          "applied": 2,
+          "total": 2,
+          "applied_descriptions": [
+            "lifecycle",
+            "probe state"
+          ],
+          "pending_descriptions": []
+        },
+        "lifecycles": {
+          "forking": 1,
+          "running": 2,
+          "exited": 3,
+          "lost": 4
+        },
+        "watchers": {
+          "kqueue_watchers": 5,
+          "shim_sockets": 6
+        },
+        "launchers": [
+          {
+            "runtime": "claude",
+            "command": "claude",
+            "error": null
+          }
+        ],
+        "tmux": {
+          "available": true,
+          "version": "tmux 3.5a",
+          "error": null
+        },
+        "last_probe_sweep": "2023-11-14T22:13:20Z",
+        "recent_lost": [
+          {
+            "session_id": "018f6e28-0000-7000-8000-000000000002",
+            "evidence": "pid_not_alive",
+            "occurred_at": "2023-11-14T22:13:20Z"
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "stopping"
   },
   {
     "type": "error",
     "payload": {
+      "code": "launch_failed",
       "message": "failed"
     }
   },

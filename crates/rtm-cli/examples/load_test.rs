@@ -7,7 +7,7 @@ use std::process::Command;
 
 use anyhow::{Result, ensure};
 use clap::Parser;
-use rtm_core::{Lifecycle, RuntimeKind, RuntimeResponse, SpawnTarget};
+use lilo_rm_core::{Lifecycle, RuntimeKind, RuntimeResponse, SpawnTarget};
 
 const DEFAULT_SESSIONS: usize = 50;
 const APP_FOOTPRINT_LIMIT_KIB: u64 = 90 * 1024;

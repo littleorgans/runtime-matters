@@ -202,6 +202,74 @@ pub struct TmuxAddressParseError(pub String);
 pub struct SpawnTargetParseError(pub String);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ValidateTargetRequest {
+    pub target: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ValidateTargetResponse {
+    pub valid: bool,
+    pub outcome: ValidateTargetOutcome,
+}
+
+impl ValidateTargetResponse {
+    pub fn valid() -> Self {
+        Self {
+            valid: true,
+            outcome: ValidateTargetOutcome::Valid,
+        }
+    }
+
+    pub fn invalid_target(error: SpawnTargetParseError) -> Self {
+        Self {
+            valid: false,
+            outcome: ValidateTargetOutcome::InvalidTarget {
+                message: error.to_string(),
+            },
+        }
+    }
+
+    pub fn tmux_pane_dead(address: TmuxAddress) -> Self {
+        Self {
+            valid: false,
+            outcome: ValidateTargetOutcome::TmuxPaneDead { address },
+        }
+    }
+
+    pub fn unsupported_target(target: impl Into<String>) -> Self {
+        Self {
+            valid: false,
+            outcome: ValidateTargetOutcome::UnsupportedTarget {
+                target: target.into(),
+            },
+        }
+    }
+
+    pub fn from_target_parse_error(error: SpawnTargetParseError) -> Self {
+        if is_unsupported_target(&error.0) {
+            Self::unsupported_target(error.0)
+        } else {
+            Self::invalid_target(error)
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ValidateTargetOutcome {
+    Valid,
+    InvalidTarget { message: String },
+    TmuxPaneDead { address: TmuxAddress },
+    UnsupportedTarget { target: String },
+}
+
+fn is_unsupported_target(target: &str) -> bool {
+    target
+        .split_once(':')
+        .is_some_and(|(mode, _)| !mode.is_empty() && mode != "tmux")
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SpawnRequest {
     pub session_id: Uuid,
     pub runtime: RuntimeKind,
@@ -264,6 +332,27 @@ pub struct KillRequest {
 pub struct NudgeRequest {
     pub session_id: Uuid,
     pub content: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct NudgeResponse {
+    pub delivered: bool,
+    pub outcome: NudgeOutcome,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "reason", rename_all = "snake_case")]
+pub enum NudgeOutcome {
+    Delivered,
+    Unsupported(NudgeFailureReason),
+    Failed(NudgeFailureReason),
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NudgeFailureReason {
+    HeadlessLifecycle,
+    TmuxPaneDead,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -408,6 +497,14 @@ impl Display for TerminationEvidence {
     }
 }
 
+/// Runtime lifecycle observation emitted by rtmd.
+///
+/// `RuntimeRpc::Events` returns these values in the order the current daemon
+/// process appended them. `Running` is recorded after shim ready is stored.
+/// `Terminated` and `Lost` are recorded when rtmd observes exit or loss
+/// evidence. v0.2 retains this vector only in daemon process memory and exposes
+/// no cursor, replay, or retention window. Clients should poll and dedupe by
+/// session id plus full event content.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum RuntimeEvent {
@@ -532,5 +629,28 @@ mod tests {
                 "accepted malformed spawn target {value}"
             );
         }
+    }
+
+    #[test]
+    fn validate_target_parse_errors_are_typed() {
+        let invalid = ValidateTargetResponse::from_target_parse_error(
+            "tmux:not-a-pane"
+                .parse::<SpawnTarget>()
+                .expect_err("invalid tmux target"),
+        );
+        assert!(!invalid.valid);
+        assert!(matches!(
+            invalid.outcome,
+            ValidateTargetOutcome::InvalidTarget { .. }
+        ));
+
+        assert_eq!(
+            ValidateTargetResponse::from_target_parse_error(
+                "ssh:remote"
+                    .parse::<SpawnTarget>()
+                    .expect_err("unsupported target"),
+            ),
+            ValidateTargetResponse::unsupported_target("ssh:remote")
+        );
     }
 }

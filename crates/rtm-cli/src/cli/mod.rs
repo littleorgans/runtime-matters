@@ -1,8 +1,10 @@
 use anyhow::{Context, Result, bail};
+use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use rtm_core::{
-    KillByPidRequest, KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse,
-    RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
+use lilo_rm_core::{
+    KillByPidRequest, KillRequest, Lifecycle, NudgeFailureReason, NudgeOutcome, NudgeRequest,
+    NudgeResponse, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest,
+    SpawnTarget, StatusFilter,
 };
 use uuid::Uuid;
 
@@ -61,8 +63,10 @@ pub struct SpawnArgs {
 
 #[derive(Debug, Args)]
 pub struct StatusArgs {
-    #[arg(long)]
-    session_id: Option<Uuid>,
+    #[arg(long = "session-id", value_name = "UUID")]
+    session_ids: Vec<Uuid>,
+    #[arg(long, value_parser = parse_updated_since)]
+    updated_since: Option<DateTime<Utc>>,
     #[arg(long)]
     runtime: Option<String>,
     #[arg(long)]
@@ -123,8 +127,8 @@ impl Cli {
 
 async fn spawn(args: SpawnArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
-    let cwd = rtm_core::capture_caller_cwd().context("failed to capture caller cwd")?;
-    let env = rtm_core::capture_caller_env();
+    let cwd = lilo_rm_core::capture_caller_cwd().context("failed to capture caller cwd")?;
+    let env = lilo_rm_core::capture_caller_env();
     let response = crate::shared::request(
         &socket_path,
         RuntimeRpc::Spawn {
@@ -144,15 +148,19 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
             lifecycle,
             event,
             log_dir,
+            stdout_path,
+            stderr_path,
         } => {
             println!(
-                "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={}",
+                "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={} stdout_path={} stderr_path={}",
                 lifecycle.state,
                 event_name(&event),
                 lifecycle
                     .runtime_pid
                     .expect("running lifecycle runtime pid"),
-                display_optional_path(log_dir.as_deref())
+                display_optional_path(log_dir.as_deref()),
+                display_optional_path(stdout_path.as_deref()),
+                display_optional_path(stderr_path.as_deref())
             );
         }
         other => anyhow::bail!("unexpected spawn response: {other:?}"),
@@ -229,8 +237,43 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Ack => {
-            println!("nudge OK; session_id={}", args.session_id);
+        RuntimeResponse::Nudge {
+            response:
+                NudgeResponse {
+                    delivered: true,
+                    outcome: NudgeOutcome::Delivered,
+                },
+        } => {
+            println!("nudge delivered; session_id={}", args.session_id);
+        }
+        RuntimeResponse::Nudge {
+            response:
+                NudgeResponse {
+                    delivered: false,
+                    outcome: NudgeOutcome::Unsupported(reason),
+                },
+        } => {
+            bail!(
+                "nudge unsupported; reason={} session_id={}",
+                nudge_failure_reason(reason),
+                args.session_id
+            );
+        }
+        RuntimeResponse::Nudge {
+            response:
+                NudgeResponse {
+                    delivered: false,
+                    outcome: NudgeOutcome::Failed(reason),
+                },
+        } => {
+            bail!(
+                "nudge failed; reason={} session_id={}",
+                nudge_failure_reason(reason),
+                args.session_id
+            );
+        }
+        RuntimeResponse::Nudge { response } => {
+            bail!("inconsistent nudge response: {response:?}");
         }
         other => bail!("unexpected nudge response: {other:?}"),
     }
@@ -242,7 +285,9 @@ async fn status(args: StatusArgs) -> Result<()> {
     let response = crate::shared::status_filtered(
         &socket_path,
         StatusFilter {
-            session_id: args.session_id,
+            session_id: None,
+            session_ids: args.session_ids,
+            updated_since: args.updated_since,
             runtime: args.runtime,
             state: args.state,
         },
@@ -265,7 +310,7 @@ async fn events() -> Result<()> {
     let events = crate::shared::events(&socket_path).await?;
     for event in events {
         match event {
-            rtm_core::RuntimeEvent::Running {
+            lilo_rm_core::RuntimeEvent::Running {
                 session_id,
                 runtime_pid,
                 start_time,
@@ -275,7 +320,7 @@ async fn events() -> Result<()> {
                 runtime_pid,
                 start_time.to_rfc3339()
             ),
-            rtm_core::RuntimeEvent::Terminated {
+            lilo_rm_core::RuntimeEvent::Terminated {
                 session_id,
                 exit_code,
                 signal,
@@ -287,7 +332,7 @@ async fn events() -> Result<()> {
                 display_optional_i32(signal),
                 evidence
             ),
-            rtm_core::RuntimeEvent::Lost {
+            lilo_rm_core::RuntimeEvent::Lost {
                 session_id,
                 evidence,
             } => println!(
@@ -299,11 +344,18 @@ async fn events() -> Result<()> {
     Ok(())
 }
 
-pub fn event_name(event: &rtm_core::RuntimeEvent) -> &'static str {
+pub fn event_name(event: &lilo_rm_core::RuntimeEvent) -> &'static str {
     match event {
-        rtm_core::RuntimeEvent::Running { .. } => "Running",
-        rtm_core::RuntimeEvent::Terminated { .. } => "Terminated",
-        rtm_core::RuntimeEvent::Lost { .. } => "Lost",
+        lilo_rm_core::RuntimeEvent::Running { .. } => "Running",
+        lilo_rm_core::RuntimeEvent::Terminated { .. } => "Terminated",
+        lilo_rm_core::RuntimeEvent::Lost { .. } => "Lost",
+    }
+}
+
+fn nudge_failure_reason(reason: NudgeFailureReason) -> &'static str {
+    match reason {
+        NudgeFailureReason::HeadlessLifecycle => "headless_lifecycle",
+        NudgeFailureReason::TmuxPaneDead => "tmux_pane_dead",
     }
 }
 
@@ -358,7 +410,11 @@ fn display_optional_i32(value: Option<i32>) -> String {
         .unwrap_or_else(|| "-".to_owned())
 }
 
-fn display_optional_tmux_pane(value: Option<&rtm_core::TmuxAddress>) -> String {
+fn parse_updated_since(value: &str) -> std::result::Result<DateTime<Utc>, chrono::ParseError> {
+    DateTime::parse_from_rfc3339(value).map(|time| time.with_timezone(&Utc))
+}
+
+fn display_optional_tmux_pane(value: Option<&lilo_rm_core::TmuxAddress>) -> String {
     value
         .map(ToString::to_string)
         .unwrap_or_else(|| "-".to_owned())

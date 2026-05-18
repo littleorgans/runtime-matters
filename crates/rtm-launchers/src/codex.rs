@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use rtm_core::{LaunchEnv, LauncherError, RuntimeKind, RuntimeLauncher, SpawnRequest};
+use lilo_rm_core::{LaunchEnv, LauncherError, RuntimeKind, RuntimeLauncher, SpawnRequest};
 
 static CODEX_PATH: OnceLock<Result<String, LauncherError>> = OnceLock::new();
 

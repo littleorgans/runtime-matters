@@ -105,7 +105,7 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
           }
         },
         {
-          "description": "Return rtmd Lifecycle rows, optionally filtered by session id, runtime, and lifecycle state.",
+          "description": "Return rtmd Lifecycle rows, optionally filtered by session id, session set, runtime, lifecycle state, and updated time.",
           "inputSchema": {
             "additionalProperties": false,
             "properties": {
@@ -118,8 +118,21 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
                 "format": "uuid",
                 "type": "string"
               },
+              "session_ids": {
+                "description": "Optional session id set filter.",
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "state": {
                 "description": "Optional lifecycle state filter.",
+                "type": "string"
+              },
+              "updated_since": {
+                "description": "Optional RFC3339 updated_at lower bound.",
+                "format": "date-time",
                 "type": "string"
               }
             },
@@ -143,7 +156,7 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
           }
         },
         {
-          "description": "Return the rtmd package version and build git sha.",
+          "description": "Return the rtmd package version, build git sha, protocol version, and advertised capabilities.",
           "inputSchema": {
             "additionalProperties": false,
             "properties": {},
@@ -155,8 +168,19 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
             "additionalProperties": false,
             "description": "Version metadata for the running daemon.",
             "properties": {
+              "capabilities": {
+                "description": "Stable runtime protocol capability names.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "git_sha": {
                 "description": "Build git sha.",
+                "type": "string"
+              },
+              "protocol_version": {
+                "description": "Runtime protocol compatibility version.",
                 "type": "string"
               },
               "version": {
@@ -201,12 +225,21 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
     "result": {
       "content": [
         {
-          "text": "{\"git_sha\":\"[git_sha]\",\"version\":\"[version]\"}",
+          "text": "{\"capabilities\":[\"structured_protocol_errors\",\"headless_stdio_log_paths\",\"status_session_set_filter\",\"status_updated_since_filter\",\"typed_nudge_outcomes\",\"validate_target_preflight\"],\"git_sha\":\"[git_sha]\",\"protocol_version\":\"0.2\",\"version\":\"[version]\"}",
           "type": "text"
         }
       ],
       "structuredContent": {
+        "capabilities": [
+          "structured_protocol_errors",
+          "headless_stdio_log_paths",
+          "status_session_set_filter",
+          "status_updated_since_filter",
+          "typed_nudge_outcomes",
+          "validate_target_preflight"
+        ],
         "git_sha": "[git_sha]",
+        "protocol_version": "0.2",
         "version": "[version]"
       }
     }

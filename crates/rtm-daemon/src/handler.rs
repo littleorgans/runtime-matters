@@ -2,12 +2,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use rtm_core::{RuntimeResponse, RuntimeRpc, read_json_line, write_json_line};
+use lilo_rm_core::{RuntimeResponse, RuntimeRpc, read_json_line, write_json_line};
 use tokio::io::BufReader;
 use tokio::net::UnixStream;
 use tokio::sync::broadcast;
 
-use crate::{doctor, mcp_bridge, server::ServerState, shim_socket};
+use crate::{
+    doctor,
+    error::{RpcErrorContext, protocol_error_response, rpc_error_response},
+    mcp_bridge,
+    server::ServerState,
+    shim_socket,
+};
 
 pub(crate) async fn handle_connection(
     stream: UnixStream,
@@ -19,9 +25,7 @@ pub(crate) async fn handle_connection(
 
     let response = match read_json_line::<_, RuntimeRpc>(&mut reader).await {
         Ok(rpc) => handle_rpc(rpc, state).await,
-        Err(error) => RuntimeResponse::Error {
-            message: error.to_string(),
-        },
+        Err(error) => protocol_error_response(error),
     };
     let should_stop = matches!(response, RuntimeResponse::Stopping);
 
@@ -33,11 +37,17 @@ pub(crate) async fn handle_connection(
 }
 
 async fn handle_rpc(rpc: RuntimeRpc, state: Arc<ServerState>) -> RuntimeResponse {
+    let error_context = error_context(&rpc);
     match handle_rpc_result(rpc, state).await {
         Ok(response) => response,
-        Err(error) => RuntimeResponse::Error {
-            message: error.to_string(),
-        },
+        Err(error) => rpc_error_response(error_context, error),
+    }
+}
+
+fn error_context(rpc: &RuntimeRpc) -> RpcErrorContext {
+    match rpc {
+        RuntimeRpc::Spawn { .. } => RpcErrorContext::Spawn,
+        _ => RpcErrorContext::Other,
     }
 }
 
@@ -46,8 +56,8 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
         RuntimeRpc::Spawn { request } => {
             let launch = rtm_launchers::dispatch(&request.runtime)?.launch_spec(&request)?;
             let ready_rx = state.begin_spawn(&request, launch).await?;
-            let log_dir = match shim_socket::launch_shim(state.config(), &request).await {
-                Ok(log_dir) => log_dir,
+            let log_paths = match shim_socket::launch_shim(state.config(), &request).await {
+                Ok(log_paths) => log_paths,
                 Err(error) => {
                     state.cancel_spawn(request.session_id).await;
                     return Err(error);
@@ -59,12 +69,25 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
                 .context("timed out waiting for ShimReady")?
                 .context("shim ready channel closed")?;
             let (lifecycle, event) = state.record_running(&request, ready).await?;
+            let (log_dir, stdout_path, stderr_path) = match log_paths {
+                Some(paths) => (
+                    Some(paths.log_dir),
+                    Some(paths.stdout_path),
+                    Some(paths.stderr_path),
+                ),
+                None => (None, None, None),
+            };
             Ok(RuntimeResponse::Spawned {
                 lifecycle,
                 event,
                 log_dir,
+                stdout_path,
+                stderr_path,
             })
         }
+        RuntimeRpc::ValidateTarget { request } => Ok(RuntimeResponse::ValidateTarget {
+            response: state.validate_target_request(request).await?,
+        }),
         RuntimeRpc::Kill { request } => {
             state.kill_runtime(request).await?;
             Ok(RuntimeResponse::Ack)
@@ -73,14 +96,14 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             response: state.kill_pid(request).await?,
         }),
         RuntimeRpc::Nudge { request } => {
-            state.nudge_runtime(request).await?;
-            Ok(RuntimeResponse::Ack)
+            let response = state.nudge_runtime(request).await?;
+            Ok(RuntimeResponse::Nudge { response })
         }
         RuntimeRpc::Status { request } => Ok(RuntimeResponse::Status {
             lifecycles: state.status(request.into()).await,
         }),
         RuntimeRpc::Version => Ok(RuntimeResponse::Version {
-            version: rtm_core::version_info(),
+            version: crate::version::runtime_version_info(),
         }),
         RuntimeRpc::Watchers => Ok(RuntimeResponse::Watchers {
             watchers: state.watcher_counts().await,
@@ -93,7 +116,7 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
         }),
         RuntimeRpc::Stop => Ok(RuntimeResponse::Stopping),
         RuntimeRpc::McpBridge { request } => Ok(RuntimeResponse::McpBridge {
-            response: rtm_core::McpBridgeResponse {
+            response: lilo_rm_core::McpBridgeResponse {
                 line: mcp_bridge::handle_line(&state, &request.line).await,
             },
         }),

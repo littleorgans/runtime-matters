@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use std::{fmt::Write as _, io::Read, io::Write};
 
 use chrono::{DateTime, TimeZone, Utc};
-use rtm_core::{Lifecycle, RuntimeKind, ShimReady};
+use lilo_rm_core::{Lifecycle, RuntimeKind, ShimReady};
 use rtm_store::{LifecycleStore, StoreConfig};
 use tempfile::TempDir;
 use uuid::Uuid;

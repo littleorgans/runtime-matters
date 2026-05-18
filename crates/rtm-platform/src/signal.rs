@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rtm_core::RuntimeSignal;
+use lilo_rm_core::RuntimeSignal;
 
 pub fn send_signal(pid: u32, signal: RuntimeSignal) -> Result<()> {
     send_raw_signal(pid, signal_number(signal))

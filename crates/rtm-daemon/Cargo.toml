@@ -4,11 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+publish = false
 
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
-rtm-core.workspace = true
+lilo-rm-core.workspace = true
 rtm-launchers.workspace = true
 rtm-platform.workspace = true
 rtm-store.workspace = true

@@ -52,7 +52,7 @@ pub const TOOL_LIST_JSON: &str = r#"{
       }
     },
     {
-      "description": "Return rtmd Lifecycle rows, optionally filtered by session id, runtime, and lifecycle state.",
+      "description": "Return rtmd Lifecycle rows, optionally filtered by session id, session set, runtime, lifecycle state, and updated time.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -65,8 +65,21 @@ pub const TOOL_LIST_JSON: &str = r#"{
             "format": "uuid",
             "type": "string"
           },
+          "session_ids": {
+            "description": "Optional session id set filter.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "state": {
             "description": "Optional lifecycle state filter.",
+            "type": "string"
+          },
+          "updated_since": {
+            "description": "Optional RFC3339 updated_at lower bound.",
+            "format": "date-time",
             "type": "string"
           }
         },
@@ -90,7 +103,7 @@ pub const TOOL_LIST_JSON: &str = r#"{
       }
     },
     {
-      "description": "Return the rtmd package version and build git sha.",
+      "description": "Return the rtmd package version, build git sha, protocol version, and advertised capabilities.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {},
@@ -102,8 +115,19 @@ pub const TOOL_LIST_JSON: &str = r#"{
         "additionalProperties": false,
         "description": "Version metadata for the running daemon.",
         "properties": {
+          "capabilities": {
+            "description": "Stable runtime protocol capability names.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "git_sha": {
             "description": "Build git sha.",
+            "type": "string"
+          },
+          "protocol_version": {
+            "description": "Runtime protocol compatibility version.",
             "type": "string"
           },
           "version": {

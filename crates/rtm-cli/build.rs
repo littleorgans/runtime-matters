@@ -2,11 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use rtm_core::tool_contracts::{ToolContract, ToolRegistry, contract_registry};
+use lilo_rm_core::tool_contracts::{ToolContract, ToolRegistry, contract_registry};
 
 fn main() {
     emit_cli_version();
-    println!("cargo:rerun-if-changed=../../tools.toml");
+    println!("cargo:rerun-if-changed=../rtm-core/tools.toml");
 
     let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
@@ -152,25 +152,25 @@ fn skill_doc(registry: &ToolRegistry) -> String {
 fn contract_aliases(name: &str, contract: &ToolContract) -> String {
     match name {
         "rtm_kill_by_pid" => format!(
-            "pub type {} = rtm_core::KillByPidRequest;\n\
-             pub type {} = rtm_core::KillByPidResponse;\n\n",
+            "pub type {} = lilo_rm_core::KillByPidRequest;\n\
+             pub type {} = lilo_rm_core::KillByPidResponse;\n\n",
             contract.args_type, contract.response_type
         ),
         "rtm_status" => format!(
-            "pub type {} = rtm_core::StatusFilter;\n\
-             pub type {} = rtm_core::StatusResponse;\n\n",
+            "pub type {} = lilo_rm_core::StatusFilter;\n\
+             pub type {} = lilo_rm_core::StatusResponse;\n\n",
             contract.args_type, contract.response_type
         ),
         "rtm_version" => format!(
             "#[derive(Clone, Debug, Default, Eq, PartialEq)]\n\
              pub struct {};\n\
-             pub type {} = rtm_core::VersionInfo;\n\n",
+             pub type {} = lilo_rm_core::VersionInfo;\n\n",
             contract.args_type, contract.response_type
         ),
         "rtm_watchers" => format!(
             "#[derive(Clone, Debug, Default, Eq, PartialEq)]\n\
              pub struct {};\n\
-             pub type {} = rtm_core::WatcherCounts;\n\n",
+             pub type {} = lilo_rm_core::WatcherCounts;\n\n",
             contract.args_type, contract.response_type
         ),
         other => panic!("unsupported tool contract {other}"),

@@ -3,7 +3,7 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use rtm_core::{
+use lilo_rm_core::{
     HeadlessSpawnTarget, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget,
 };
 use uuid::Uuid;

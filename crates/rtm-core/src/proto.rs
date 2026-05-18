@@ -1,20 +1,26 @@
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
 use crate::{
-    KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, McpBridgeRequest,
-    McpBridgeResponse, NudgeRequest, ProtocolError, RuntimeEvent, ShimExit, ShimLaunchRequest,
-    ShimReady, SpawnRequest, StatusFilter, WatcherCounts,
+    ErrorCode, KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle,
+    McpBridgeRequest, McpBridgeResponse, NudgeRequest, NudgeResponse, ProtocolError, RuntimeEvent,
+    ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, StatusFilter, ValidateTargetRequest,
+    ValidateTargetResponse, WatcherCounts,
 };
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 pub struct StatusRequest {
     pub session_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub session_ids: Vec<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_since: Option<DateTime<Utc>>,
     #[serde(default)]
     pub runtime: Option<String>,
     #[serde(default)]
@@ -25,8 +31,22 @@ impl From<StatusRequest> for StatusFilter {
     fn from(request: StatusRequest) -> Self {
         Self {
             session_id: request.session_id,
+            session_ids: request.session_ids,
+            updated_since: request.updated_since,
             runtime: request.runtime,
             state: request.state,
+        }
+    }
+}
+
+impl From<StatusFilter> for StatusRequest {
+    fn from(filter: StatusFilter) -> Self {
+        Self {
+            session_id: filter.session_id,
+            session_ids: filter.session_ids,
+            updated_since: filter.updated_since,
+            runtime: filter.runtime,
+            state: filter.state,
         }
     }
 }
@@ -34,20 +54,46 @@ impl From<StatusRequest> for StatusFilter {
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum RuntimeRpc {
-    Spawn { request: SpawnRequest },
-    Kill { request: KillRequest },
-    KillByPid { request: KillByPidRequest },
-    Nudge { request: NudgeRequest },
-    Status { request: StatusRequest },
+    Spawn {
+        request: SpawnRequest,
+    },
+    ValidateTarget {
+        request: ValidateTargetRequest,
+    },
+    Kill {
+        request: KillRequest,
+    },
+    KillByPid {
+        request: KillByPidRequest,
+    },
+    Nudge {
+        request: NudgeRequest,
+    },
+    Status {
+        request: StatusRequest,
+    },
     Version,
     Watchers,
     Doctor,
+    /// Return the current daemon process event vector.
+    ///
+    /// v0.2 has no cursor parameter. Clients poll this request, filter by
+    /// session, and dedupe by session id plus full event content. Cursor based
+    /// `Events { since } -> { cursor, events }` support is deferred to v0.3.
     Events,
     Stop,
-    McpBridge { request: McpBridgeRequest },
-    ShimLaunch { request: ShimLaunchRequest },
-    ShimReady { ready: ShimReady },
-    ShimExit { exit: ShimExit },
+    McpBridge {
+        request: McpBridgeRequest,
+    },
+    ShimLaunch {
+        request: ShimLaunchRequest,
+    },
+    ShimReady {
+        ready: ShimReady,
+    },
+    ShimExit {
+        exit: ShimExit,
+    },
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
@@ -57,12 +103,20 @@ pub enum RuntimeResponse {
         lifecycle: Lifecycle,
         event: RuntimeEvent,
         log_dir: Option<PathBuf>,
+        stdout_path: Option<PathBuf>,
+        stderr_path: Option<PathBuf>,
+    },
+    ValidateTarget {
+        response: ValidateTargetResponse,
     },
     Status {
         lifecycles: Vec<Lifecycle>,
     },
     KillByPid {
         response: KillByPidResponse,
+    },
+    Nudge {
+        response: NudgeResponse,
     },
     Version {
         version: crate::VersionInfo,
@@ -73,6 +127,10 @@ pub enum RuntimeResponse {
     Doctor {
         doctor: crate::DoctorResponse,
     },
+    /// Events in daemon append order.
+    ///
+    /// The vector is retained only in current rtmd process memory. It has no
+    /// cursor, retention window, sqlite replay, or limit policy in v0.2.
     Events {
         events: Vec<RuntimeEvent>,
     },
@@ -85,8 +143,18 @@ pub enum RuntimeResponse {
     Ack,
     Stopping,
     Error {
+        code: ErrorCode,
         message: String,
     },
+}
+
+impl RuntimeResponse {
+    pub fn error(code: ErrorCode, message: impl Into<String>) -> Self {
+        Self::Error {
+            code,
+            message: message.into(),
+        }
+    }
 }
 
 pub async fn read_json_line<R, T>(reader: &mut R) -> Result<T, ProtocolError>

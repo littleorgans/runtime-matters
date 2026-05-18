@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::Subcommand;
-use rtm_core::{RuntimeResponse, RuntimeRpc};
+use lilo_rm_core::{RuntimeResponse, RuntimeRpc};
 
 #[derive(Debug, Subcommand)]
 pub enum DaemonCommand {

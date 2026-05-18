@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
-use rtm_core::{
+use lilo_rm_core::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse, KillByPidRequest, MCP_PROTOCOL_VERSION,
     StatusFilter, StatusResponse, json_rpc_error, json_rpc_failure, json_rpc_result,
     tool_contracts::contract_registry, tool_error, tool_success,
@@ -45,7 +45,7 @@ async fn handle_request(
 }
 
 fn initialize_result() -> Value {
-    let version = rtm_core::version_info();
+    let version = crate::version::runtime_version_info();
     json!({
         "protocolVersion": MCP_PROTOCOL_VERSION,
         "capabilities": { "tools": {} },
@@ -105,7 +105,7 @@ async fn status(state: &Arc<ServerState>, arguments: Value) -> Result<Value> {
 
 fn version(arguments: Value) -> Result<Value> {
     ensure_empty_arguments(arguments)?;
-    let response = rtm_core::version_info();
+    let response = crate::version::runtime_version_info();
     let text = serde_json::to_string(&response)?;
     Ok(tool_success(text, &response))
 }

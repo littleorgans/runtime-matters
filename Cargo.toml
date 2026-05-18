@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/rtm-core",
+    "crates/rtm-client",
     "crates/rtm-platform",
     "crates/rtm-launchers",
     "crates/rtm-store",
@@ -13,7 +14,10 @@ resolver = "3"
 version = "0.1.7"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/helioy/runtime-matters"
+repository = "https://github.com/littleorgans/runtime-matters"
+homepage = "https://github.com/littleorgans/runtime-matters"
+authors = ["Stuart Robinson"]
+rust-version = "1.90"
 
 [workspace.dependencies]
 anyhow = "1.0.100"
@@ -21,7 +25,8 @@ chrono = { version = "0.4.42", features = ["clock", "serde"] }
 clap = { version = "4.5.51", features = ["derive"] }
 insta = { version = "1.43.2", features = ["json", "redactions"] }
 libc = "0.2.186"
-rtm-core = { path = "crates/rtm-core" }
+lilo-rm-core = { path = "crates/rtm-core", version = "0.2.0" }
+lilo-rm-client = { path = "crates/rtm-client", version = "0.2.0" }
 rtm-daemon = { path = "crates/rtm-daemon" }
 rtm-launchers = { path = "crates/rtm-launchers" }
 rtm-platform = { path = "crates/rtm-platform" }

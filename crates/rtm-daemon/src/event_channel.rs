@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use rtm_core::{Lifecycle, LifecycleState, LostEvidence, RuntimeEvent, TerminationEvidence};
+use lilo_rm_core::{Lifecycle, LifecycleState, LostEvidence, RuntimeEvent, TerminationEvidence};
 
 pub(crate) fn running_event(lifecycle: &Lifecycle) -> Result<RuntimeEvent> {
     let runtime_pid = lifecycle

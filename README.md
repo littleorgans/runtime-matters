@@ -54,6 +54,27 @@ cargo run -p rtm-cli --example test_spawn -- --target headless --runtime claude 
 "$rtm_bin" status
 ```
 
+## Events Contract
+
+`RuntimeRpc::Events` is the v0.2 event endpoint. It returns
+`RuntimeResponse::Events { events: Vec<RuntimeEvent> }`.
+
+The daemon appends events in observation order as they are recorded by the
+current rtmd process: `Running` after shim ready is stored, `Terminated` or
+`Lost` when exit or loss evidence is observed. Each poll preserves that append
+order. The vector is a recent in memory view for the current daemon process.
+There is no cursor, retention window, sqlite replay, or limit policy. Restarting
+rtmd starts a fresh in memory vector.
+
+For session-matters v0.2, poll `Events`, filter to the session ids it owns, and
+dedupe using the session id plus full event content. Use `Status` with
+`session_ids` and `updated_since` as the authoritative lifecycle view when
+reconciliation matters.
+
+Cursor support is reserved for v0.3. The deferred shape is
+`Events { since } -> { cursor, events }`; v0.2 clients should neither send nor
+expect a cursor.
+
 Stop the daemon:
 
 ```bash
@@ -83,7 +104,9 @@ The load gate also prints raw RSS and OS footprint for diagnostics. The assertio
 
 ## Release
 
-Release Please owns changelog and version bumps through `.release-please-manifest.json` and `release-please-config.json`. cargo-dist owns binary artifact planning and tagged release builds. This pass does not create a release tag.
+Release Please owns binary changelog and version bumps through `.release-please-manifest.json` and `release-please-config.json`. cargo-dist owns binary artifact planning and tagged release builds. This pass does not create a release tag.
+
+The public crates.io contract is limited to `lilo-rm-core` and `lilo-rm-client`. release-plz owns their crate release PRs and GitHub Releases, while `publish.yml` uploads only the tagged public crate. The daemon, CLI, platform, launchers, and store crates are private implementation details.
 
 ## Roadmap
 
@@ -97,7 +120,7 @@ Release Please owns changelog and version bumps through `.release-please-manifes
 | Tool | Purpose |
 | --- | --- |
 | `rtm_kill_by_pid` | Admin escape hatch that signals a runtime process by pid, waits for the grace period, then sends SIGKILL if the process remains alive. |
-| `rtm_status` | Return rtmd Lifecycle rows, optionally filtered by session id, runtime, and lifecycle state. |
-| `rtm_version` | Return the rtmd package version and build git sha. |
+| `rtm_status` | Return rtmd Lifecycle rows, optionally filtered by session id, session set, runtime, lifecycle state, and updated time. |
+| `rtm_version` | Return the rtmd package version, build git sha, protocol version, and advertised capabilities. |
 | `rtm_watchers` | Return rtmd operator visibility counters for kqueue watchers and pending shim socket waiters. |
 <!-- rtm-admin-tools:end -->

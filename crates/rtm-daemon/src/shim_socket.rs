@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rtm_core::{
+use lilo_rm_core::{
     LaunchEnv, LaunchSpec, RuntimeResponse, RuntimeRpc, ShimExit, ShimLaunchRequest, ShimReady,
     SpawnRequest, SpawnTarget, read_json_line, read_json_line_blocking, write_json_line,
     write_json_line_blocking,
@@ -15,7 +15,16 @@ use tokio::process::Command;
 
 use crate::server::DaemonConfig;
 
-pub async fn launch_shim(config: &DaemonConfig, request: &SpawnRequest) -> Result<Option<PathBuf>> {
+pub struct HeadlessLogPaths {
+    pub log_dir: PathBuf,
+    pub stdout_path: PathBuf,
+    pub stderr_path: PathBuf,
+}
+
+pub async fn launch_shim(
+    config: &DaemonConfig,
+    request: &SpawnRequest,
+) -> Result<Option<HeadlessLogPaths>> {
     let env = shim_env(config);
     match &request.target {
         SpawnTarget::Tmux(target) => {
@@ -33,15 +42,17 @@ async fn launch_headless_shim(
     config: &DaemonConfig,
     request: &SpawnRequest,
     env: &[LaunchEnv],
-) -> Result<PathBuf> {
+) -> Result<HeadlessLogPaths> {
     let log_dir = config.session_log_dir(request.session_id);
+    let stdout_path = log_dir.join("stdout.log");
+    let stderr_path = log_dir.join("stderr.log");
     tokio::fs::create_dir_all(&log_dir)
         .await
         .with_context(|| format!("failed to create log directory {}", log_dir.display()))?;
-    let stdout = File::create(log_dir.join("stdout.log"))
+    let stdout = File::create(&stdout_path)
         .await
         .context("failed to create headless stdout log")?;
-    let stderr = File::create(log_dir.join("stderr.log"))
+    let stderr = File::create(&stderr_path)
         .await
         .context("failed to create headless stderr log")?;
 
@@ -69,7 +80,11 @@ async fn launch_headless_shim(
         .context("headless shim stderr missing")?;
     spawn_log_copy(request.session_id, "stdout", child_stdout, stdout);
     spawn_log_copy(request.session_id, "stderr", child_stderr, stderr);
-    Ok(log_dir)
+    Ok(HeadlessLogPaths {
+        log_dir,
+        stdout_path,
+        stderr_path,
+    })
 }
 
 fn spawn_log_copy<R>(session_id: uuid::Uuid, stream: &'static str, reader: R, file: File)
@@ -190,7 +205,7 @@ fn send_shim_rpc_blocking(
 fn launch_from_response(response: RuntimeResponse) -> Result<LaunchSpec> {
     match response {
         RuntimeResponse::ShimLaunch { launch } => Ok(launch),
-        RuntimeResponse::Error { message } => anyhow::bail!(message),
+        RuntimeResponse::Error { message, .. } => anyhow::bail!(message),
         response => anyhow::bail!("unexpected ShimLaunch response: {response:?}"),
     }
 }
@@ -198,6 +213,7 @@ fn launch_from_response(response: RuntimeResponse) -> Result<LaunchSpec> {
 fn ack_from_response(response: RuntimeResponse, label: &'static str) -> Result<()> {
     match response {
         RuntimeResponse::Ack => Ok(()),
+        RuntimeResponse::Error { message, .. } => anyhow::bail!(message),
         response => anyhow::bail!("unexpected {label} response: {response:?}"),
     }
 }

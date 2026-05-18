@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use rtm_core::{LaunchEnv, TmuxAddress};
+use lilo_rm_core::{LaunchEnv, TmuxAddress};
 use tokio::process::Command;
 
 pub struct TmuxGateway;
@@ -15,15 +15,15 @@ impl TmuxGateway {
         Ok(Some(stdout(output).trim().to_owned()))
     }
 
-    pub async fn nudge(tmux_pane: &TmuxAddress, content: &str) -> Result<()> {
+    pub async fn nudge(tmux_pane: &TmuxAddress, content: &str) -> Result<bool> {
         if !Self::is_alive(tmux_pane).await? {
-            bail!("tmux pane {tmux_pane} is not alive");
+            return Ok(false);
         }
         let target = tmux_pane.to_string();
         for trailing in build_nudge_send_keys_steps(content) {
             send_keys(&target, &trailing).await?;
         }
-        Ok(())
+        Ok(true)
     }
 
     pub async fn respawn_pane(

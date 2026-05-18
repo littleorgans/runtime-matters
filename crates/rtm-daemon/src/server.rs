@@ -4,17 +4,19 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
-use rtm_core::{
+use lilo_rm_core::{
     KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, LifecycleState,
-    LostEvidence, NudgeRequest, RuntimeEvent, RuntimeExit, RuntimeSignal, ShimExit, ShimReady,
-    SpawnRequest, StatusFilter, TerminationEvidence, WatcherCounts,
+    LostEvidence, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent,
+    RuntimeExit, RuntimeSignal, ShimExit, ShimReady, SpawnRequest, StatusFilter,
+    TerminationEvidence, ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse,
+    WatcherCounts,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use tokio::net::UnixListener;
 use tokio::sync::{Mutex, broadcast, oneshot};
 use uuid::Uuid;
 
-use crate::{event_channel, handler, reconcile, socket};
+use crate::{error::RuntimeFailure, event_channel, handler, reconcile, socket};
 
 #[derive(Clone, Debug)]
 pub struct DaemonConfig {
@@ -152,7 +154,7 @@ impl ServerState {
         launch: LaunchSpec,
     ) -> Result<oneshot::Receiver<ShimReady>> {
         if self.store.get(request.session_id).await?.is_some() {
-            bail!("session {} already exists", request.session_id);
+            return Err(RuntimeFailure::session_already_exists(request.session_id));
         }
         self.validate_spawn_target(request).await?;
 
@@ -172,19 +174,50 @@ impl ServerState {
     }
 
     async fn validate_spawn_target(&self, request: &SpawnRequest) -> Result<()> {
-        if let Some(address) = request.target.tmux_address()
+        match self.validate_target(&request.target).await?.outcome {
+            ValidateTargetOutcome::Valid => Ok(()),
+            ValidateTargetOutcome::TmuxPaneDead { address } => {
+                Err(RuntimeFailure::tmux_pane_dead(address))
+            }
+            ValidateTargetOutcome::InvalidTarget { message } => {
+                Err(RuntimeFailure::protocol_mismatch(message))
+            }
+            ValidateTargetOutcome::UnsupportedTarget { target } => Err(
+                RuntimeFailure::protocol_mismatch(format!("unsupported target {target}")),
+            ),
+        }
+    }
+
+    pub(crate) async fn validate_target_request(
+        &self,
+        request: ValidateTargetRequest,
+    ) -> Result<ValidateTargetResponse> {
+        let target = match request.target.parse() {
+            Ok(target) => target,
+            Err(error) => return Ok(ValidateTargetResponse::from_target_parse_error(error)),
+        };
+        self.validate_target(&target).await
+    }
+
+    async fn validate_target(
+        &self,
+        target: &lilo_rm_core::SpawnTarget,
+    ) -> Result<ValidateTargetResponse> {
+        if let Some(address) = target.tmux_address()
             && !rtm_platform::tmux::TmuxGateway::is_alive(address).await?
         {
-            bail!("tmux address {address} is not alive");
+            return Ok(ValidateTargetResponse::tmux_pane_dead(address.clone()));
         }
-        Ok(())
+        Ok(ValidateTargetResponse::valid())
     }
 
     async fn begin_ready_wait(&self, session_id: Uuid) -> Result<oneshot::Receiver<ShimReady>> {
         let (sender, receiver) = oneshot::channel();
         let previous = self.pending_ready.lock().await.insert(session_id, sender);
         if previous.is_some() {
-            bail!("session {session_id} already has a pending shim");
+            return Err(RuntimeFailure::protocol_mismatch(format!(
+                "session {session_id} already has a pending shim"
+            )));
         }
         Ok(receiver)
     }
@@ -202,15 +235,22 @@ impl ServerState {
             .lock()
             .await
             .remove(&session_id)
-            .ok_or_else(|| anyhow!("no pending launch for session {session_id}"))
+            .ok_or_else(|| {
+                RuntimeFailure::protocol_mismatch(format!(
+                    "no pending launch for session {session_id}"
+                ))
+            })
     }
 
     pub(crate) async fn complete_shim_ready(self: &Arc<Self>, ready: ShimReady) -> Result<()> {
         let sender = self.pending_ready.lock().await.remove(&ready.session_id);
         if let Some(sender) = sender {
-            return sender
-                .send(ready)
-                .map_err(|ready| anyhow!("spawn waiter dropped for session {}", ready.session_id));
+            return sender.send(ready).map_err(|ready| {
+                RuntimeFailure::protocol_mismatch(format!(
+                    "spawn waiter dropped for session {}",
+                    ready.session_id
+                ))
+            });
         }
         self.record_reconnected_ready(ready).await.map(|_| ())
     }
@@ -225,15 +265,18 @@ impl ServerState {
             .store
             .get(request.session_id)
             .await?
-            .ok_or_else(|| anyhow!("no lifecycle for session {}", request.session_id))?;
+            .ok_or_else(|| RuntimeFailure::session_not_found(request.session_id))?;
         if lifecycle.runtime != request.runtime {
-            bail!("runtime mismatch for session {}", request.session_id);
+            return Err(RuntimeFailure::protocol_mismatch(format!(
+                "runtime mismatch for session {}",
+                request.session_id
+            )));
         }
         if !lifecycle.mark_running(ready) {
-            bail!(
+            return Err(RuntimeFailure::protocol_mismatch(format!(
                 "session {} is not waiting for ShimReady",
                 request.session_id
-            );
+            )));
         }
         lifecycle.tmux_pane = request.target.tmux_address().cloned();
         self.store.update_lifecycle(&lifecycle).await?;
@@ -293,19 +336,30 @@ impl ServerState {
         })
     }
 
-    pub(crate) async fn nudge_runtime(&self, request: NudgeRequest) -> Result<()> {
+    pub(crate) async fn nudge_runtime(&self, request: NudgeRequest) -> Result<NudgeResponse> {
         let lifecycle = self
             .store
             .get(request.session_id)
             .await?
-            .ok_or_else(|| anyhow!("session {} not found", request.session_id))?;
-        let tmux_pane = lifecycle.tmux_pane.as_ref().ok_or_else(|| {
-            anyhow!(
-                "nudge not supported for headless lifecycle {}",
-                request.session_id
-            )
-        })?;
-        rtm_platform::tmux::TmuxGateway::nudge(tmux_pane, &request.content).await
+            .ok_or_else(|| RuntimeFailure::session_not_found(request.session_id))?;
+        let Some(tmux_pane) = lifecycle.tmux_pane.as_ref() else {
+            return Ok(NudgeResponse {
+                delivered: false,
+                outcome: NudgeOutcome::Unsupported(NudgeFailureReason::HeadlessLifecycle),
+            });
+        };
+
+        if !rtm_platform::tmux::TmuxGateway::nudge(tmux_pane, &request.content).await? {
+            return Ok(NudgeResponse {
+                delivered: false,
+                outcome: NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead),
+            });
+        }
+
+        Ok(NudgeResponse {
+            delivered: true,
+            outcome: NudgeOutcome::Delivered,
+        })
     }
 
     pub(crate) async fn record_shim_exit(&self, exit: ShimExit) -> Result<Option<RuntimeEvent>> {
@@ -335,8 +389,8 @@ impl ServerState {
     }
 
     pub(crate) async fn status(&self, filter: StatusFilter) -> Vec<Lifecycle> {
-        match self.store.list(filter.session_id).await {
-            Ok(rows) => filter_lifecycles(rows, &filter),
+        match self.store.list(&filter).await {
+            Ok(rows) => rows,
             Err(error) => {
                 tracing::warn!(%error, "failed to read lifecycle status");
                 Vec::new()
@@ -381,7 +435,7 @@ impl ServerState {
             .get(session_id)
             .await?
             .and_then(|lifecycle| lifecycle.runtime_pid)
-            .ok_or_else(|| anyhow!("session {session_id} not found"))
+            .ok_or_else(|| RuntimeFailure::session_not_found(session_id))
     }
 
     async fn is_terminal(&self, session_id: Uuid) -> bool {
@@ -424,7 +478,7 @@ impl ServerState {
             .store
             .get(session_id)
             .await?
-            .ok_or_else(|| anyhow!("session {session_id} not found"))?;
+            .ok_or_else(|| RuntimeFailure::session_not_found(session_id))?;
         if !lifecycle.mark_exited(exit) {
             return Ok(None);
         }
@@ -441,7 +495,7 @@ impl ServerState {
             .store
             .get(session_id)
             .await?
-            .ok_or_else(|| anyhow!("session {session_id} not found"))?;
+            .ok_or_else(|| RuntimeFailure::session_not_found(session_id))?;
         if !lifecycle.mark_lost(evidence) {
             return Ok(None);
         }
@@ -479,7 +533,7 @@ impl ServerState {
             .store
             .get(ready.session_id)
             .await?
-            .ok_or_else(|| anyhow!("session {} not found", ready.session_id))?;
+            .ok_or_else(|| RuntimeFailure::session_not_found(ready.session_id))?;
         match lifecycle.state {
             LifecycleState::Forking => {
                 lifecycle.mark_running(ready);
@@ -499,30 +553,6 @@ impl ServerState {
                 bail!("session {} is already terminal", lifecycle.session_id)
             }
         }
-    }
-}
-
-fn filter_lifecycles(rows: Vec<Lifecycle>, filter: &StatusFilter) -> Vec<Lifecycle> {
-    rows.into_iter()
-        .filter(|row| runtime_matches(row, filter.runtime.as_deref()))
-        .filter(|row| state_matches(row, filter.state.as_deref()))
-        .collect()
-}
-
-fn runtime_matches(row: &Lifecycle, runtime: Option<&str>) -> bool {
-    runtime.is_none_or(|runtime| row.runtime.as_str() == runtime)
-}
-
-fn state_matches(row: &Lifecycle, state: Option<&str>) -> bool {
-    state.is_none_or(|state| state_name(&row.state).eq_ignore_ascii_case(state))
-}
-
-fn state_name(state: &LifecycleState) -> &'static str {
-    match state {
-        LifecycleState::Forking => "Forking",
-        LifecycleState::Running => "Running",
-        LifecycleState::Exited(_) => "Exited",
-        LifecycleState::Lost(_) => "Lost",
     }
 }
 

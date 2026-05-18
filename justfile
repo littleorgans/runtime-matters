@@ -39,6 +39,9 @@ _install-bin src:
 test:
     cargo test --workspace
 
+publish-dry-run:
+    cargo publish -p lilo-rm-core -p lilo-rm-client --dry-run --allow-dirty
+
 insta-test:
     cargo insta test --all
 

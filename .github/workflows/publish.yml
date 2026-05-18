@@ -1,0 +1,50 @@
+name: Publish to crates.io
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  id-token: write
+  attestations: write
+  contents: read
+
+jobs:
+  publish:
+    name: Publish public contract crates
+    if: startsWith(github.event.release.tag_name, 'lilo-rm-core-v') || startsWith(github.event.release.tag_name, 'lilo-rm-client-v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish selected crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          case "$RELEASE_TAG" in
+            lilo-rm-core-v*) cargo publish -p lilo-rm-core ;;
+            lilo-rm-client-v*) cargo publish -p lilo-rm-client ;;
+            *) echo "Unsupported release tag: $RELEASE_TAG" >&2; exit 1 ;;
+          esac
+
+      - name: Repackage selected crate for attestation
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          case "$RELEASE_TAG" in
+            lilo-rm-core-v*) cargo package -p lilo-rm-core --allow-dirty ;;
+            lilo-rm-client-v*) cargo package -p lilo-rm-client --allow-dirty ;;
+            *) echo "Unsupported release tag: $RELEASE_TAG" >&2; exit 1 ;;
+          esac
+
+      - name: Attest crate package
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: target/package/*.crate

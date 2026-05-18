@@ -1,13 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, bail};
-use rtm_core::{
-    RuntimeEvent, RuntimeResponse, RuntimeRpc, StatusFilter, StatusRequest, read_json_line,
-    write_json_line,
-};
-use tokio::io::BufReader;
-use tokio::net::UnixStream;
+use anyhow::{Result, bail};
+use lilo_rm_core::{RuntimeEvent, RuntimeResponse, RuntimeRpc, StatusFilter, StatusRequest};
 use uuid::Uuid;
 
 pub fn socket_path() -> Result<PathBuf> {
@@ -15,18 +10,7 @@ pub fn socket_path() -> Result<PathBuf> {
 }
 
 pub async fn request(socket_path: &Path, rpc: RuntimeRpc) -> Result<RuntimeResponse> {
-    let stream = UnixStream::connect(socket_path)
-        .await
-        .with_context(|| format!("failed to connect to {}", socket_path.display()))?;
-    let (read_half, mut write_half) = stream.into_split();
-    write_json_line(&mut write_half, &rpc).await?;
-
-    let mut reader = BufReader::new(read_half);
-    let response = read_json_line(&mut reader).await?;
-    match response {
-        RuntimeResponse::Error { message } => bail!(message),
-        other => Ok(other),
-    }
+    Ok(lilo_rm_client::request(socket_path, rpc).await?)
 }
 
 pub async fn status(socket_path: &Path, session_id: Option<Uuid>) -> Result<RuntimeResponse> {
@@ -34,6 +18,8 @@ pub async fn status(socket_path: &Path, session_id: Option<Uuid>) -> Result<Runt
         socket_path,
         StatusFilter {
             session_id,
+            session_ids: Vec::new(),
+            updated_since: None,
             runtime: None,
             state: None,
         },
@@ -45,11 +31,7 @@ pub async fn status_filtered(socket_path: &Path, filter: StatusFilter) -> Result
     request(
         socket_path,
         RuntimeRpc::Status {
-            request: StatusRequest {
-                session_id: filter.session_id,
-                runtime: filter.runtime,
-                state: filter.state,
-            },
+            request: StatusRequest::from(filter),
         },
     )
     .await
