@@ -1256,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-cli"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1278,7 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-daemon"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1295,7 +1295,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-launchers"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "lilo-rm-core",
  "uuid",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-platform"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-store"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "chrono",
