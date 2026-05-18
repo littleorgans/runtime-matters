@@ -1,16 +1,18 @@
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use lilo_rm_core::{
     EVENT_LOG_RETENTION_MIN_AGE_SECS, EVENT_LOG_RETENTION_MIN_EVENTS, EventCursor, RuntimeEvent,
+    clamped_event_wait_ms,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 const EVENT_LOG_FILE: &str = "events.jsonl";
 const EVENT_LOG_SYNC_BATCH: usize = 32;
@@ -30,6 +32,8 @@ pub(crate) struct CursorExpired {
 pub(crate) struct EventLog {
     path: PathBuf,
     inner: Mutex<EventLogInner>,
+    append_notify: Notify,
+    waiter_count: AtomicUsize,
 }
 
 struct EventLogInner {
@@ -71,6 +75,8 @@ impl EventLog {
         let file = open_append_file(&path)?;
         Ok(Self {
             path,
+            append_notify: Notify::new(),
+            waiter_count: AtomicUsize::new(0),
             inner: Mutex::new(EventLogInner {
                 file,
                 events,
@@ -99,6 +105,8 @@ impl EventLog {
         inner.events_since_sync += 1;
         sync_if_due(&mut inner)?;
         compact_if_due(&self.path, &mut inner)?;
+        drop(inner);
+        self.append_notify.notify_waiters();
         Ok(entry.event)
     }
 
@@ -125,6 +133,36 @@ impl EventLog {
         })
     }
 
+    pub(crate) async fn events_since_or_wait(
+        &self,
+        since: Option<EventCursor>,
+        wait_ms: Option<u32>,
+    ) -> std::result::Result<EventBatch, CursorExpired> {
+        let wait_ms = clamped_event_wait_ms(wait_ms);
+        let immediate = self.events_since(since).await?;
+        if wait_ms == 0 || !immediate.events.is_empty() {
+            return Ok(immediate);
+        }
+
+        let notified = self.append_notify.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        let second_check = self.events_since(since).await?;
+        if !second_check.events.is_empty() {
+            return Ok(second_check);
+        }
+
+        let _guard = EventWaiterGuard::new(&self.waiter_count);
+        tokio::select! {
+            () = notified => self.events_since(since).await,
+            () = tokio::time::sleep(Duration::from_millis(u64::from(wait_ms))) => Ok(second_check),
+        }
+    }
+
+    pub(crate) async fn waiter_count(&self) -> usize {
+        self.waiter_count.load(Ordering::SeqCst)
+    }
+
     #[cfg(test)]
     pub(crate) async fn append_with_ts(
         &self,
@@ -143,7 +181,26 @@ impl EventLog {
         inner.file.write_all(b"\n")?;
         inner.events.push(entry.clone());
         compact_if_due(&self.path, &mut inner)?;
+        drop(inner);
+        self.append_notify.notify_waiters();
         Ok(entry.event)
+    }
+}
+
+struct EventWaiterGuard<'a> {
+    waiter_count: &'a AtomicUsize,
+}
+
+impl<'a> EventWaiterGuard<'a> {
+    fn new(waiter_count: &'a AtomicUsize) -> Self {
+        waiter_count.fetch_add(1, Ordering::SeqCst);
+        Self { waiter_count }
+    }
+}
+
+impl Drop for EventWaiterGuard<'_> {
+    fn drop(&mut self) {
+        self.waiter_count.fetch_sub(1, Ordering::SeqCst);
     }
 }
 

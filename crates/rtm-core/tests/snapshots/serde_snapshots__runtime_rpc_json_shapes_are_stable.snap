@@ -92,7 +92,8 @@ expression: rpcs
   {
     "type": "events",
     "payload": {
-      "since": 7
+      "since": 7,
+      "wait_ms": 500
     }
   },
   {

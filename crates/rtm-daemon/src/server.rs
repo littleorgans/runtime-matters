@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use lilo_rm_core::{
-    CaptureError, CaptureRequest, CaptureResponse, EventCursor, KillByPidRequest,
+    CaptureError, CaptureRequest, CaptureResponse, EventsRequest, KillByPidRequest,
     KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, LifecycleLogAvailability,
     LifecycleState, LogAvailability, LogsUnavailableReason, LostEvidence, NudgeFailureReason,
     NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeSignal, ShimExit,
@@ -485,15 +485,18 @@ impl ServerState {
 
     pub(crate) async fn events(
         &self,
-        since: Option<EventCursor>,
+        request: EventsRequest,
     ) -> std::result::Result<EventBatch, CursorExpired> {
-        self.event_log.events_since(since).await
+        self.event_log
+            .events_since_or_wait(request.since, request.wait_ms)
+            .await
     }
 
     pub(crate) async fn watcher_counts(&self) -> WatcherCounts {
         WatcherCounts {
             kqueue_watchers: self.exit_watchers.lock().await.len(),
             shim_sockets: self.pending_ready.lock().await.len(),
+            event_waiters: self.event_log.waiter_count().await,
         }
     }
 

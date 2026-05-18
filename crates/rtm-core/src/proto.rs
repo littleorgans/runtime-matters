@@ -18,11 +18,26 @@ pub type EventCursor = u64;
 
 pub const EVENT_LOG_RETENTION_MIN_AGE_SECS: u64 = 7 * 24 * 60 * 60;
 pub const EVENT_LOG_RETENTION_MIN_EVENTS: usize = 10_000;
+/// Maximum single Events long poll wait window.
+///
+/// Requests above this ceiling are clamped rather than rejected.
+pub const EVENT_WAIT_MAX_MS: u32 = 60_000;
 
 #[derive(Clone, Copy, Debug, Default, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 pub struct EventsRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<EventCursor>,
+    /// Optional long poll window in milliseconds. `None` and `0` return immediately.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wait_ms: Option<u32>,
+}
+
+pub const fn clamped_event_wait_ms(wait_ms: Option<u32>) -> u32 {
+    match wait_ms {
+        Some(value) if value < EVENT_WAIT_MAX_MS => value,
+        Some(_) => EVENT_WAIT_MAX_MS,
+        None => 0,
+    }
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
@@ -235,4 +250,23 @@ where
     let mut bytes = serde_json::to_vec(message)?;
     bytes.push(b'\n');
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamped_event_wait_ms_applies_ceiling_and_default() {
+        assert_eq!(clamped_event_wait_ms(None), 0);
+        assert_eq!(clamped_event_wait_ms(Some(500)), 500);
+        assert_eq!(
+            clamped_event_wait_ms(Some(EVENT_WAIT_MAX_MS)),
+            EVENT_WAIT_MAX_MS
+        );
+        assert_eq!(
+            clamped_event_wait_ms(Some(EVENT_WAIT_MAX_MS + 1)),
+            EVENT_WAIT_MAX_MS
+        );
+    }
 }

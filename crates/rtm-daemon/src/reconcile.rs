@@ -375,7 +375,18 @@ mod tests {
 
         assert_lost(&store, dead.session_id, LostEvidence::PidNotAlive).await;
         assert_lost(&store, reused.session_id, LostEvidence::PidReuseDetected).await;
-        assert_eq!(state.events(Some(0)).await.expect("events").events.len(), 2);
+        assert_eq!(
+            state
+                .events(lilo_rm_core::EventsRequest {
+                    since: Some(0),
+                    wait_ms: None
+                })
+                .await
+                .expect("events")
+                .events
+                .len(),
+            2
+        );
         assert_eq!(store.running().await.expect("running").len(), 0);
     }
 
@@ -422,7 +433,17 @@ mod tests {
     async fn wait_for_events(state: &ServerState, expected: usize) {
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
-                if state.events(Some(0)).await.expect("events").events.len() == expected {
+                if state
+                    .events(lilo_rm_core::EventsRequest {
+                        since: Some(0),
+                        wait_ms: None,
+                    })
+                    .await
+                    .expect("events")
+                    .events
+                    .len()
+                    == expected
+                {
                     return;
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;

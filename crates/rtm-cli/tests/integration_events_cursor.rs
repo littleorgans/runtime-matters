@@ -2,11 +2,14 @@ mod common;
 
 use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
-use std::time::Duration;
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use common::{RtmHarness, output_stdout, spawn_ok, wait_until};
-use lilo_rm_core::{EventsRequest, RuntimeResponse, RuntimeRpc};
+use lilo_rm_core::{EventsRequest, RuntimeResponse, RuntimeRpc, WatcherCounts, write_json_line};
 use serde_json::json;
+use tokio::net::UnixStream;
 use uuid::Uuid;
 
 const FIRST_SESSION: &str = "018f6e28-0000-7000-8000-000000000101";
@@ -86,6 +89,97 @@ fn startup_recovery_drops_trailing_partial_event_line() {
     harness.stop();
 }
 
+#[test]
+fn long_poll_times_out_with_unchanged_cursor() {
+    let harness = RtmHarness::start();
+    let start = Instant::now();
+
+    let response = rpc_events_wait(&harness, Some(0), Some(500));
+    let elapsed = start.elapsed();
+
+    let RuntimeResponse::Events { events, cursor } = response else {
+        panic!("expected events response");
+    };
+    assert!(events.is_empty(), "{events:?}");
+    assert_eq!(cursor, 0);
+    assert!(elapsed >= Duration::from_millis(450), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
+    harness.stop();
+}
+
+#[test]
+fn long_poll_wakes_when_event_is_appended() {
+    let harness = RtmHarness::start();
+    let socket_path = harness.socket_path().to_path_buf();
+    let start = Instant::now();
+    let waiter = thread::spawn(move || rpc_events_wait_path(socket_path, Some(0), Some(5_000)));
+
+    wait_for_event_waiters(&harness, 1);
+    spawn_ok(&harness, FIRST_SESSION, "claude");
+
+    let response = waiter.join().expect("waiter");
+    let RuntimeResponse::Events { events, cursor } = response else {
+        panic!("expected events response");
+    };
+    assert_eq!(events.len(), 1);
+    assert_eq!(cursor, 1);
+    assert!(start.elapsed() < Duration::from_secs(2));
+    harness.stop();
+}
+
+#[test]
+fn disconnecting_long_poll_releases_waiter() {
+    let harness = RtmHarness::start();
+    let stream = open_long_poll_stream(&harness, Some(0), Some(5_000));
+    wait_for_event_waiters(&harness, 1);
+
+    drop(stream);
+
+    wait_for_event_waiters(&harness, 0);
+    harness.stop();
+}
+
+#[test]
+fn concurrent_long_pollers_all_wake_on_single_append() {
+    let harness = RtmHarness::start();
+    let socket_path = Arc::new(harness.socket_path().to_path_buf());
+    let waiters: Vec<_> = (0..100)
+        .map(|_| {
+            let socket_path = Arc::clone(&socket_path);
+            thread::spawn(move || rpc_events_wait_path(&*socket_path, Some(0), Some(5_000)))
+        })
+        .collect();
+
+    wait_for_event_waiters(&harness, 100);
+    spawn_ok(&harness, FIRST_SESSION, "claude");
+
+    for waiter in waiters {
+        let response = waiter.join().expect("waiter");
+        let RuntimeResponse::Events { events, cursor } = response else {
+            panic!("expected events response");
+        };
+        assert_eq!(events.len(), 1);
+        assert_eq!(cursor, 1);
+    }
+    harness.stop();
+}
+
+#[test]
+fn cli_events_wait_ms_round_trips_through_json_scaffold() {
+    let harness = RtmHarness::start();
+    let start = Instant::now();
+
+    let output = harness.events_wait_ms(0, 500);
+
+    assert!(
+        output.status.success(),
+        "events --wait-ms failed: {output:?}"
+    );
+    assert_eq!(output_stdout(output).trim(), "[]");
+    assert!(start.elapsed() >= Duration::from_millis(450));
+    harness.stop();
+}
+
 trait Cursor {
     fn cursor(&self) -> u64;
 }
@@ -115,15 +209,75 @@ fn wait_for_rpc_events(
 }
 
 fn rpc_events(harness: &RtmHarness, since: Option<u64>) -> RuntimeResponse {
+    rpc_events_wait(harness, since, None)
+}
+
+fn rpc_events_wait(
+    harness: &RtmHarness,
+    since: Option<u64>,
+    wait_ms: Option<u32>,
+) -> RuntimeResponse {
+    rpc_events_wait_path(harness.socket_path(), since, wait_ms)
+}
+
+fn rpc_events_wait_path(
+    socket_path: impl AsRef<std::path::Path>,
+    since: Option<u64>,
+    wait_ms: Option<u32>,
+) -> RuntimeResponse {
     tokio::runtime::Runtime::new()
         .expect("runtime")
         .block_on(lilo_rm_client::request(
-            harness.socket_path(),
+            socket_path,
             RuntimeRpc::Events {
-                request: EventsRequest { since },
+                request: EventsRequest { since, wait_ms },
             },
         ))
         .expect("events rpc")
+}
+
+fn rpc_watchers(harness: &RtmHarness) -> WatcherCounts {
+    let response = tokio::runtime::Runtime::new()
+        .expect("runtime")
+        .block_on(lilo_rm_client::request(
+            harness.socket_path(),
+            RuntimeRpc::Watchers,
+        ))
+        .expect("watchers rpc");
+    let RuntimeResponse::Watchers { watchers } = response else {
+        panic!("expected watchers response");
+    };
+    watchers
+}
+
+fn wait_for_event_waiters(harness: &RtmHarness, expected: usize) {
+    wait_until(Duration::from_secs(5), || {
+        (rpc_watchers(harness).event_waiters == expected).then_some(())
+    })
+    .unwrap_or_else(|| panic!("event_waiters never reached {expected}"));
+}
+
+fn open_long_poll_stream(
+    harness: &RtmHarness,
+    since: Option<u64>,
+    wait_ms: Option<u32>,
+) -> UnixStream {
+    tokio::runtime::Runtime::new()
+        .expect("runtime")
+        .block_on(async {
+            let mut stream = UnixStream::connect(harness.socket_path())
+                .await
+                .expect("connect");
+            write_json_line(
+                &mut stream,
+                &RuntimeRpc::Events {
+                    request: EventsRequest { since, wait_ms },
+                },
+            )
+            .await
+            .expect("write request");
+            stream
+        })
 }
 
 fn write_event_log(harness: &RtmHarness, records: &[serde_json::Value], tail: &str) {

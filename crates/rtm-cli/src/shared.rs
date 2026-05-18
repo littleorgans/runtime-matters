@@ -40,11 +40,15 @@ pub async fn status_filtered(socket_path: &Path, filter: StatusFilter) -> Result
     .await
 }
 
-pub async fn events(socket_path: &Path, since: Option<EventCursor>) -> Result<Vec<RuntimeEvent>> {
+pub async fn events(
+    socket_path: &Path,
+    since: Option<EventCursor>,
+    wait_ms: Option<u32>,
+) -> Result<Vec<RuntimeEvent>> {
     match request(
         socket_path,
         RuntimeRpc::Events {
-            request: EventsRequest { since },
+            request: EventsRequest { since, wait_ms },
         },
     )
     .await?

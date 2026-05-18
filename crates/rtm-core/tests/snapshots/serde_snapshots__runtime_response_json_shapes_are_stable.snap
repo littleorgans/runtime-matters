@@ -207,6 +207,7 @@ expression: responses
           "typed_nudge_outcomes",
           "validate_target_preflight",
           "events_cursor",
+          "events_long_poll",
           "tmux_pane_snapshot"
         ]
       }
@@ -228,6 +229,7 @@ expression: responses
             "typed_nudge_outcomes",
             "validate_target_preflight",
             "events_cursor",
+            "events_long_poll",
             "tmux_pane_snapshot"
           ]
         },
@@ -250,7 +252,8 @@ expression: responses
         },
         "watchers": {
           "kqueue_watchers": 5,
-          "shim_sockets": 6
+          "shim_sockets": 6,
+          "event_waiters": 3
         },
         "launchers": [
           {

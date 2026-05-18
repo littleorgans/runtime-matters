@@ -118,6 +118,8 @@ pub struct EventsArgs {
     output: output::OutputArgs,
     #[arg(long)]
     since: Option<lilo_rm_core::EventCursor>,
+    #[arg(long)]
+    wait_ms: Option<u32>,
 }
 
 #[derive(Debug, Args)]
@@ -326,7 +328,7 @@ async fn status(args: StatusArgs) -> Result<()> {
 
 async fn events(args: EventsArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
-    let events = crate::shared::events(&socket_path, args.since).await?;
+    let events = crate::shared::events(&socket_path, args.since, args.wait_ms).await?;
     output::emit(&args.output, &events)?;
     Ok(())
 }

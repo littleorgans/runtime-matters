@@ -73,7 +73,10 @@ fn runtime_rpc_json_shapes_are_stable() {
         RuntimeRpc::Watchers,
         RuntimeRpc::Doctor,
         RuntimeRpc::Events {
-            request: EventsRequest { since: Some(7) },
+            request: EventsRequest {
+                since: Some(7),
+                wait_ms: Some(500),
+            },
         },
         RuntimeRpc::Stop,
         RuntimeRpc::McpBridge {
@@ -364,6 +367,7 @@ fn doctor_response() -> DoctorResponse {
         watchers: WatcherCounts {
             kqueue_watchers: 5,
             shim_sockets: 6,
+            event_waiters: 3,
         },
         launchers: vec![LauncherStatus {
             runtime: "claude".to_owned(),

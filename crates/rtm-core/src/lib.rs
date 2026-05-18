@@ -44,9 +44,9 @@ pub use mcp::{
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,
 };
 pub use proto::{
-    EVENT_LOG_RETENTION_MIN_AGE_SECS, EVENT_LOG_RETENTION_MIN_EVENTS, EventCursor, EventsRequest,
-    RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line, read_json_line_blocking,
-    write_json_line, write_json_line_blocking,
+    EVENT_LOG_RETENTION_MIN_AGE_SECS, EVENT_LOG_RETENTION_MIN_EVENTS, EVENT_WAIT_MAX_MS,
+    EventCursor, EventsRequest, RuntimeResponse, RuntimeRpc, StatusRequest, clamped_event_wait_ms,
+    read_json_line, read_json_line_blocking, write_json_line, write_json_line_blocking,
 };
 pub use spawn_context::{
     CALLER_ENV_DENYLIST, CALLER_ENV_DENYLIST_PREFIXES, capture_caller_cwd, capture_caller_env,

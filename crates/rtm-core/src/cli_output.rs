@@ -72,6 +72,7 @@ impl CliOutput for DoctorResponse {
         print_lifecycle_counts(f, &self.lifecycles)?;
         writeln!(f, "kqueue watchers       {}", self.watchers.kqueue_watchers)?;
         writeln!(f, "shim sockets          {}", self.watchers.shim_sockets)?;
+        writeln!(f, "event waiters         {}", self.watchers.event_waiters)?;
         writeln!(f, "launchers")?;
         for launcher in &self.launchers {
             let value = launcher

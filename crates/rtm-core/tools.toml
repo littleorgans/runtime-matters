@@ -140,7 +140,7 @@ description = "Stable runtime protocol capability names."
 [tools.rtm_watchers]
 cli_name = "watchers"
 cli_about = "Print rtmd watcher counters."
-mcp_description = "Return rtmd operator visibility counters for kqueue watchers and pending shim socket waiters."
+mcp_description = "Return rtmd operator visibility counters for kqueue watchers, pending shim socket waiters, and Events long poll waiters."
 args_type = "RtmWatchersArgs"
 response_type = "RtmWatchersResponse"
 response_description = "Watcher counters for the running daemon."
@@ -154,3 +154,8 @@ description = "Active kqueue process exit watchers."
 name = "shim_sockets"
 kind = "integer"
 description = "Pending shim socket waiters."
+
+[[tools.rtm_watchers.outputs]]
+name = "event_waiters"
+kind = "integer"
+description = "Active Events long poll waiters."

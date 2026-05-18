@@ -67,6 +67,7 @@ pub struct StatusResponse {
 pub struct WatcherCounts {
     pub kqueue_watchers: usize,
     pub shim_sockets: usize,
+    pub event_waiters: usize,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]

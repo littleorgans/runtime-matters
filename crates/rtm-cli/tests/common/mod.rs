@@ -170,6 +170,17 @@ impl RtmHarness {
             .expect("events client")
     }
 
+    pub fn events_wait_ms(&self, cursor: u64, wait_ms: u32) -> Output {
+        self.rtm_command()
+            .arg("events")
+            .arg("--since")
+            .arg(cursor.to_string())
+            .arg("--wait-ms")
+            .arg(wait_ms.to_string())
+            .output()
+            .expect("events client")
+    }
+
     pub fn doctor(&self) -> Output {
         self.rtm_command()
             .arg("doctor")

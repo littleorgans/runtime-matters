@@ -49,6 +49,7 @@ expression: doctor
       "typed_nudge_outcomes",
       "validate_target_preflight",
       "events_cursor",
+      "events_long_poll",
       "tmux_pane_snapshot"
     ],
     "git_sha": "[git_sha]",
@@ -56,6 +57,7 @@ expression: doctor
     "version": "[version]"
   },
   "watchers": {
+    "event_waiters": 0,
     "kqueue_watchers": "[count]",
     "shim_sockets": "[count]"
   }
