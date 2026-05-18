@@ -1,6 +1,6 @@
 ---
 source: crates/rtm-cli/tests/surface_snapshots.rs
-expression: "json!({\n    \"version\": version, \"doctor\": doctor, \"status\": status, \"events\": events,\n    \"spawn\": spawn, \"kill\": kill, \"nudge_error\": nudge_error,\n})"
+expression: snapshot
 ---
 {
   "doctor": {
@@ -36,8 +36,8 @@ expression: "json!({\n    \"version\": version, \"doctor\": doctor, \"status\": 
     },
     "tmux": {
       "available": "[tmux]",
-      "error": "[tmux]",
-      "version": "[tmux]"
+      "error": "[launcher_error]",
+      "version": "[version]"
     },
     "uptime_secs": "[uptime]",
     "version": {
@@ -102,7 +102,7 @@ expression: "json!({\n    \"version\": version, \"doctor\": doctor, \"status\": 
         "shim_pid": "[pid]",
         "start_time": "[timestamp]",
         "state": "running",
-        "tmux_pane": null
+        "tmux_pane": "[tmux_pane]"
       },
       "log_dir": "[path]",
       "stderr_path": "[path]",

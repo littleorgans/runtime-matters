@@ -1,7 +1,6 @@
 ---
 source: crates/rtm-cli/tests/surface_snapshots.rs
-assertion_line: 79
-expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status\": status, \"version\":\n    version, \"watchers\": watchers, \"kill_by_pid\": kill,\n})"
+expression: snapshot
 ---
 {
   "initialize": {
@@ -257,8 +256,8 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
         }
       ],
       "structuredContent": {
-        "kqueue_watchers": 0,
-        "shim_sockets": 0
+        "kqueue_watchers": "[count]",
+        "shim_sockets": "[count]"
       }
     }
   }

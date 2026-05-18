@@ -1,6 +1,5 @@
 ---
 source: crates/rtm-cli/tests/surface_snapshots.rs
-assertion_line: 50
 expression: doctor
 ---
 {
@@ -36,8 +35,8 @@ expression: doctor
   },
   "tmux": {
     "available": "[tmux]",
-    "error": "[tmux]",
-    "version": "[tmux]"
+    "error": "[launcher_error]",
+    "version": "[version]"
   },
   "uptime_secs": "[uptime]",
   "version": {

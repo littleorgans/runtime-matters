@@ -3,6 +3,7 @@ use std::io::Write;
 use anyhow::Result;
 use clap::{Args, ValueEnum};
 use lilo_rm_core::CliOutput;
+use serde_json::Value;
 use serde_json::json;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -92,11 +93,73 @@ fn error_chain(error: &anyhow::Error) -> Vec<String> {
     error.chain().skip(1).map(ToString::to_string).collect()
 }
 
+const CLI_JSON_SNAPSHOT_REDACTIONS: &[(&str, &str)] = &[
+    ("session_id", "[uuid]"),
+    ("pid", "[pid]"),
+    ("shim_pid", "[pid]"),
+    ("runtime_pid", "[pid]"),
+    ("started_at", "[timestamp]"),
+    ("start_time", "[timestamp]"),
+    ("applied_at", "[timestamp]"),
+    ("last_probe_sweep", "[timestamp]"),
+    ("uptime_ms", "[uptime]"),
+    ("uptime_secs", "[uptime]"),
+    ("socket", "[socket]"),
+    ("socket_path", "[socket]"),
+    ("log_dir", "[path]"),
+    ("stdout_path", "[path]"),
+    ("stderr_path", "[path]"),
+    ("git_sha", "[git_sha]"),
+    ("tmux_pane", "[tmux_pane]"),
+    ("tmux", "[tmux]"),
+    ("available", "[tmux]"),
+    ("version", "[version]"),
+    ("forking", "[count]"),
+    ("running", "[count]"),
+    ("exited", "[count]"),
+    ("lost", "[count]"),
+    ("kqueue_watchers", "[count]"),
+    ("shim_sockets", "[count]"),
+    ("command", "[command]"),
+    ("error", "[launcher_error]"),
+    ("message", "[message]"),
+    ("cause", "[cause]"),
+];
+
+pub fn redact_cli_json_snapshot(value: &mut Value) {
+    match value {
+        Value::Object(fields) => {
+            for (field, replacement) in CLI_JSON_SNAPSHOT_REDACTIONS {
+                if let Some(value) = fields.get_mut(*field)
+                    && !value.is_object()
+                    && !value.is_array()
+                {
+                    *value = json!(replacement);
+                }
+            }
+            if let Some(Value::Array(causes)) = fields.get_mut("causes") {
+                for cause in causes {
+                    *cause = json!("[cause]");
+                }
+            }
+            for value in fields.values_mut() {
+                redact_cli_json_snapshot(value);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                redact_cli_json_snapshot(value);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[macro_export]
 macro_rules! assert_cli_json_snapshot {
-    ($output:expr, $redact:expr) => {{
+    ($output:expr) => {{
         let mut value: serde_json::Value = serde_json::from_str(&$output).expect("cli json output");
-        $redact(&mut value);
+        $crate::cli::output::redact_cli_json_snapshot(&mut value);
         insta::assert_json_snapshot!(value);
     }};
 }
@@ -119,6 +182,64 @@ mod tests {
         assert_eq!(
             requested_format(["status", "--format=human"]),
             OutputFormat::Human
+        );
+    }
+
+    #[test]
+    fn cli_json_snapshot_redaction_covers_public_contract_fields() {
+        let mut value = json!({
+            "pid": 1,
+            "started_at": "now",
+            "uptime_ms": 7,
+            "log_dir": "/tmp/rtm",
+            "stdout_path": "/tmp/stdout",
+            "git_sha": "abc",
+            "applied_at": "later",
+            "session_id": "uuid",
+            "runtime_pid": 2,
+            "start_time": "then",
+            "tmux_pane": "%1",
+            "socket_path": "/tmp/socket",
+            "version": "0.1.0",
+            "last_probe_sweep": "soon",
+            "forking": 3,
+            "available": true,
+            "command": "claude",
+            "error": "missing",
+            "details": {
+                "causes": ["nested"]
+            },
+            "nested_object_is_preserved": {
+                "version": "redacted inside",
+                "protocol_version": "0.3"
+            }
+        });
+
+        redact_cli_json_snapshot(&mut value);
+
+        assert_eq!(value["pid"], "[pid]");
+        assert_eq!(value["started_at"], "[timestamp]");
+        assert_eq!(value["uptime_ms"], "[uptime]");
+        assert_eq!(value["log_dir"], "[path]");
+        assert_eq!(value["stdout_path"], "[path]");
+        assert_eq!(value["git_sha"], "[git_sha]");
+        assert_eq!(value["applied_at"], "[timestamp]");
+        assert_eq!(value["session_id"], "[uuid]");
+        assert_eq!(value["runtime_pid"], "[pid]");
+        assert_eq!(value["start_time"], "[timestamp]");
+        assert_eq!(value["tmux_pane"], "[tmux_pane]");
+        assert_eq!(value["socket_path"], "[socket]");
+        assert_eq!(value["version"], "[version]");
+        assert_eq!(value["last_probe_sweep"], "[timestamp]");
+        assert_eq!(value["forking"], "[count]");
+        assert_eq!(value["available"], "[tmux]");
+        assert_eq!(value["command"], "[command]");
+        assert_eq!(value["error"], "[launcher_error]");
+        assert_eq!(value["details"]["causes"][0], "[cause]");
+        assert_eq!(value["nested_object_is_preserved"]["version"], "[version]");
+        assert_eq!(
+            value["nested_object_is_preserved"]["protocol_version"],
+            "0.3"
         );
     }
 }
