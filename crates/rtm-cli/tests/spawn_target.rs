@@ -51,17 +51,25 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
         .expect("headless spawn");
 
     let RuntimeResponse::Spawned {
-        lifecycle, log_dir, ..
+        lifecycle,
+        log_dir,
+        stdout_path,
+        stderr_path,
+        ..
     } = response
     else {
         panic!("unexpected spawn response: {response:?}");
     };
     let log_dir = log_dir.expect("headless log dir");
+    let stdout_path = stdout_path.expect("headless stdout path");
+    let stderr_path = stderr_path.expect("headless stderr path");
     assert_eq!(lifecycle.tmux_pane, None);
     assert_eq!(
         log_dir,
         harness.rtm_home().join("logs").join(session_id.to_string())
     );
-    wait_for_log(log_dir.join("stdout.log"), "HELLO\n");
-    wait_for_log(log_dir.join("stderr.log"), "WORLD\n");
+    assert_eq!(stdout_path, log_dir.join("stdout.log"));
+    assert_eq!(stderr_path, log_dir.join("stderr.log"));
+    wait_for_log(stdout_path, "HELLO\n");
+    wait_for_log(stderr_path, "WORLD\n");
 }

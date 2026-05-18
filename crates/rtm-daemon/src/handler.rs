@@ -56,8 +56,8 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
         RuntimeRpc::Spawn { request } => {
             let launch = rtm_launchers::dispatch(&request.runtime)?.launch_spec(&request)?;
             let ready_rx = state.begin_spawn(&request, launch).await?;
-            let log_dir = match shim_socket::launch_shim(state.config(), &request).await {
-                Ok(log_dir) => log_dir,
+            let log_paths = match shim_socket::launch_shim(state.config(), &request).await {
+                Ok(log_paths) => log_paths,
                 Err(error) => {
                     state.cancel_spawn(request.session_id).await;
                     return Err(error);
@@ -69,10 +69,20 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
                 .context("timed out waiting for ShimReady")?
                 .context("shim ready channel closed")?;
             let (lifecycle, event) = state.record_running(&request, ready).await?;
+            let (log_dir, stdout_path, stderr_path) = match log_paths {
+                Some(paths) => (
+                    Some(paths.log_dir),
+                    Some(paths.stdout_path),
+                    Some(paths.stderr_path),
+                ),
+                None => (None, None, None),
+            };
             Ok(RuntimeResponse::Spawned {
                 lifecycle,
                 event,
                 log_dir,
+                stdout_path,
+                stderr_path,
             })
         }
         RuntimeRpc::Kill { request } => {

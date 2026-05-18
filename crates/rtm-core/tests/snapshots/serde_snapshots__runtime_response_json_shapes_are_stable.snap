@@ -23,7 +23,34 @@ expression: responses
           "start_time": "2023-11-14T22:13:20Z"
         }
       },
-      "log_dir": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001"
+      "log_dir": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001",
+      "stdout_path": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stdout.log",
+      "stderr_path": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stderr.log"
+    }
+  },
+  {
+    "type": "spawned",
+    "payload": {
+      "lifecycle": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "runtime": "claude",
+        "state": "running",
+        "shim_pid": 4241,
+        "runtime_pid": 4242,
+        "start_time": "2023-11-14T22:13:20Z",
+        "tmux_pane": "rtm:0.1"
+      },
+      "event": {
+        "type": "running",
+        "payload": {
+          "session_id": "018f6e28-0000-7000-8000-000000000001",
+          "runtime_pid": 4243,
+          "start_time": "2023-11-14T22:13:20Z"
+        }
+      },
+      "log_dir": null,
+      "stdout_path": null,
+      "stderr_path": null
     }
   },
   {

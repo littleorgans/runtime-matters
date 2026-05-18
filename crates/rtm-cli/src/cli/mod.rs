@@ -144,15 +144,19 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
             lifecycle,
             event,
             log_dir,
+            stdout_path,
+            stderr_path,
         } => {
             println!(
-                "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={}",
+                "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={} stdout_path={} stderr_path={}",
                 lifecycle.state,
                 event_name(&event),
                 lifecycle
                     .runtime_pid
                     .expect("running lifecycle runtime pid"),
-                display_optional_path(log_dir.as_deref())
+                display_optional_path(log_dir.as_deref()),
+                display_optional_path(stdout_path.as_deref()),
+                display_optional_path(stderr_path.as_deref())
             );
         }
         other => anyhow::bail!("unexpected spawn response: {other:?}"),

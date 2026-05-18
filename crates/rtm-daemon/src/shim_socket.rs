@@ -15,7 +15,16 @@ use tokio::process::Command;
 
 use crate::server::DaemonConfig;
 
-pub async fn launch_shim(config: &DaemonConfig, request: &SpawnRequest) -> Result<Option<PathBuf>> {
+pub struct HeadlessLogPaths {
+    pub log_dir: PathBuf,
+    pub stdout_path: PathBuf,
+    pub stderr_path: PathBuf,
+}
+
+pub async fn launch_shim(
+    config: &DaemonConfig,
+    request: &SpawnRequest,
+) -> Result<Option<HeadlessLogPaths>> {
     let env = shim_env(config);
     match &request.target {
         SpawnTarget::Tmux(target) => {
@@ -33,15 +42,17 @@ async fn launch_headless_shim(
     config: &DaemonConfig,
     request: &SpawnRequest,
     env: &[LaunchEnv],
-) -> Result<PathBuf> {
+) -> Result<HeadlessLogPaths> {
     let log_dir = config.session_log_dir(request.session_id);
+    let stdout_path = log_dir.join("stdout.log");
+    let stderr_path = log_dir.join("stderr.log");
     tokio::fs::create_dir_all(&log_dir)
         .await
         .with_context(|| format!("failed to create log directory {}", log_dir.display()))?;
-    let stdout = File::create(log_dir.join("stdout.log"))
+    let stdout = File::create(&stdout_path)
         .await
         .context("failed to create headless stdout log")?;
-    let stderr = File::create(log_dir.join("stderr.log"))
+    let stderr = File::create(&stderr_path)
         .await
         .context("failed to create headless stderr log")?;
 
@@ -69,7 +80,11 @@ async fn launch_headless_shim(
         .context("headless shim stderr missing")?;
     spawn_log_copy(request.session_id, "stdout", child_stdout, stdout);
     spawn_log_copy(request.session_id, "stderr", child_stderr, stderr);
-    Ok(log_dir)
+    Ok(HeadlessLogPaths {
+        log_dir,
+        stdout_path,
+        stderr_path,
+    })
 }
 
 fn spawn_log_copy<R>(session_id: uuid::Uuid, stream: &'static str, reader: R, file: File)

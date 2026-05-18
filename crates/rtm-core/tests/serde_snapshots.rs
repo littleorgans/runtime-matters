@@ -105,6 +105,8 @@ fn runtime_response_json_shapes_are_stable() {
     let session_id = session_id();
     let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
     assert!(lifecycle.mark_running(ready(session_id)));
+    let mut tmux_lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
+    assert!(tmux_lifecycle.mark_running(ready(session_id)));
     let responses = vec![
         RuntimeResponse::Spawned {
             lifecycle,
@@ -114,6 +116,23 @@ fn runtime_response_json_shapes_are_stable() {
                 start_time: timestamp(),
             },
             log_dir: Some("/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001".into()),
+            stdout_path: Some(
+                "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stdout.log".into(),
+            ),
+            stderr_path: Some(
+                "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stderr.log".into(),
+            ),
+        },
+        RuntimeResponse::Spawned {
+            lifecycle: tmux_lifecycle,
+            event: RuntimeEvent::Running {
+                session_id,
+                runtime_pid: 4243,
+                start_time: timestamp(),
+            },
+            log_dir: None,
+            stdout_path: None,
+            stderr_path: None,
         },
         RuntimeResponse::ShimLaunch {
             launch: LaunchSpec {

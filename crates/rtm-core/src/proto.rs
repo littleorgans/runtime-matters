@@ -57,6 +57,8 @@ pub enum RuntimeResponse {
         lifecycle: Lifecycle,
         event: RuntimeEvent,
         log_dir: Option<PathBuf>,
+        stdout_path: Option<PathBuf>,
+        stderr_path: Option<PathBuf>,
     },
     Status {
         lifecycles: Vec<Lifecycle>,

@@ -14,6 +14,25 @@ fn pass1_spawn_records_running_lifecycle_and_event() {
     assert!(stdout.contains("spawn OK"));
     assert!(stdout.contains("lifecycle state=Running"));
     assert!(stdout.contains("runtime event=Running"));
+    let log_dir = harness.rtm_home().join("logs").join(&session_id);
+    assert!(
+        stdout.contains(&format!("log_dir={}", log_dir.display())),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!(
+            "stdout_path={}",
+            log_dir.join("stdout.log").display()
+        )),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!(
+            "stderr_path={}",
+            log_dir.join("stderr.log").display()
+        )),
+        "{stdout}"
+    );
 
     let runtime_pid = parse_runtime_pid(&stdout);
     assert_process_alive(runtime_pid);
