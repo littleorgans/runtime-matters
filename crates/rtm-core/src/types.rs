@@ -355,6 +355,15 @@ pub enum NudgeFailureReason {
     TmuxPaneDead,
 }
 
+impl NudgeFailureReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HeadlessLifecycle => "headless_lifecycle",
+            Self::TmuxPaneDead => "tmux_pane_dead",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ShimReady {
     pub session_id: Uuid,
@@ -534,6 +543,15 @@ mod tests {
             start_time: Utc::now(),
             tmux_pane: None,
         }
+    }
+
+    #[test]
+    fn nudge_outcome_reason_strings_match_public_contract() {
+        assert_eq!(
+            NudgeFailureReason::HeadlessLifecycle.as_str(),
+            "headless_lifecycle"
+        );
+        assert_eq!(NudgeFailureReason::TmuxPaneDead.as_str(), "tmux_pane_dead");
     }
 
     #[test]

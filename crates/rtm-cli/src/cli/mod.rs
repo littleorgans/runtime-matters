@@ -2,9 +2,8 @@ use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use lilo_rm_core::{
-    Ack, KillByPidRequest, KillRequest, NudgeFailureReason, NudgeOutcome, NudgeRequest,
-    RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget,
-    StatusFilter,
+    Ack, KillByPidRequest, KillRequest, NudgeOutcome, NudgeRequest, RuntimeKind, RuntimeResponse,
+    RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
 };
 use uuid::Uuid;
 
@@ -252,12 +251,12 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
         RuntimeResponse::Nudge { response } => match response.outcome {
             NudgeOutcome::Unsupported(reason) => bail!(
                 "nudge unsupported; reason={} session_id={}",
-                nudge_failure_reason(reason),
+                reason.as_str(),
                 args.session_id
             ),
             NudgeOutcome::Failed(reason) => bail!(
                 "nudge failed; reason={} session_id={}",
-                nudge_failure_reason(reason),
+                reason.as_str(),
                 args.session_id
             ),
             NudgeOutcome::Delivered => bail!("inconsistent nudge response: {response:?}"),
@@ -296,11 +295,4 @@ async fn events(args: EventsArgs) -> Result<()> {
 
 fn parse_updated_since(value: &str) -> std::result::Result<DateTime<Utc>, chrono::ParseError> {
     DateTime::parse_from_rfc3339(value).map(|time| time.with_timezone(&Utc))
-}
-
-fn nudge_failure_reason(reason: NudgeFailureReason) -> &'static str {
-    match reason {
-        NudgeFailureReason::HeadlessLifecycle => "headless_lifecycle",
-        NudgeFailureReason::TmuxPaneDead => "tmux_pane_dead",
-    }
 }

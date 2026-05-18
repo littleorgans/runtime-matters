@@ -5,8 +5,8 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    DoctorResponse, KillByPidResponse, Lifecycle, LifecycleCounts, NudgeFailureReason,
-    NudgeOutcome, NudgeResponse, RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
+    DoctorResponse, KillByPidResponse, Lifecycle, LifecycleCounts, NudgeOutcome, NudgeResponse,
+    RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
 };
 
 pub trait CliOutput: Serialize {
@@ -205,14 +205,10 @@ impl CliOutput for NudgeResponse {
         match self.outcome {
             NudgeOutcome::Delivered => writeln!(f, "nudge delivered"),
             NudgeOutcome::Unsupported(reason) => {
-                writeln!(
-                    f,
-                    "nudge unsupported; reason={}",
-                    nudge_failure_reason(reason)
-                )
+                writeln!(f, "nudge unsupported; reason={}", reason.as_str())
             }
             NudgeOutcome::Failed(reason) => {
-                writeln!(f, "nudge failed; reason={}", nudge_failure_reason(reason))
+                writeln!(f, "nudge failed; reason={}", reason.as_str())
             }
         }
     }
@@ -284,13 +280,6 @@ fn event_name(event: &RuntimeEvent) -> &'static str {
         RuntimeEvent::Running { .. } => "Running",
         RuntimeEvent::Terminated { .. } => "Terminated",
         RuntimeEvent::Lost { .. } => "Lost",
-    }
-}
-
-fn nudge_failure_reason(reason: NudgeFailureReason) -> &'static str {
-    match reason {
-        NudgeFailureReason::HeadlessLifecycle => "headless_lifecycle",
-        NudgeFailureReason::TmuxPaneDead => "tmux_pane_dead",
     }
 }
 
