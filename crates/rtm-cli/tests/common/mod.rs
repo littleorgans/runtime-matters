@@ -469,7 +469,7 @@ fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
     std::fs::write(
         &path,
         format!(
-            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exit 0\nfi\nprintf '{}\\n'\nexec sleep 60\n",
+            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exec sleep 60\nfi\nprintf '{}\\n'\nexec sleep 60\n",
             FAKE_RUNTIME_READY
         ),
     )
