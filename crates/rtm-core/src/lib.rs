@@ -16,6 +16,7 @@
 //! [`RuntimeResponse::CursorExpired { oldest }`](RuntimeResponse::CursorExpired).
 
 pub mod admin;
+mod cli_output;
 pub mod error;
 pub mod launcher;
 pub mod mcp;
@@ -29,6 +30,7 @@ pub use admin::{
     DoctorResponse, KillByPidRequest, KillByPidResponse, LauncherStatus, LifecycleCounts,
     MigrationState, RecentLostEvent, StatusFilter, StatusResponse, TmuxStatus, WatcherCounts,
 };
+pub use cli_output::{Ack, CliOutput};
 pub use error::{ErrorCode, ProtocolError, RuntimeKindParseError};
 pub use launcher::{LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher};
 pub use mcp::{

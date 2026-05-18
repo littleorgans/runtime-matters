@@ -30,10 +30,7 @@ fn pass5_spawn_inside_tmux_captures_pane_and_nudges_it() {
     let nudge = harness.nudge(&session_id, &content);
     assert!(nudge.status.success(), "nudge failed: {nudge:?}");
     let nudge_stdout = output_stdout(nudge);
-    assert!(
-        nudge_stdout.contains(&format!("nudge delivered; session_id={session_id}")),
-        "{nudge_stdout}"
-    );
+    assert!(nudge_stdout.contains("nudge delivered"), "{nudge_stdout}");
     tmux_session.wait_for_capture(&content);
 
     harness.stop();

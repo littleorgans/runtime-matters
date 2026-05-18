@@ -1,7 +1,9 @@
 mod common;
 
+use std::process::{Command, Output};
+
 use common::mcp::{call_tool, mcp_json, request};
-use common::{RtmHarness, output_stdout, spawn_ok};
+use common::{RtmHarness, output_stderr, output_stdout, spawn_ok, wait_for_events};
 use lilo_rm_core::{RuntimeResponse, RuntimeRpc};
 use serde_json::Map;
 use serde_json::{Value, json};
@@ -22,9 +24,59 @@ fn status_json_output_is_stable() {
 }
 
 #[test]
+fn session_facing_cli_json_outputs_are_stable() {
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+
+    let spawn = harness.cli(&[
+        "spawn",
+        "--runtime",
+        "claude",
+        "--session-id",
+        &session_id,
+        "--target",
+        "headless",
+    ]);
+    assert!(spawn.status.success(), "spawn failed: {spawn:?}");
+
+    let nudge = harness.cli(&["nudge", "--session-id", &session_id, "--content", "hello"]);
+    assert!(!nudge.status.success(), "nudge unexpectedly succeeded");
+
+    let kill = harness.kill(&session_id, "TERM", 2);
+    assert!(kill.status.success(), "kill failed: {kill:?}");
+    wait_for_events(&harness, 2);
+
+    let mut version = json_stdout(harness.cli(&["version"]));
+    let mut doctor = json_stdout(harness.cli(&["doctor"]));
+    let mut status = json_stdout(harness.cli(&["status", "--session-id", &session_id]));
+    let mut events = json_stdout(harness.cli(&["events"]));
+    let mut spawn = json_from_output(&output_stdout(spawn));
+    let mut kill = json_from_output(&output_stdout(kill));
+    let mut nudge_error = json_from_output(&output_stderr(nudge));
+
+    redact_version(&mut version);
+    redact_doctor_json(&mut doctor);
+    redact_lifecycles(&mut status);
+    redact_events(&mut events);
+    redact_spawn(&mut spawn);
+    redact_kill(&mut kill);
+    redact_error(&mut nudge_error);
+
+    insta::assert_json_snapshot!(json!({
+        "version": version,
+        "doctor": doctor,
+        "status": status,
+        "events": events,
+        "spawn": spawn,
+        "kill": kill,
+        "nudge_error": nudge_error,
+    }));
+}
+
+#[test]
 fn doctor_output_is_stable() {
     let harness = RtmHarness::start();
-    let output = harness.doctor();
+    let output = harness.cli(&["doctor", "--format", "human"]);
     assert!(output.status.success(), "doctor failed: {output:?}");
 
     insta::assert_snapshot!(normalize_doctor(&output_stdout(output)));
@@ -97,6 +149,82 @@ fn redact_lifecycles(rows: &mut Value) {
         row["start_time"] = json!("[timestamp]");
         row["tmux_pane"] = json!("[tmux_pane]");
     }
+}
+
+fn redact_version(version: &mut Value) {
+    version["version"] = json!("[version]");
+    version["git_sha"] = json!("[git_sha]");
+}
+
+fn redact_events(events: &mut Value) {
+    let Some(events) = events.as_array_mut() else {
+        return;
+    };
+    for event in events {
+        event["payload"]["session_id"] = json!("[uuid]");
+        if event["payload"].get("runtime_pid").is_some() {
+            event["payload"]["runtime_pid"] = json!("[pid]");
+        }
+        if event["payload"].get("start_time").is_some() {
+            event["payload"]["start_time"] = json!("[timestamp]");
+        }
+    }
+}
+
+fn redact_spawn(spawn: &mut Value) {
+    let payload = &mut spawn["payload"];
+    payload["lifecycle"]["session_id"] = json!("[uuid]");
+    payload["lifecycle"]["shim_pid"] = json!("[pid]");
+    payload["lifecycle"]["runtime_pid"] = json!("[pid]");
+    payload["lifecycle"]["start_time"] = json!("[timestamp]");
+    payload["event"]["payload"]["session_id"] = json!("[uuid]");
+    payload["event"]["payload"]["runtime_pid"] = json!("[pid]");
+    payload["event"]["payload"]["start_time"] = json!("[timestamp]");
+    payload["log_dir"] = json!("[path]");
+    payload["stdout_path"] = json!("[path]");
+    payload["stderr_path"] = json!("[path]");
+}
+
+fn redact_kill(kill: &mut Value) {
+    kill["session_id"] = json!("[uuid]");
+}
+
+fn redact_error(error: &mut Value) {
+    error["message"] = json!("[message]");
+    if let Some(details) = error.get_mut("details")
+        && let Some(causes) = details.get_mut("causes").and_then(Value::as_array_mut)
+    {
+        for cause in causes {
+            *cause = json!("[cause]");
+        }
+    }
+}
+
+fn json_stdout(output: Output) -> Value {
+    assert!(output.status.success(), "json command failed: {output:?}");
+    json_from_output(&output_stdout(output))
+}
+
+fn json_from_output(output: &str) -> Value {
+    jq_round_trip(output);
+    serde_json::from_str(output).expect("json output")
+}
+
+fn jq_round_trip(output: &str) {
+    let jq = Command::new("jq")
+        .arg("-c")
+        .arg(".")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    let Ok(mut jq) = jq else {
+        return;
+    };
+    let mut stdin = jq.stdin.take().expect("jq stdin");
+    std::io::Write::write_all(&mut stdin, output.as_bytes()).expect("write jq stdin");
+    drop(stdin);
+    assert!(jq.wait().expect("jq wait").success(), "jq rejected output");
 }
 
 fn redact_tool_payload(response: &mut Value) {

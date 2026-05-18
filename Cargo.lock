@@ -1268,6 +1268,7 @@ dependencies = [
  "rtm-daemon",
  "rtm-platform",
  "rtm-store",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

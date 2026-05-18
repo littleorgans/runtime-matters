@@ -1,10 +1,10 @@
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand};
 use lilo_rm_core::{
-    KillByPidRequest, KillRequest, Lifecycle, NudgeFailureReason, NudgeOutcome, NudgeRequest,
-    NudgeResponse, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest,
-    SpawnTarget, StatusFilter,
+    Ack, KillByPidRequest, KillRequest, NudgeFailureReason, NudgeOutcome, NudgeRequest,
+    RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget,
+    StatusFilter,
 };
 use uuid::Uuid;
 
@@ -15,6 +15,7 @@ pub mod daemon;
 pub mod doctor;
 pub mod initdb;
 pub mod mcp;
+pub mod output;
 pub mod shim;
 pub mod version;
 
@@ -42,9 +43,9 @@ enum Command {
     #[command(about = cli_help::MCP_ABOUT)]
     Mcp,
     #[command(about = cli_help::VERSION_ABOUT)]
-    Version,
+    Version(VersionArgs),
     #[command(about = "Print rtmd substrate health diagnostics.")]
-    Doctor,
+    Doctor(DoctorArgs),
     Events(EventsArgs),
     Initdb,
     #[command(name = "__shim", hide = true)]
@@ -53,6 +54,8 @@ enum Command {
 
 #[derive(Debug, Args)]
 pub struct SpawnArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
     #[arg(long)]
     runtime: RuntimeKind,
     #[arg(long)]
@@ -63,6 +66,8 @@ pub struct SpawnArgs {
 
 #[derive(Debug, Args)]
 pub struct StatusArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
     #[arg(long = "session-id", value_name = "UUID")]
     session_ids: Vec<Uuid>,
     #[arg(long, value_parser = parse_updated_since)]
@@ -71,24 +76,12 @@ pub struct StatusArgs {
     runtime: Option<String>,
     #[arg(long)]
     state: Option<String>,
-    #[arg(long, value_enum, default_value_t = StatusFormat::Summary)]
-    format: StatusFormat,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-pub enum StatusFormat {
-    #[value(name = "summary")]
-    Summary,
-    #[value(name = "pid")]
-    Pid,
-    #[value(name = "shim_pid")]
-    ShimPid,
-    #[value(name = "json")]
-    Json,
 }
 
 #[derive(Debug, Args)]
 pub struct KillArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
     #[arg(long, conflicts_with = "pid", required_unless_present = "pid")]
     session_id: Option<Uuid>,
     #[arg(long, conflicts_with = "session_id")]
@@ -101,6 +94,8 @@ pub struct KillArgs {
 
 #[derive(Debug, Args)]
 pub struct NudgeArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
     #[arg(long)]
     session_id: Uuid,
     #[arg(long)]
@@ -109,8 +104,22 @@ pub struct NudgeArgs {
 
 #[derive(Debug, Args)]
 pub struct EventsArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
     #[arg(long)]
     since: Option<lilo_rm_core::EventCursor>,
+}
+
+#[derive(Debug, Args)]
+pub struct VersionArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
+}
+
+#[derive(Debug, Args)]
+pub struct DoctorArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
 }
 
 impl Cli {
@@ -122,8 +131,8 @@ impl Cli {
             Command::Nudge(args) => nudge(args).await,
             Command::Status(args) => status(args).await,
             Command::Mcp => mcp::run().await,
-            Command::Version => version::run().await,
-            Command::Doctor => doctor::run().await,
+            Command::Version(args) => version::run(args.output).await,
+            Command::Doctor(args) => doctor::run(args.output).await,
             Command::Events(args) => events(args).await,
             Command::Initdb => initdb::run().await,
             Command::Shim(args) => shim::run(args).await,
@@ -157,17 +166,14 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
             stdout_path,
             stderr_path,
         } => {
-            println!(
-                "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={} stdout_path={} stderr_path={}",
-                lifecycle.state,
-                event_name(&event),
-                lifecycle
-                    .runtime_pid
-                    .expect("running lifecycle runtime pid"),
-                display_optional_path(log_dir.as_deref()),
-                display_optional_path(stdout_path.as_deref()),
-                display_optional_path(stderr_path.as_deref())
-            );
+            let response = RuntimeResponse::Spawned {
+                lifecycle,
+                event,
+                log_dir,
+                stdout_path,
+                stderr_path,
+            };
+            output::emit(&args.output, &response)?;
         }
         other => anyhow::bail!("unexpected spawn response: {other:?}"),
     }
@@ -196,7 +202,7 @@ async fn kill(args: KillArgs) -> Result<()> {
 
     match response {
         RuntimeResponse::Ack => {
-            println!("kill OK; session_id={session_id}");
+            output::emit(&args.output, &Ack { session_id })?;
         }
         other => bail!("unexpected kill response: {other:?}"),
     }
@@ -219,10 +225,7 @@ async fn kill_pid(args: KillArgs, pid: u32) -> Result<()> {
 
     match response {
         RuntimeResponse::KillByPid { response } => {
-            println!(
-                "kill OK; pid={} signal={} killed_after_grace={}",
-                response.pid, response.signal, response.killed_after_grace
-            );
+            output::emit(&args.output, &response)?;
         }
         other => bail!("unexpected kill-by-pid response: {other:?}"),
     }
@@ -243,44 +246,22 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Nudge {
-            response:
-                NudgeResponse {
-                    delivered: true,
-                    outcome: NudgeOutcome::Delivered,
-                },
-        } => {
-            println!("nudge delivered; session_id={}", args.session_id);
+        RuntimeResponse::Nudge { response } if response.delivered => {
+            output::emit(&args.output, &response)?
         }
-        RuntimeResponse::Nudge {
-            response:
-                NudgeResponse {
-                    delivered: false,
-                    outcome: NudgeOutcome::Unsupported(reason),
-                },
-        } => {
-            bail!(
+        RuntimeResponse::Nudge { response } => match response.outcome {
+            NudgeOutcome::Unsupported(reason) => bail!(
                 "nudge unsupported; reason={} session_id={}",
                 nudge_failure_reason(reason),
                 args.session_id
-            );
-        }
-        RuntimeResponse::Nudge {
-            response:
-                NudgeResponse {
-                    delivered: false,
-                    outcome: NudgeOutcome::Failed(reason),
-                },
-        } => {
-            bail!(
+            ),
+            NudgeOutcome::Failed(reason) => bail!(
                 "nudge failed; reason={} session_id={}",
                 nudge_failure_reason(reason),
                 args.session_id
-            );
-        }
-        RuntimeResponse::Nudge { response } => {
-            bail!("inconsistent nudge response: {response:?}");
-        }
+            ),
+            NudgeOutcome::Delivered => bail!("inconsistent nudge response: {response:?}"),
+        },
         other => bail!("unexpected nudge response: {other:?}"),
     }
     Ok(())
@@ -300,12 +281,7 @@ async fn status(args: StatusArgs) -> Result<()> {
     )
     .await?;
     match response {
-        RuntimeResponse::Status { lifecycles } if lifecycles.is_empty() => {
-            println!("no lifecycles");
-        }
-        RuntimeResponse::Status { lifecycles } => {
-            print_status(args.format, &lifecycles)?;
-        }
+        RuntimeResponse::Status { lifecycles } => output::emit(&args.output, &lifecycles)?,
         other => anyhow::bail!("unexpected status response: {other:?}"),
     }
     Ok(())
@@ -314,48 +290,12 @@ async fn status(args: StatusArgs) -> Result<()> {
 async fn events(args: EventsArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
     let events = crate::shared::events(&socket_path, args.since).await?;
-    for event in events {
-        match event {
-            lilo_rm_core::RuntimeEvent::Running {
-                session_id,
-                runtime_pid,
-                start_time,
-            } => println!(
-                "runtime event=Running session_id={} runtime_pid={} start_time={}",
-                session_id,
-                runtime_pid,
-                start_time.to_rfc3339()
-            ),
-            lilo_rm_core::RuntimeEvent::Terminated {
-                session_id,
-                exit_code,
-                signal,
-                evidence,
-            } => println!(
-                "runtime event=Terminated session_id={} exit_code={} signal={} evidence={}",
-                session_id,
-                display_optional_i32(exit_code),
-                display_optional_i32(signal),
-                evidence
-            ),
-            lilo_rm_core::RuntimeEvent::Lost {
-                session_id,
-                evidence,
-            } => println!(
-                "runtime event=Lost session_id={} evidence={}",
-                session_id, evidence
-            ),
-        }
-    }
+    output::emit(&args.output, &events)?;
     Ok(())
 }
 
-pub fn event_name(event: &lilo_rm_core::RuntimeEvent) -> &'static str {
-    match event {
-        lilo_rm_core::RuntimeEvent::Running { .. } => "Running",
-        lilo_rm_core::RuntimeEvent::Terminated { .. } => "Terminated",
-        lilo_rm_core::RuntimeEvent::Lost { .. } => "Lost",
-    }
+fn parse_updated_since(value: &str) -> std::result::Result<DateTime<Utc>, chrono::ParseError> {
+    DateTime::parse_from_rfc3339(value).map(|time| time.with_timezone(&Utc))
 }
 
 fn nudge_failure_reason(reason: NudgeFailureReason) -> &'static str {
@@ -363,71 +303,4 @@ fn nudge_failure_reason(reason: NudgeFailureReason) -> &'static str {
         NudgeFailureReason::HeadlessLifecycle => "headless_lifecycle",
         NudgeFailureReason::TmuxPaneDead => "tmux_pane_dead",
     }
-}
-
-fn print_status(format: StatusFormat, lifecycles: &[Lifecycle]) -> Result<()> {
-    match format {
-        StatusFormat::Summary => {
-            for lifecycle in lifecycles {
-                println!(
-                    "session_id={} state={} runtime={} shim_pid={} runtime_pid={} start_time={} tmux_pane={}",
-                    lifecycle.session_id,
-                    lifecycle.state,
-                    lifecycle.runtime,
-                    display_optional_u32(lifecycle.shim_pid),
-                    display_optional_u32(lifecycle.runtime_pid),
-                    lifecycle
-                        .start_time
-                        .map(|time| time.to_rfc3339())
-                        .unwrap_or_else(|| "-".to_owned()),
-                    display_optional_tmux_pane(lifecycle.tmux_pane.as_ref())
-                );
-            }
-        }
-        StatusFormat::Pid => println!("{}", one_pid(lifecycles, |row| row.runtime_pid, "pid")?),
-        StatusFormat::ShimPid => {
-            println!("{}", one_pid(lifecycles, |row| row.shim_pid, "shim_pid")?)
-        }
-        StatusFormat::Json => println!("{}", serde_json::to_string_pretty(lifecycles)?),
-    }
-    Ok(())
-}
-
-fn one_pid(
-    lifecycles: &[Lifecycle],
-    getter: impl Fn(&Lifecycle) -> Option<u32>,
-    label: &'static str,
-) -> Result<u32> {
-    let [lifecycle] = lifecycles else {
-        bail!("--format {label} requires exactly one lifecycle");
-    };
-    getter(lifecycle).ok_or_else(|| anyhow::anyhow!("lifecycle missing {label}"))
-}
-
-fn display_optional_u32(value: Option<u32>) -> String {
-    value
-        .map(|inner| inner.to_string())
-        .unwrap_or_else(|| "-".to_owned())
-}
-
-fn display_optional_i32(value: Option<i32>) -> String {
-    value
-        .map(|inner| inner.to_string())
-        .unwrap_or_else(|| "-".to_owned())
-}
-
-fn parse_updated_since(value: &str) -> std::result::Result<DateTime<Utc>, chrono::ParseError> {
-    DateTime::parse_from_rfc3339(value).map(|time| time.with_timezone(&Utc))
-}
-
-fn display_optional_tmux_pane(value: Option<&lilo_rm_core::TmuxAddress>) -> String {
-    value
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "-".to_owned())
-}
-
-pub fn display_optional_path(value: Option<&std::path::Path>) -> String {
-    value
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "-".to_owned())
 }
