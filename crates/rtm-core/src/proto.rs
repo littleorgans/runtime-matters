@@ -54,21 +54,46 @@ impl From<StatusFilter> for StatusRequest {
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum RuntimeRpc {
-    Spawn { request: SpawnRequest },
-    ValidateTarget { request: ValidateTargetRequest },
-    Kill { request: KillRequest },
-    KillByPid { request: KillByPidRequest },
-    Nudge { request: NudgeRequest },
-    Status { request: StatusRequest },
+    Spawn {
+        request: SpawnRequest,
+    },
+    ValidateTarget {
+        request: ValidateTargetRequest,
+    },
+    Kill {
+        request: KillRequest,
+    },
+    KillByPid {
+        request: KillByPidRequest,
+    },
+    Nudge {
+        request: NudgeRequest,
+    },
+    Status {
+        request: StatusRequest,
+    },
     Version,
     Watchers,
     Doctor,
+    /// Return the current daemon process event vector.
+    ///
+    /// v0.2 has no cursor parameter. Clients poll this request, filter by
+    /// session, and dedupe by session id plus full event content. Cursor based
+    /// `Events { since } -> { cursor, events }` support is deferred to v0.3.
     Events,
     Stop,
-    McpBridge { request: McpBridgeRequest },
-    ShimLaunch { request: ShimLaunchRequest },
-    ShimReady { ready: ShimReady },
-    ShimExit { exit: ShimExit },
+    McpBridge {
+        request: McpBridgeRequest,
+    },
+    ShimLaunch {
+        request: ShimLaunchRequest,
+    },
+    ShimReady {
+        ready: ShimReady,
+    },
+    ShimExit {
+        exit: ShimExit,
+    },
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
@@ -102,6 +127,10 @@ pub enum RuntimeResponse {
     Doctor {
         doctor: crate::DoctorResponse,
     },
+    /// Events in daemon append order.
+    ///
+    /// The vector is retained only in current rtmd process memory. It has no
+    /// cursor, retention window, sqlite replay, or limit policy in v0.2.
     Events {
         events: Vec<RuntimeEvent>,
     },

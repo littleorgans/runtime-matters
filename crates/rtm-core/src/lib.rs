@@ -3,6 +3,21 @@
 //! This crate is the stable contract shared by `rtm` clients and rtmd. The
 //! daemon, CLI, platform, launcher, and store crates remain private
 //! implementation details.
+//!
+//! ## Events contract
+//!
+//! v0.2 events use [`RuntimeRpc::Events`] and
+//! [`RuntimeResponse::Events { events }`](RuntimeResponse::Events). The response
+//! is the current daemon process vector in append order. rtmd appends
+//! [`RuntimeEvent::Running`] when shim ready is stored, then appends
+//! [`RuntimeEvent::Terminated`] or [`RuntimeEvent::Lost`] when exit or loss
+//! evidence is observed.
+//!
+//! Events are kept only in the current daemon process memory. There is no v0.2
+//! cursor, retention window, sqlite replay, or limit policy. Clients such as
+//! session-matters should poll, filter to their session set, and dedupe by
+//! session id plus full event content. Cursor based
+//! `Events { since } -> { cursor, events }` support is deferred to v0.3.
 
 pub mod admin;
 pub mod error;
