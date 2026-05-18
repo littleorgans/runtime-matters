@@ -394,6 +394,43 @@ mod tests {
         assert_eq!(expired.oldest, 1);
     }
 
+    #[tokio::test]
+    async fn compaction_does_not_truncate_for_count_alone() {
+        let temp = TempDir::new().expect("temp");
+        let log = EventLog::open(temp.path()).expect("open");
+        let event_count = EVENT_LOG_RETENTION_MIN_EVENTS + 1;
+        for _ in 0..event_count {
+            log.append(running_event()).await.expect("append");
+        }
+
+        assert_all_events_readable_from_start(&log, event_count).await;
+    }
+
+    #[tokio::test]
+    async fn compaction_does_not_truncate_for_age_alone() {
+        let temp = TempDir::new().expect("temp");
+        let log = EventLog::open(temp.path()).expect("open");
+        let old_ms = (Utc::now() - chrono::Duration::days(8)).timestamp_millis() as u64;
+        let event_count = EVENT_LOG_RETENTION_MIN_EVENTS - 1;
+        for _ in 0..event_count {
+            log.append_with_ts(running_event(), old_ms)
+                .await
+                .expect("append");
+        }
+
+        assert_all_events_readable_from_start(&log, event_count).await;
+    }
+
+    async fn assert_all_events_readable_from_start(log: &EventLog, event_count: usize) {
+        let batch = log
+            .events_since(Some(0))
+            .await
+            .expect("events remain readable from start");
+
+        assert_eq!(batch.events.len(), event_count);
+        assert_eq!(batch.cursor, event_count as EventCursor);
+    }
+
     fn running_event() -> RuntimeEvent {
         RuntimeEvent::Running {
             session_id: Uuid::parse_str("018f6e28-0000-7000-8000-000000000001").unwrap(),
