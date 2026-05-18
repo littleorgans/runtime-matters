@@ -23,7 +23,7 @@ impl LaunchEnv {
 pub struct LaunchSpec {
     pub argv: Vec<String>,
     pub env: Vec<LaunchEnv>,
-    pub cwd: Option<PathBuf>,
+    pub cwd: PathBuf,
 }
 
 impl LaunchSpec {
@@ -42,7 +42,7 @@ pub trait RuntimeLauncher: Sync {
 
     fn env(&self, request: &SpawnRequest) -> Result<Vec<LaunchEnv>, LauncherError>;
 
-    fn cwd(&self, request: &SpawnRequest) -> Result<Option<PathBuf>, LauncherError> {
+    fn cwd(&self, request: &SpawnRequest) -> Result<PathBuf, LauncherError> {
         Ok(request.cwd.clone())
     }
 

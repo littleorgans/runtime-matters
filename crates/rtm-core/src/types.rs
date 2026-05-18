@@ -207,8 +207,7 @@ pub struct SpawnRequest {
     pub runtime: RuntimeKind,
     #[serde(default)]
     pub env: Vec<LaunchEnv>,
-    #[serde(default)]
-    pub cwd: Option<std::path::PathBuf>,
+    pub cwd: std::path::PathBuf,
     pub target: SpawnTarget,
 }
 

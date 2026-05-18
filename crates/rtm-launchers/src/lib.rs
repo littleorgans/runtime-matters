@@ -33,7 +33,7 @@ pub fn warm_registry() -> Result<(), LauncherError> {
             session_id: uuid::Uuid::nil(),
             runtime: launcher.kind(),
             env: Vec::new(),
-            cwd: None,
+            cwd: rtm_core::launcher_probe_cwd(),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
         };
         launcher.argv(&request)?;

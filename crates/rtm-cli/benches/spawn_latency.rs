@@ -28,7 +28,7 @@ fn main() {
                         session_id,
                         runtime: RuntimeKind::Claude,
                         env: Vec::new(),
-                        cwd: None,
+                        cwd: harness.rtm_home().to_path_buf(),
                         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
                     },
                 },
