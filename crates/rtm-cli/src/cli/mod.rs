@@ -19,6 +19,7 @@ pub mod version;
 #[derive(Debug, Parser)]
 #[command(name = "rtm")]
 #[command(about = "runtime-matters host runtime control")]
+#[command(display_name = "runtime-matters", version = crate::VERSION)]
 pub struct Cli {
     #[command(subcommand)]
     command: Command,
