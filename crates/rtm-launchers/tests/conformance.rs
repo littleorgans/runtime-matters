@@ -26,7 +26,7 @@ fn assert_launcher_conforms(launcher: &'static dyn RuntimeLauncher) {
         session_id: Uuid::now_v7(),
         runtime: launcher.kind(),
         env: Vec::new(),
-        cwd: None,
+        cwd: rtm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
     };
 

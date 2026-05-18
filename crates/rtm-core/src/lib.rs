@@ -3,6 +3,7 @@ pub mod error;
 pub mod launcher;
 pub mod mcp;
 pub mod proto;
+pub mod spawn_context;
 pub mod tool_contracts;
 pub mod types;
 mod version;
@@ -20,6 +21,10 @@ pub use mcp::{
 pub use proto::{
     RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line, read_json_line_blocking,
     write_json_line, write_json_line_blocking,
+};
+pub use spawn_context::{
+    CALLER_ENV_DENYLIST, CALLER_ENV_DENYLIST_PREFIXES, capture_caller_cwd, capture_caller_env,
+    capture_env_from, capture_env_from_os, launcher_probe_cwd,
 };
 pub use types::{
     HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, NudgeRequest,

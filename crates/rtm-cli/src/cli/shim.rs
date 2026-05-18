@@ -86,13 +86,23 @@ where
 fn runtime_command(launch: &LaunchSpec) -> Result<Command> {
     let mut command = Command::new(launch.command()?);
     command.args(launch.argv.iter().skip(1));
+    apply_launch_env_cwd(&mut command, launch);
+    Ok(command)
+}
+
+/// Apply `LaunchSpec.env` and `LaunchSpec.cwd` to a `Command`.
+///
+/// `env_clear()` is called first so the runtime starts from an empty env,
+/// then `launch.env` is layered on top. Without this, the runtime would
+/// inherit the shim's bootstrap env (RTM_SOCKET_PATH) and the daemon's
+/// process env, defeating the denylist applied at capture time. LaunchSpec.env
+/// is the authoritative source of truth for the runtime.
+fn apply_launch_env_cwd(command: &mut Command, launch: &LaunchSpec) {
+    command.env_clear();
     for env in &launch.env {
         command.env(&env.key, &env.value);
     }
-    if let Some(cwd) = &launch.cwd {
-        command.current_dir(cwd);
-    }
-    Ok(command)
+    command.current_dir(&launch.cwd);
 }
 
 fn wait_for_runtime(child: &mut std::process::Child) -> Result<ExitStatus> {
@@ -131,4 +141,49 @@ extern "C" fn mark_sigterm(_: libc::c_int) {
 
 fn runtime_exit(status: ExitStatus) -> RuntimeExit {
     RuntimeExit::new(status.code(), status.signal())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rtm_core::LaunchEnv;
+    use std::path::PathBuf;
+
+    #[test]
+    fn apply_launch_env_cwd_clears_pre_existing_env_on_command() {
+        // Pre-populate a Command with a sentinel env var to simulate inherited
+        // env at the point apply_launch_env_cwd runs. The env_clear() inside
+        // must wipe it before LaunchSpec.env is layered on top. Avoids mutating
+        // the parent test process env (which is not single-thread safe under
+        // Rust's default test harness).
+        let launch = LaunchSpec {
+            argv: vec!["/usr/bin/env".to_owned()],
+            env: vec![LaunchEnv::new("RTM_ALLOWED_SENTINEL", "present")],
+            cwd: PathBuf::from("/tmp"),
+        };
+
+        let mut command = Command::new("/usr/bin/env");
+        command.env("RTM_PRE_EXISTING_SENTINEL", "should_be_cleared");
+        apply_launch_env_cwd(&mut command, &launch);
+
+        let output = command.output().expect("/usr/bin/env runs");
+        assert!(output.status.success(), "env exited non-zero: {output:?}");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(
+            stdout.contains("RTM_ALLOWED_SENTINEL=present"),
+            "LaunchSpec.env was not delivered:\n{stdout}"
+        );
+        assert!(
+            !stdout.contains("RTM_PRE_EXISTING_SENTINEL"),
+            "pre-existing env was not cleared:\n{stdout}"
+        );
+        // The child should also not see PATH from this test process. Rust
+        // defaults to inheriting unless env_clear is called, and we called it,
+        // so the env map should be exactly LaunchSpec.env.
+        assert!(
+            !stdout.contains("PATH="),
+            "env_clear should have prevented PATH inheritance:\n{stdout}"
+        );
+    }
 }

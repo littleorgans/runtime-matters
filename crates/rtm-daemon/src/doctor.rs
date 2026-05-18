@@ -42,7 +42,7 @@ fn launcher_status(launcher: &'static dyn rtm_core::RuntimeLauncher) -> Launcher
         session_id: Uuid::nil(),
         runtime: runtime.clone(),
         env: Vec::new(),
-        cwd: None,
+        cwd: rtm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
     };
     match launcher.argv(&request) {

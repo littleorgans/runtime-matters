@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use rtm_core::{
     KillByPidRequest, KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse,
@@ -122,14 +122,16 @@ impl Cli {
 
 async fn spawn(args: SpawnArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
+    let cwd = rtm_core::capture_caller_cwd().context("failed to capture caller cwd")?;
+    let env = rtm_core::capture_caller_env();
     let response = crate::shared::request(
         &socket_path,
         RuntimeRpc::Spawn {
             request: SpawnRequest {
                 session_id: args.session_id,
                 runtime: args.runtime,
-                env: Vec::new(),
-                cwd: None,
+                env,
+                cwd,
                 target: args.target,
             },
         },

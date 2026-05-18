@@ -43,7 +43,7 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
                     session_id,
                     runtime: RuntimeKind::Claude,
                     env: vec![LaunchEnv::new("RTM_TEST_STDIO_SENTINELS", "1")],
-                    cwd: None,
+                    cwd: harness.rtm_home().to_path_buf(),
                     target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
                 },
             },

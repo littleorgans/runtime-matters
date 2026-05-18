@@ -40,7 +40,7 @@ expression: responses
             "value": "1"
           }
         ],
-        "cwd": null
+        "cwd": "/tmp/rtm"
       }
     }
   },

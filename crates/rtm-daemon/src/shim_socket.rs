@@ -101,6 +101,15 @@ fn shim_argv(config: &DaemonConfig, request: &SpawnRequest) -> Vec<String> {
     ]
 }
 
+/// Build the bootstrap env handed to the shim before it phones home for the
+/// real `LaunchSpec`. By contract, this is the **only** env handed to tmux via
+/// `respawn-pane -e ...` and the only env the shim inherits at startup. The
+/// runtime's actual env arrives over the post-spawn UDS handoff
+/// (`ShimLaunch` -> `LaunchSpec.env`) and the shim applies it after
+/// `env_clear()` in `rtm-cli/src/cli/shim.rs::runtime_command`.
+///
+/// Adding entries here is a deliberate widening of the bootstrap surface and
+/// must be paired with a documented justification.
 fn shim_env(config: &DaemonConfig) -> Vec<LaunchEnv> {
     vec![LaunchEnv {
         key: "RTM_SOCKET_PATH".to_owned(),
@@ -190,5 +199,36 @@ fn ack_from_response(response: RuntimeResponse, label: &'static str) -> Result<(
     match response {
         RuntimeResponse::Ack => Ok(()),
         response => anyhow::bail!("unexpected {label} response: {response:?}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reconcile::ReconcileConfig;
+    use rtm_store::StoreConfig;
+    use std::path::PathBuf;
+
+    fn test_config() -> DaemonConfig {
+        DaemonConfig {
+            socket_path: PathBuf::from("/tmp/rtm.sock"),
+            shim_path: PathBuf::from("/tmp/rtm-shim"),
+            log_root: PathBuf::from("/tmp/rtm/logs"),
+            store: StoreConfig {
+                db_path: PathBuf::from("/tmp/rtm.db"),
+            },
+            reconcile: ReconcileConfig::default(),
+        }
+    }
+
+    #[test]
+    fn shim_env_only_contains_socket_path() {
+        // Contract: the bootstrap env (the only env that ever rides through
+        // tmux respawn-pane -e and is inherited by the shim process) is
+        // exactly {RTM_SOCKET_PATH}. Runtime env arrives over UDS.
+        let env = shim_env(&test_config());
+        assert_eq!(env.len(), 1, "bootstrap env widened unexpectedly: {env:?}");
+        assert_eq!(env[0].key, "RTM_SOCKET_PATH");
+        assert_eq!(env[0].value, "/tmp/rtm.sock");
     }
 }

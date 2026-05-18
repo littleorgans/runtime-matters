@@ -18,7 +18,7 @@ fn runtime_rpc_json_shapes_are_stable() {
                 session_id,
                 runtime: RuntimeKind::Claude,
                 env: Vec::new(),
-                cwd: Some("/tmp/rtm".into()),
+                cwd: "/tmp/rtm".into(),
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {
                     address: "rtm:0.1".parse().expect("address"),
                 }),
@@ -119,7 +119,7 @@ fn runtime_response_json_shapes_are_stable() {
             launch: LaunchSpec {
                 argv: vec!["claude".to_owned(), "--resume".to_owned()],
                 env: vec![LaunchEnv::new("RTM", "1")],
-                cwd: None,
+                cwd: "/tmp/rtm".into(),
             },
         },
         RuntimeResponse::Ack,
@@ -144,7 +144,7 @@ fn spawn_request_json_requires_target() {
         "session_id": session_id(),
         "runtime": "claude",
         "env": [],
-        "cwd": null
+        "cwd": "/tmp/rtm"
     }))
     .expect_err("spawn request without target should fail");
 
@@ -152,6 +152,19 @@ fn spawn_request_json_requires_target() {
         error.to_string().contains("missing field `target`"),
         "{error}"
     );
+}
+
+#[test]
+fn spawn_request_json_requires_cwd() {
+    let error = serde_json::from_value::<SpawnRequest>(json!({
+        "session_id": session_id(),
+        "runtime": "claude",
+        "env": [],
+        "target": { "type": "headless", "payload": {} }
+    }))
+    .expect_err("spawn request without cwd should fail");
+
+    assert!(error.to_string().contains("missing field `cwd`"), "{error}");
 }
 
 fn ready(session_id: Uuid) -> ShimReady {
