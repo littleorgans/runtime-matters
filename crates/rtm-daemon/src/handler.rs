@@ -99,6 +99,9 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             let response = state.nudge_runtime(request).await?;
             Ok(RuntimeResponse::Nudge { response })
         }
+        RuntimeRpc::Capture { request } => Ok(RuntimeResponse::Capture {
+            response: state.capture_pane(request).await?,
+        }),
         RuntimeRpc::Status { request } => Ok(RuntimeResponse::Status {
             lifecycles: state.status(request.into()).await,
         }),

@@ -1,6 +1,5 @@
 ---
 source: crates/rtm-core/tests/serde_snapshots.rs
-assertion_line: 216
 expression: responses
 ---
 [
@@ -14,7 +13,14 @@ expression: responses
         "shim_pid": 4241,
         "runtime_pid": 4242,
         "start_time": "2023-11-14T22:13:20Z",
-        "tmux_pane": "rtm:0.1"
+        "tmux_pane": "rtm:0.1",
+        "log_availability": {
+          "type": "headless",
+          "payload": {
+            "stdout_path": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stdout.log",
+            "stderr_path": "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stderr.log"
+          }
+        }
       },
       "event": {
         "type": "running",
@@ -39,7 +45,10 @@ expression: responses
         "shim_pid": 4241,
         "runtime_pid": 4242,
         "start_time": "2023-11-14T22:13:20Z",
-        "tmux_pane": "rtm:0.1"
+        "tmux_pane": "rtm:0.1",
+        "log_availability": {
+          "type": "tmux_pane_snapshot"
+        }
       },
       "event": {
         "type": "running",
@@ -158,6 +167,32 @@ expression: responses
     }
   },
   {
+    "type": "capture",
+    "payload": {
+      "response": {
+        "status": "captured",
+        "payload": {
+          "content": "\u001b[32mhello\u001b[0m",
+          "captured_at_ms": 1700000001000,
+          "scrollback_lines_requested": 1000,
+          "scrollback_lines_included": 1,
+          "pane_history_lines": 2000
+        }
+      }
+    }
+  },
+  {
+    "type": "capture",
+    "payload": {
+      "response": {
+        "status": "failed",
+        "payload": {
+          "type": "pane_unavailable"
+        }
+      }
+    }
+  },
+  {
     "type": "version",
     "payload": {
       "version": {
@@ -171,7 +206,8 @@ expression: responses
           "status_updated_since_filter",
           "typed_nudge_outcomes",
           "validate_target_preflight",
-          "events_cursor"
+          "events_cursor",
+          "tmux_pane_snapshot"
         ]
       }
     }
@@ -191,7 +227,8 @@ expression: responses
             "status_updated_since_filter",
             "typed_nudge_outcomes",
             "validate_target_preflight",
-            "events_cursor"
+            "events_cursor",
+            "tmux_pane_snapshot"
           ]
         },
         "socket_path": "/tmp/rtmd.sock",
@@ -227,6 +264,14 @@ expression: responses
           "version": "tmux 3.5a",
           "error": null
         },
+        "log_availability": [
+          {
+            "session_id": "018f6e28-0000-7000-8000-000000000001",
+            "log_availability": {
+              "type": "tmux_pane_snapshot"
+            }
+          }
+        ],
         "last_probe_sweep": "2023-11-14T22:13:20Z",
         "recent_lost": [
           {

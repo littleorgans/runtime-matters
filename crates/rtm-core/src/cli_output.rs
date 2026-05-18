@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     DoctorResponse, KillByPidResponse, Lifecycle, LifecycleCounts, NudgeOutcome, NudgeResponse,
-    RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
+    PaneSnapshot, RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
 };
 
 pub trait CliOutput: Serialize {
@@ -161,6 +161,20 @@ impl CliOutput for Vec<RuntimeEvent> {
             }
         }
         Ok(())
+    }
+}
+
+impl CliOutput for PaneSnapshot {
+    fn render_human(&self, f: &mut impl Write) -> fmt::Result {
+        write!(
+            f,
+            "pane snapshot; captured_at_ms={} scrollback_lines_requested={} scrollback_lines_included={} pane_history_lines={}\n{}",
+            self.captured_at_ms,
+            self.scrollback_lines_requested,
+            self.scrollback_lines_included,
+            self.pane_history_lines,
+            self.content
+        )
     }
 }
 

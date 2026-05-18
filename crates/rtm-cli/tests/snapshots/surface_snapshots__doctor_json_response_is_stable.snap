@@ -22,6 +22,7 @@ expression: doctor
     "lost": "[count]",
     "running": "[count]"
   },
+  "log_availability": [],
   "recent_lost": [],
   "socket_path": "[socket]",
   "sqlite": {
@@ -47,7 +48,8 @@ expression: doctor
       "status_updated_since_filter",
       "typed_nudge_outcomes",
       "validate_target_preflight",
-      "events_cursor"
+      "events_cursor",
+      "tmux_pane_snapshot"
     ],
     "git_sha": "[git_sha]",
     "protocol_version": "0.3",

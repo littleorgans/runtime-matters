@@ -13,6 +13,7 @@ pub const RUNTIME_PROTOCOL_CAPABILITIES: &[RuntimeCapability] = &[
     RuntimeCapability::TypedNudgeOutcomes,
     RuntimeCapability::ValidateTargetPreflight,
     RuntimeCapability::EventsCursor,
+    RuntimeCapability::TmuxPaneSnapshot,
 ];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -54,6 +55,8 @@ pub enum RuntimeCapability {
     ValidateTargetPreflight,
     /// Events support durable cursor replay.
     EventsCursor,
+    /// Tmux targets support on demand pane snapshot capture.
+    TmuxPaneSnapshot,
 }
 
 impl RuntimeCapability {
@@ -66,6 +69,7 @@ impl RuntimeCapability {
             Self::TypedNudgeOutcomes => "typed_nudge_outcomes",
             Self::ValidateTargetPreflight => "validate_target_preflight",
             Self::EventsCursor => "events_cursor",
+            Self::TmuxPaneSnapshot => "tmux_pane_snapshot",
         }
     }
 }
@@ -88,6 +92,7 @@ impl FromStr for RuntimeCapability {
             "typed_nudge_outcomes" => Ok(Self::TypedNudgeOutcomes),
             "validate_target_preflight" => Ok(Self::ValidateTargetPreflight),
             "events_cursor" => Ok(Self::EventsCursor),
+            "tmux_pane_snapshot" => Ok(Self::TmuxPaneSnapshot),
             other => Err(format!("unknown runtime capability {other}")),
         }
     }

@@ -1,12 +1,11 @@
 ---
 source: crates/rtm-cli/tests/surface_snapshots.rs
-assertion_line: 30
 expression: normalize_doctor(&output_stdout(output))
 ---
 rtmd
   version             [version]
   protocol            0.3
-  capabilities        structured_protocol_errors, headless_stdio_log_paths, status_session_set_filter, status_updated_since_filter, typed_nudge_outcomes, validate_target_preflight, events_cursor
+  capabilities        structured_protocol_errors, headless_stdio_log_paths, status_session_set_filter, status_updated_since_filter, typed_nudge_outcomes, validate_target_preflight, events_cursor, tmux_pane_snapshot
   socket              [socket]
   uptime              [uptime]
 sqlite

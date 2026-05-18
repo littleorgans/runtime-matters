@@ -394,6 +394,8 @@ pub struct Lifecycle {
     pub runtime_pid: Option<u32>,
     pub start_time: Option<DateTime<Utc>>,
     pub tmux_pane: Option<TmuxAddress>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_availability: Option<crate::LogAvailability>,
 }
 
 impl Lifecycle {
@@ -406,6 +408,7 @@ impl Lifecycle {
             runtime_pid: None,
             start_time: None,
             tmux_pane: None,
+            log_availability: None,
         }
     }
 

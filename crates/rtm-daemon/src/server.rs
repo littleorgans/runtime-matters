@@ -5,11 +5,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use lilo_rm_core::{
-    EventCursor, KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle,
-    LifecycleState, LostEvidence, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse,
-    RuntimeEvent, RuntimeExit, RuntimeSignal, ShimExit, ShimReady, SpawnRequest, StatusFilter,
-    TerminationEvidence, ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse,
-    WatcherCounts,
+    CaptureError, CaptureRequest, CaptureResponse, EventCursor, KillByPidRequest,
+    KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, LifecycleLogAvailability,
+    LifecycleState, LogAvailability, LogsUnavailableReason, LostEvidence, NudgeFailureReason,
+    NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeSignal, ShimExit,
+    ShimReady, SpawnRequest, StatusFilter, TerminationEvidence, ValidateTargetOutcome,
+    ValidateTargetRequest, ValidateTargetResponse, WatcherCounts,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use tokio::net::UnixListener;
@@ -292,6 +293,7 @@ impl ServerState {
             )));
         }
         lifecycle.tmux_pane = request.target.tmux_address().cloned();
+        self.populate_log_availability(&mut lifecycle).await;
         self.store.update_lifecycle(&lifecycle).await?;
         let event = event_channel::running_event(&lifecycle)?;
 
@@ -375,6 +377,25 @@ impl ServerState {
         })
     }
 
+    pub(crate) async fn capture_pane(&self, request: CaptureRequest) -> Result<CaptureResponse> {
+        let Some(lifecycle) = self.store.get(request.target_id).await? else {
+            return Ok(CaptureResponse::Failed(CaptureError::SessionMissing));
+        };
+        let Some(tmux_pane) = lifecycle.tmux_pane.as_ref() else {
+            return Ok(CaptureResponse::Failed(CaptureError::NotATmuxTarget));
+        };
+        if !rtm_platform::tmux::TmuxGateway::is_alive(tmux_pane).await? {
+            return Ok(CaptureResponse::Failed(CaptureError::PaneUnavailable));
+        }
+        let scrollback_lines = request.scrollback_lines.unwrap_or(1000);
+        Ok(
+            match rtm_platform::tmux::TmuxGateway::capture_pane(tmux_pane, scrollback_lines).await {
+                Ok(snapshot) => CaptureResponse::Captured(snapshot),
+                Err(error) => CaptureResponse::Failed(error),
+            },
+        )
+    }
+
     pub(crate) async fn record_shim_exit(&self, exit: ShimExit) -> Result<Option<RuntimeEvent>> {
         self.record_exited(exit.session_id, exit.exit, TerminationEvidence::ShimExit)
             .await
@@ -403,12 +424,54 @@ impl ServerState {
 
     pub(crate) async fn status(&self, filter: StatusFilter) -> Vec<Lifecycle> {
         match self.store.list(&filter).await {
-            Ok(rows) => rows,
+            Ok(mut rows) => {
+                self.populate_log_availability_for(&mut rows).await;
+                rows
+            }
             Err(error) => {
                 tracing::warn!(%error, "failed to read lifecycle status");
                 Vec::new()
             }
         }
+    }
+
+    pub(crate) async fn log_availability_statuses(&self) -> Vec<LifecycleLogAvailability> {
+        self.status(StatusFilter::empty())
+            .await
+            .into_iter()
+            .filter_map(|lifecycle| {
+                lifecycle
+                    .log_availability
+                    .map(|log_availability| LifecycleLogAvailability {
+                        session_id: lifecycle.session_id,
+                        log_availability,
+                    })
+            })
+            .collect()
+    }
+
+    async fn populate_log_availability_for(&self, lifecycles: &mut [Lifecycle]) {
+        for lifecycle in lifecycles {
+            self.populate_log_availability(lifecycle).await;
+        }
+    }
+
+    async fn populate_log_availability(&self, lifecycle: &mut Lifecycle) {
+        lifecycle.log_availability = Some(match lifecycle.tmux_pane.as_ref() {
+            Some(address) => match rtm_platform::tmux::TmuxGateway::is_alive(address).await {
+                Ok(true) => LogAvailability::TmuxPaneSnapshot,
+                Ok(false) | Err(_) => LogAvailability::Unavailable {
+                    reason: LogsUnavailableReason::PaneUnavailable,
+                },
+            },
+            None => {
+                let log_dir = self.config.session_log_dir(lifecycle.session_id);
+                LogAvailability::Headless {
+                    stdout_path: log_dir.join("stdout.log"),
+                    stderr_path: log_dir.join("stderr.log"),
+                }
+            }
+        });
     }
 
     pub(crate) async fn events(

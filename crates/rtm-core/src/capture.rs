@@ -1,0 +1,69 @@
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
+pub enum LogAvailability {
+    Headless {
+        stdout_path: PathBuf,
+        stderr_path: PathBuf,
+    },
+    TmuxPaneSnapshot,
+    Unavailable {
+        reason: LogsUnavailableReason,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogsUnavailableReason {
+    TmuxTarget,
+    CaptureDisabled,
+    PaneUnavailable,
+    PipeInUse,
+    RecorderFailed,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CaptureRequest {
+    pub target_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scrollback_lines: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PaneSnapshot {
+    pub content: String,
+    pub captured_at_ms: u64,
+    pub scrollback_lines_requested: u32,
+    pub scrollback_lines_included: u32,
+    pub pane_history_lines: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
+pub enum CaptureError {
+    NotATmuxTarget,
+    PaneUnavailable,
+    SessionMissing,
+    TmuxNotAvailable,
+    CapturePaneFailed { stderr: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "status", content = "payload", rename_all = "snake_case")]
+pub enum CaptureResponse {
+    Captured(PaneSnapshot),
+    Failed(CaptureError),
+}
+
+impl CaptureResponse {
+    pub fn into_result(self) -> Result<PaneSnapshot, CaptureError> {
+        match self {
+            Self::Captured(snapshot) => Ok(snapshot),
+            Self::Failed(error) => Err(error),
+        }
+    }
+}

@@ -2,8 +2,8 @@ use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use lilo_rm_core::{
-    Ack, KillByPidRequest, KillRequest, NudgeOutcome, NudgeRequest, RuntimeKind, RuntimeResponse,
-    RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
+    Ack, CaptureRequest, KillByPidRequest, KillRequest, NudgeOutcome, NudgeRequest, RuntimeKind,
+    RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
 };
 use uuid::Uuid;
 
@@ -37,6 +37,7 @@ enum Command {
     #[command(about = cli_help::KILL_ABOUT)]
     Kill(KillArgs),
     Nudge(NudgeArgs),
+    Capture(CaptureArgs),
     #[command(about = cli_help::STATUS_ABOUT)]
     Status(StatusArgs),
     #[command(about = cli_help::MCP_ABOUT)]
@@ -102,6 +103,16 @@ pub struct NudgeArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct CaptureArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
+    #[arg(value_name = "TARGET_ID")]
+    target_id: Uuid,
+    #[arg(long)]
+    scrollback_lines: Option<u32>,
+}
+
+#[derive(Debug, Args)]
 pub struct EventsArgs {
     #[command(flatten)]
     output: output::OutputArgs,
@@ -128,6 +139,7 @@ impl Cli {
             Command::Spawn(args) => spawn(args).await,
             Command::Kill(args) => kill(args).await,
             Command::Nudge(args) => nudge(args).await,
+            Command::Capture(args) => capture(args).await,
             Command::Status(args) => status(args).await,
             Command::Mcp => mcp::run().await,
             Command::Version(args) => version::run(args.output).await,
@@ -262,6 +274,32 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
             NudgeOutcome::Delivered => bail!("inconsistent nudge response: {response:?}"),
         },
         other => bail!("unexpected nudge response: {other:?}"),
+    }
+    Ok(())
+}
+
+async fn capture(args: CaptureArgs) -> Result<()> {
+    let socket_path = crate::shared::socket_path()?;
+    let response = crate::shared::request(
+        &socket_path,
+        RuntimeRpc::Capture {
+            request: CaptureRequest {
+                target_id: args.target_id,
+                scrollback_lines: args.scrollback_lines,
+            },
+        },
+    )
+    .await?;
+
+    match response {
+        RuntimeResponse::Capture { response } => match response.into_result() {
+            Ok(snapshot) => output::emit(&args.output, &snapshot)?,
+            Err(error) => bail!(
+                "capture failed; error={error:?} target_id={}",
+                args.target_id
+            ),
+        },
+        other => bail!("unexpected capture response: {other:?}"),
     }
     Ok(())
 }

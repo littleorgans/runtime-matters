@@ -23,6 +23,18 @@ expression: snapshot
       "lost": "[count]",
       "running": "[count]"
     },
+    "log_availability": [
+      {
+        "log_availability": {
+          "payload": {
+            "stderr_path": "[path]",
+            "stdout_path": "[path]"
+          },
+          "type": "headless"
+        },
+        "session_id": "[uuid]"
+      }
+    ],
     "recent_lost": [],
     "socket_path": "[socket]",
     "sqlite": {
@@ -48,7 +60,8 @@ expression: snapshot
         "status_updated_since_filter",
         "typed_nudge_outcomes",
         "validate_target_preflight",
-        "events_cursor"
+        "events_cursor",
+        "tmux_pane_snapshot"
       ],
       "git_sha": "[git_sha]",
       "protocol_version": "0.3",
@@ -96,6 +109,13 @@ expression: snapshot
         "type": "running"
       },
       "lifecycle": {
+        "log_availability": {
+          "payload": {
+            "stderr_path": "[path]",
+            "stdout_path": "[path]"
+          },
+          "type": "headless"
+        },
         "runtime": "claude",
         "runtime_pid": "[pid]",
         "session_id": "[uuid]",
@@ -112,6 +132,13 @@ expression: snapshot
   },
   "status": [
     {
+      "log_availability": {
+        "payload": {
+          "stderr_path": "[path]",
+          "stdout_path": "[path]"
+        },
+        "type": "headless"
+      },
       "runtime": "claude",
       "runtime_pid": "[pid]",
       "session_id": "[uuid]",
@@ -134,7 +161,8 @@ expression: snapshot
       "status_updated_since_filter",
       "typed_nudge_outcomes",
       "validate_target_preflight",
-      "events_cursor"
+      "events_cursor",
+      "tmux_pane_snapshot"
     ],
     "git_sha": "[git_sha]",
     "protocol_version": "0.3",

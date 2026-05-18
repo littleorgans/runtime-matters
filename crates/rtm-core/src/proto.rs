@@ -80,6 +80,9 @@ pub enum RuntimeRpc {
     Nudge {
         request: NudgeRequest,
     },
+    Capture {
+        request: crate::CaptureRequest,
+    },
     Status {
         request: StatusRequest,
     },
@@ -126,6 +129,9 @@ pub enum RuntimeResponse {
     },
     Nudge {
         response: NudgeResponse,
+    },
+    Capture {
+        response: crate::CaptureResponse,
     },
     Version {
         version: crate::VersionInfo,

@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
-use lilo_rm_core::{LaunchEnv, TmuxAddress};
+use lilo_rm_core::{CaptureError, LaunchEnv, PaneSnapshot, TmuxAddress};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
 
 pub struct TmuxGateway;
@@ -63,10 +64,81 @@ impl TmuxGateway {
                 .any(|line| line.trim() == tmux_pane.to_string())
         })
     }
+
+    pub async fn capture_pane(
+        tmux_pane: &TmuxAddress,
+        scrollback_lines: u32,
+    ) -> std::result::Result<PaneSnapshot, CaptureError> {
+        let content_output = tmux_capture_output(tmux_pane, scrollback_lines)
+            .await?
+            .ok_or(CaptureError::TmuxNotAvailable)?;
+        if !content_output.status.success() {
+            return Err(CaptureError::CapturePaneFailed {
+                stderr: stderr(content_output),
+            });
+        }
+        let history_output = tmux_history_output(tmux_pane)
+            .await?
+            .ok_or(CaptureError::TmuxNotAvailable)?;
+        if !history_output.status.success() {
+            return Err(CaptureError::CapturePaneFailed {
+                stderr: stderr(history_output),
+            });
+        }
+        let content = stdout(content_output);
+        let pane_history_lines = stdout(history_output).trim().parse().unwrap_or_default();
+        let scrollback_lines_included = content.lines().count().try_into().unwrap_or(u32::MAX);
+        Ok(PaneSnapshot {
+            content,
+            captured_at_ms: unix_epoch_ms(),
+            scrollback_lines_requested: scrollback_lines,
+            scrollback_lines_included,
+            pane_history_lines,
+        })
+    }
 }
 
 async fn tmux_output<const N: usize>(args: [&str; N]) -> Result<Option<std::process::Output>> {
     tmux_output_owned(args.into_iter().map(str::to_owned).collect()).await
+}
+
+async fn tmux_capture_output(
+    tmux_pane: &TmuxAddress,
+    scrollback_lines: u32,
+) -> std::result::Result<Option<std::process::Output>, CaptureError> {
+    tmux_output_owned(build_capture_pane_args(tmux_pane, scrollback_lines))
+        .await
+        .map_err(|error| CaptureError::CapturePaneFailed {
+            stderr: error.to_string(),
+        })
+}
+
+fn build_capture_pane_args(tmux_pane: &TmuxAddress, scrollback_lines: u32) -> Vec<String> {
+    vec![
+        "capture-pane".to_owned(),
+        "-p".to_owned(),
+        "-e".to_owned(),
+        "-S".to_owned(),
+        format!("-{scrollback_lines}"),
+        "-t".to_owned(),
+        tmux_pane.to_string(),
+    ]
+}
+
+async fn tmux_history_output(
+    tmux_pane: &TmuxAddress,
+) -> std::result::Result<Option<std::process::Output>, CaptureError> {
+    tmux_output_owned(vec![
+        "display-message".to_owned(),
+        "-p".to_owned(),
+        "-t".to_owned(),
+        tmux_pane.to_string(),
+        "#{history_size}".to_owned(),
+    ])
+    .await
+    .map_err(|error| CaptureError::CapturePaneFailed {
+        stderr: error.to_string(),
+    })
 }
 
 async fn send_keys(target: &str, trailing: &[String]) -> Result<()> {
@@ -96,6 +168,19 @@ fn ensure_success(output: std::process::Output, label: &'static str) -> Result<S
 
 fn stdout(output: std::process::Output) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+fn stderr(output: std::process::Output) -> String {
+    String::from_utf8_lossy(&output.stderr).trim().to_owned()
+}
+
+fn unix_epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 /// Build the per-step argv trailers for the three send-keys invocations used
@@ -213,6 +298,22 @@ mod tests {
         assert!(
             err.to_string().contains("requires argv"),
             "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn capture_pane_args_include_ansi_and_scrollback() {
+        assert_eq!(
+            build_capture_pane_args(&pane(), 250),
+            vec![
+                "capture-pane".to_owned(),
+                "-p".to_owned(),
+                "-e".to_owned(),
+                "-S".to_owned(),
+                "-250".to_owned(),
+                "-t".to_owned(),
+                "rtm:0.1".to_owned()
+            ]
         );
     }
 }

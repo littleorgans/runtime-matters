@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use chrono::{DateTime, Utc};
 
-use crate::{Lifecycle, LostEvidence, VersionInfo};
+use crate::{Lifecycle, LogAvailability, LostEvidence, VersionInfo};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct KillByPidRequest {
@@ -106,6 +106,12 @@ pub struct TmuxStatus {
     pub error: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LifecycleLogAvailability {
+    pub session_id: Uuid,
+    pub log_availability: LogAvailability,
+}
+
 /// Stable v0.3 daemon diagnostics JSON.
 ///
 /// Clients may rely on the field names and JSON value kinds in this response.
@@ -120,6 +126,7 @@ pub struct DoctorResponse {
     pub watchers: WatcherCounts,
     pub launchers: Vec<LauncherStatus>,
     pub tmux: TmuxStatus,
+    pub log_availability: Vec<LifecycleLogAvailability>,
     pub last_probe_sweep: Option<DateTime<Utc>>,
     pub recent_lost: Vec<RecentLostEvent>,
 }

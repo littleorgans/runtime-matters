@@ -16,6 +16,7 @@
 //! [`RuntimeResponse::CursorExpired { oldest }`](RuntimeResponse::CursorExpired).
 
 pub mod admin;
+pub mod capture;
 mod cli_output;
 pub mod error;
 pub mod launcher;
@@ -28,7 +29,12 @@ mod version;
 
 pub use admin::{
     DoctorResponse, KillByPidRequest, KillByPidResponse, LauncherStatus, LifecycleCounts,
-    MigrationState, RecentLostEvent, StatusFilter, StatusResponse, TmuxStatus, WatcherCounts,
+    LifecycleLogAvailability, MigrationState, RecentLostEvent, StatusFilter, StatusResponse,
+    TmuxStatus, WatcherCounts,
+};
+pub use capture::{
+    CaptureError, CaptureRequest, CaptureResponse, LogAvailability, LogsUnavailableReason,
+    PaneSnapshot,
 };
 pub use cli_output::{Ack, CliOutput};
 pub use error::{ErrorCode, ProtocolError, RuntimeKindParseError};

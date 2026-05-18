@@ -1,6 +1,5 @@
 ---
 source: crates/rtm-core/tests/serde_snapshots.rs
-assertion_line: 88
 expression: rpcs
 ---
 [
@@ -55,6 +54,15 @@ expression: rpcs
       "request": {
         "session_id": "018f6e28-0000-7000-8000-000000000001",
         "content": "wake up"
+      }
+    }
+  },
+  {
+    "type": "capture",
+    "payload": {
+      "request": {
+        "target_id": "018f6e28-0000-7000-8000-000000000001",
+        "scrollback_lines": 500
       }
     }
   },
