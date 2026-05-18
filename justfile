@@ -12,11 +12,20 @@ release-build:
     cargo build --workspace --release
 
 build-local:
-    cargo build -p rtm-cli --bin rtm --profile install-local
+    RTM_VERSION_INCLUDE_GIT_SHA=1 cargo build -p rtm-cli --bin rtm --profile install-local
+
+build-install-release:
+    RTM_VERSION_INCLUDE_GIT_SHA=0 cargo build -p rtm-cli --bin rtm --release
 
 install-local: build-local
+    @just _install-bin target/install-local/rtm
+
+install-release: build-install-release
+    @just _install-bin target/release/rtm
+
+_install-bin src:
     @set -eu; \
-    src="$(pwd)/target/install-local/rtm"; \
+    src="$(pwd)/{{src}}"; \
     dest="{{RTM_LOCAL_BIN}}"; \
     case "$dest" in /*) ;; *) dest="$(pwd)/$dest";; esac; \
     if [ "$src" = "$dest" ]; then \

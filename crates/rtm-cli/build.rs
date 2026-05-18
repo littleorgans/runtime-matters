@@ -1,9 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use rtm_core::tool_contracts::{ToolContract, ToolRegistry, contract_registry};
 
 fn main() {
+    emit_cli_version();
     println!("cargo:rerun-if-changed=../../tools.toml");
 
     let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
@@ -13,6 +15,65 @@ fn main() {
     write_generated_sources(&manifest_dir, registry);
     write_skill_doc(&manifest_dir, registry);
     write_readme(repo_root, registry);
+}
+
+fn emit_cli_version() {
+    emit_git_rerun_directives();
+    println!("cargo:rerun-if-env-changed=RTM_GIT_SHA");
+    println!("cargo:rerun-if-env-changed=GITHUB_SHA");
+    println!("cargo:rerun-if-env-changed=RTM_VERSION_INCLUDE_GIT_SHA");
+
+    let package_version = std::env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION set");
+    let version = match (include_git_sha(), build_git_sha()) {
+        (true, Some(sha)) => format!("{package_version}+{sha}"),
+        _ => package_version,
+    };
+    println!("cargo:rustc-env=RTM_CLI_VERSION={version}");
+}
+
+fn emit_git_rerun_directives() {
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=../../.git/packed-refs");
+
+    let Some(head) = fs::read_to_string("../../.git/HEAD").ok() else {
+        return;
+    };
+    if let Some(ref_path) = head.trim().strip_prefix("ref: ") {
+        println!("cargo:rerun-if-changed=../../.git/{ref_path}");
+    }
+}
+
+fn include_git_sha() -> bool {
+    matches!(
+        std::env::var("RTM_VERSION_INCLUDE_GIT_SHA").as_deref(),
+        Ok("1" | "true" | "yes")
+    )
+}
+
+fn build_git_sha() -> Option<String> {
+    explicit_git_sha().or_else(git_head_sha)
+}
+
+fn explicit_git_sha() -> Option<String> {
+    std::env::var("RTM_GIT_SHA")
+        .ok()
+        .and_then(short_sha)
+        .or_else(|| std::env::var("GITHUB_SHA").ok().and_then(short_sha))
+}
+
+fn git_head_sha() -> Option<String> {
+    Command::new("git")
+        .args(["rev-parse", "--short=7", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .and_then(short_sha)
+}
+
+fn short_sha(value: String) -> Option<String> {
+    let sha = value.trim().chars().take(7).collect::<String>();
+    (!sha.is_empty() && sha.chars().all(|ch| ch.is_ascii_hexdigit())).then_some(sha)
 }
 
 fn write_generated_sources(manifest_dir: &Path, registry: &ToolRegistry) {
