@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use clap::Parser;
-use rtm_cli::cli::Cli;
+use rtm_cli::cli::{Cli, output};
 use uuid::Uuid;
 
 fn main() -> Result<()> {
@@ -18,7 +18,12 @@ fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    runtime.block_on(Cli::parse().run())
+    let format = output::requested_format_from_env();
+    if let Err(error) = runtime.block_on(Cli::parse().run()) {
+        output::emit_error(format, &error)?;
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 fn shim_session_id() -> Result<Option<Uuid>> {

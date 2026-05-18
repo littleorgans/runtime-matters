@@ -139,7 +139,7 @@ pub const TOOL_LIST_JSON: &str = r#"{
       }
     },
     {
-      "description": "Return rtmd operator visibility counters for kqueue watchers and pending shim socket waiters.",
+      "description": "Return rtmd operator visibility counters for kqueue watchers, pending shim socket waiters, and Events long poll waiters.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {},
@@ -151,6 +151,10 @@ pub const TOOL_LIST_JSON: &str = r#"{
         "additionalProperties": false,
         "description": "Watcher counters for the running daemon.",
         "properties": {
+          "event_waiters": {
+            "description": "Active Events long poll waiters.",
+            "type": "integer"
+          },
           "kqueue_watchers": {
             "description": "Active kqueue process exit watchers.",
             "type": "integer"

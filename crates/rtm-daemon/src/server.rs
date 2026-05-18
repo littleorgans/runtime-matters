@@ -5,18 +5,24 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use lilo_rm_core::{
-    KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, LifecycleState,
-    LostEvidence, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent,
-    RuntimeExit, RuntimeSignal, ShimExit, ShimReady, SpawnRequest, StatusFilter,
-    TerminationEvidence, ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse,
-    WatcherCounts,
+    CaptureError, CaptureRequest, CaptureResponse, EventsRequest, KillByPidRequest,
+    KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, LifecycleLogAvailability,
+    LifecycleState, LogAvailability, LogsUnavailableReason, LostEvidence, NudgeFailureReason,
+    NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeSignal, ShimExit,
+    ShimReady, SpawnRequest, StatusFilter, TerminationEvidence, ValidateTargetOutcome,
+    ValidateTargetRequest, ValidateTargetResponse, WatcherCounts,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use tokio::net::UnixListener;
 use tokio::sync::{Mutex, broadcast, oneshot};
 use uuid::Uuid;
 
-use crate::{error::RuntimeFailure, event_channel, handler, reconcile, socket};
+use crate::{
+    error::RuntimeFailure,
+    event_channel,
+    event_log::{CursorExpired, EventBatch, EventLog},
+    handler, reconcile, socket,
+};
 
 #[derive(Clone, Debug)]
 pub struct DaemonConfig {
@@ -46,6 +52,23 @@ impl DaemonConfig {
     pub fn session_log_dir(&self, session_id: Uuid) -> PathBuf {
         self.log_root.join(session_id.to_string())
     }
+
+    pub fn session_log_paths(&self, session_id: Uuid) -> crate::shim_socket::HeadlessLogPaths {
+        let log_dir = self.session_log_dir(session_id);
+        crate::shim_socket::HeadlessLogPaths {
+            stdout_path: log_dir.join("stdout.log"),
+            stderr_path: log_dir.join("stderr.log"),
+            log_dir,
+        }
+    }
+
+    pub fn data_dir(&self) -> PathBuf {
+        self.store
+            .db_path
+            .parent()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.log_root.clone())
+    }
 }
 
 fn default_log_root() -> Result<PathBuf> {
@@ -74,7 +97,7 @@ pub async fn run_daemon(config: DaemonConfig) -> Result<()> {
         socket::display_socket_path(&config.socket_path)
     );
 
-    let state = Arc::new(ServerState::new(config.clone(), store));
+    let state = Arc::new(ServerState::new(config.clone(), store)?);
     reconcile::reconcile_startup(Arc::clone(&state), &reconcile::SystemProcessProbe).await?;
     let (shutdown_tx, mut shutdown_rx) = broadcast::channel(8);
     let reconcile_task = tokio::spawn(reconcile::run_periodic(
@@ -115,7 +138,7 @@ pub(crate) struct ServerState {
     config: DaemonConfig,
     store: LifecycleStore,
     started_instant: Instant,
-    events: Mutex<Vec<RuntimeEvent>>,
+    event_log: EventLog,
     exit_watchers: Mutex<HashMap<Uuid, rtm_platform::kqueue::ProcessExitWatcher>>,
     pending_launches: Mutex<HashMap<Uuid, LaunchSpec>>,
     pending_ready: Mutex<HashMap<Uuid, oneshot::Sender<ShimReady>>>,
@@ -123,17 +146,17 @@ pub(crate) struct ServerState {
 }
 
 impl ServerState {
-    pub(crate) fn new(config: DaemonConfig, store: LifecycleStore) -> Self {
-        Self {
+    pub(crate) fn new(config: DaemonConfig, store: LifecycleStore) -> Result<Self> {
+        Ok(Self {
+            event_log: EventLog::open(config.data_dir())?,
             config,
             store,
             started_instant: Instant::now(),
-            events: Mutex::new(Vec::new()),
             exit_watchers: Mutex::new(HashMap::new()),
             pending_launches: Mutex::new(HashMap::new()),
             pending_ready: Mutex::new(HashMap::new()),
             terminated_events: Mutex::new(HashSet::new()),
-        }
+        })
     }
 
     pub(crate) fn config(&self) -> &DaemonConfig {
@@ -279,12 +302,13 @@ impl ServerState {
             )));
         }
         lifecycle.tmux_pane = request.target.tmux_address().cloned();
+        self.populate_log_availability(&mut lifecycle).await;
         self.store.update_lifecycle(&lifecycle).await?;
         let event = event_channel::running_event(&lifecycle)?;
 
         self.start_exit_watcher(request.session_id, runtime_pid)
             .await?;
-        self.events.lock().await.push(event.clone());
+        let event = self.append_event(event).await?;
         Ok((lifecycle, event))
     }
 
@@ -362,6 +386,25 @@ impl ServerState {
         })
     }
 
+    pub(crate) async fn capture_pane(&self, request: CaptureRequest) -> Result<CaptureResponse> {
+        let Some(lifecycle) = self.store.get(request.target_id).await? else {
+            return Ok(CaptureResponse::Failed(CaptureError::SessionMissing));
+        };
+        let Some(tmux_pane) = lifecycle.tmux_pane.as_ref() else {
+            return Ok(CaptureResponse::Failed(CaptureError::NotATmuxTarget));
+        };
+        if !rtm_platform::tmux::TmuxGateway::is_alive(tmux_pane).await? {
+            return Ok(CaptureResponse::Failed(CaptureError::PaneUnavailable));
+        }
+        let scrollback_lines = request.scrollback_lines.unwrap_or(1000);
+        Ok(
+            match rtm_platform::tmux::TmuxGateway::capture_pane(tmux_pane, scrollback_lines).await {
+                Ok(snapshot) => CaptureResponse::Captured(snapshot),
+                Err(error) => CaptureResponse::Failed(error),
+            },
+        )
+    }
+
     pub(crate) async fn record_shim_exit(&self, exit: ShimExit) -> Result<Option<RuntimeEvent>> {
         self.record_exited(exit.session_id, exit.exit, TerminationEvidence::ShimExit)
             .await
@@ -390,7 +433,10 @@ impl ServerState {
 
     pub(crate) async fn status(&self, filter: StatusFilter) -> Vec<Lifecycle> {
         match self.store.list(&filter).await {
-            Ok(rows) => rows,
+            Ok(mut rows) => {
+                self.populate_log_availability_for(&mut rows).await;
+                rows
+            }
             Err(error) => {
                 tracing::warn!(%error, "failed to read lifecycle status");
                 Vec::new()
@@ -398,14 +444,59 @@ impl ServerState {
         }
     }
 
-    pub(crate) async fn events(&self) -> Vec<RuntimeEvent> {
-        self.events.lock().await.clone()
+    pub(crate) async fn log_availability_statuses(&self) -> Vec<LifecycleLogAvailability> {
+        self.status(StatusFilter::empty())
+            .await
+            .into_iter()
+            .filter_map(|lifecycle| {
+                lifecycle
+                    .log_availability
+                    .map(|log_availability| LifecycleLogAvailability {
+                        session_id: lifecycle.session_id,
+                        log_availability,
+                    })
+            })
+            .collect()
+    }
+
+    async fn populate_log_availability_for(&self, lifecycles: &mut [Lifecycle]) {
+        for lifecycle in lifecycles {
+            self.populate_log_availability(lifecycle).await;
+        }
+    }
+
+    async fn populate_log_availability(&self, lifecycle: &mut Lifecycle) {
+        lifecycle.log_availability = Some(match lifecycle.tmux_pane.as_ref() {
+            Some(address) => match rtm_platform::tmux::TmuxGateway::is_alive(address).await {
+                Ok(true) => LogAvailability::TmuxPaneSnapshot,
+                Ok(false) | Err(_) => LogAvailability::Unavailable {
+                    reason: LogsUnavailableReason::PaneUnavailable,
+                },
+            },
+            None => {
+                let paths = self.config.session_log_paths(lifecycle.session_id);
+                LogAvailability::Headless {
+                    stdout_path: paths.stdout_path,
+                    stderr_path: paths.stderr_path,
+                }
+            }
+        });
+    }
+
+    pub(crate) async fn events(
+        &self,
+        request: EventsRequest,
+    ) -> std::result::Result<EventBatch, CursorExpired> {
+        self.event_log
+            .events_since_or_wait(request.since, request.wait_ms)
+            .await
     }
 
     pub(crate) async fn watcher_counts(&self) -> WatcherCounts {
         WatcherCounts {
             kqueue_watchers: self.exit_watchers.lock().await.len(),
             shim_sockets: self.pending_ready.lock().await.len(),
+            event_waiters: self.event_log.waiter_count().await,
         }
     }
 
@@ -520,8 +611,7 @@ impl ServerState {
                 event_channel::terminated_event(lifecycle, evidence)
             }
         };
-        self.events.lock().await.push(event.clone());
-        Ok(Some(event))
+        Ok(Some(self.append_event(event).await?))
     }
 
     async fn record_reconnected_ready(
@@ -541,8 +631,7 @@ impl ServerState {
                 let event = event_channel::running_event(&lifecycle)?;
                 self.start_exit_watcher(lifecycle.session_id, runtime_pid)
                     .await?;
-                self.events.lock().await.push(event.clone());
-                Ok(Some(event))
+                Ok(Some(self.append_event(event).await?))
             }
             LifecycleState::Running => {
                 self.start_exit_watcher(lifecycle.session_id, runtime_pid)
@@ -553,6 +642,10 @@ impl ServerState {
                 bail!("session {} is already terminal", lifecycle.session_id)
             }
         }
+    }
+
+    async fn append_event(&self, event: RuntimeEvent) -> Result<RuntimeEvent> {
+        self.event_log.append(event).await
     }
 }
 
@@ -578,7 +671,8 @@ mod tests {
                 reconcile: reconcile::ReconcileConfig::default(),
             },
             store,
-        );
+        )
+        .expect("state");
         let request = KillRequest {
             session_id: Uuid::now_v7(),
             signal: RuntimeSignal::Term,

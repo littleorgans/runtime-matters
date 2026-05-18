@@ -2,8 +2,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use lilo_rm_core::{RuntimeResponse, RuntimeRpc, read_json_line, write_json_line};
-use tokio::io::BufReader;
+use lilo_rm_core::{
+    EventsRequest, RuntimeResponse, RuntimeRpc, clamped_event_wait_ms, read_json_line,
+    write_json_line,
+};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::broadcast;
 
@@ -24,7 +27,12 @@ pub(crate) async fn handle_connection(
     let mut reader = BufReader::new(read_half);
 
     let response = match read_json_line::<_, RuntimeRpc>(&mut reader).await {
-        Ok(rpc) => handle_rpc(rpc, state).await,
+        Ok(rpc) => {
+            let Some(response) = handle_rpc_or_disconnect(rpc, state, &mut reader).await? else {
+                return Ok(());
+            };
+            response
+        }
         Err(error) => protocol_error_response(error),
     };
     let should_stop = matches!(response, RuntimeResponse::Stopping);
@@ -34,6 +42,42 @@ pub(crate) async fn handle_connection(
         let _ = shutdown_tx.send(());
     }
     Ok(())
+}
+
+async fn handle_rpc_or_disconnect<R>(
+    rpc: RuntimeRpc,
+    state: Arc<ServerState>,
+    reader: &mut R,
+) -> Result<Option<RuntimeResponse>>
+where
+    R: AsyncBufRead + Unpin,
+{
+    match rpc {
+        RuntimeRpc::Events { request } if clamped_event_wait_ms(request.wait_ms) > 0 => {
+            tokio::select! {
+                response = handle_rpc(RuntimeRpc::Events { request }, state) => Ok(Some(response)),
+                disconnected = wait_for_disconnect(reader) => {
+                    disconnected?;
+                    Ok(None)
+                }
+            }
+        }
+        other => Ok(Some(handle_rpc(other, state).await)),
+    }
+}
+
+async fn wait_for_disconnect<R>(reader: &mut R) -> Result<()>
+where
+    R: AsyncBufRead + Unpin,
+{
+    loop {
+        let buffer = reader.fill_buf().await?;
+        if buffer.is_empty() {
+            return Ok(());
+        }
+        let consumed = buffer.len();
+        reader.consume(consumed);
+    }
 }
 
 async fn handle_rpc(rpc: RuntimeRpc, state: Arc<ServerState>) -> RuntimeResponse {
@@ -99,6 +143,9 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             let response = state.nudge_runtime(request).await?;
             Ok(RuntimeResponse::Nudge { response })
         }
+        RuntimeRpc::Capture { request } => Ok(RuntimeResponse::Capture {
+            response: state.capture_pane(request).await?,
+        }),
         RuntimeRpc::Status { request } => Ok(RuntimeResponse::Status {
             lifecycles: state.status(request.into()).await,
         }),
@@ -111,9 +158,7 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
         RuntimeRpc::Doctor => Ok(RuntimeResponse::Doctor {
             doctor: doctor::collect(state).await?,
         }),
-        RuntimeRpc::Events => Ok(RuntimeResponse::Events {
-            events: state.events().await,
-        }),
+        RuntimeRpc::Events { request } => events_response(&state, request).await,
         RuntimeRpc::Stop => Ok(RuntimeResponse::Stopping),
         RuntimeRpc::McpBridge { request } => Ok(RuntimeResponse::McpBridge {
             response: lilo_rm_core::McpBridgeResponse {
@@ -132,5 +177,17 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             let _ = state.record_shim_exit(exit).await?;
             Ok(RuntimeResponse::Ack)
         }
+    }
+}
+
+async fn events_response(state: &ServerState, request: EventsRequest) -> Result<RuntimeResponse> {
+    match state.events(request).await {
+        Ok(batch) => Ok(RuntimeResponse::Events {
+            events: batch.events,
+            cursor: batch.cursor,
+        }),
+        Err(expired) => Ok(RuntimeResponse::CursorExpired {
+            oldest: expired.oldest,
+        }),
     }
 }

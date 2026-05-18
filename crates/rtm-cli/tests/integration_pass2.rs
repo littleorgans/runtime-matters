@@ -3,7 +3,7 @@ mod common;
 use std::time::Duration;
 
 use common::{
-    RtmHarness, output_stdout, parse_runtime_pid, parse_status_pid, status_pid, terminate_process,
+    RtmHarness, output_stdout, parse_runtime_pid, status_json_pid, status_pid, terminate_process,
     wait_for_events, wait_for_status, wait_for_status_timeout,
 };
 use uuid::Uuid;
@@ -17,8 +17,7 @@ fn kill_rpc_terminates_runtime_by_session_id() {
 
     let json = output_stdout(harness.status_format(&session_id, "json"));
     assert!(json.contains(&session_id), "{json}");
-    let pid = output_stdout(harness.status_format(&session_id, "pid"));
-    assert_eq!(parse_status_pid(&pid), runtime_pid);
+    assert_eq!(status_json_pid(&json, "runtime_pid"), runtime_pid);
 
     let kill = harness.kill(&session_id, "TERM", 2);
     assert!(kill.status.success(), "kill failed: {kill:?}");

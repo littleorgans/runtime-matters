@@ -1,6 +1,7 @@
 mod doctor;
 mod error;
 pub mod event_channel;
+mod event_log;
 mod handler;
 mod mcp_bridge;
 mod reconcile;

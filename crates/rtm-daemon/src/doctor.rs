@@ -21,6 +21,7 @@ pub(crate) async fn collect(state: Arc<ServerState>) -> Result<DoctorResponse> {
         watchers: state.watcher_counts().await,
         launchers: launcher_statuses(),
         tmux: tmux_status().await,
+        log_availability: state.log_availability_statuses().await,
         last_probe_sweep: state.store().last_probe_sweep().await?,
         recent_lost: state
             .store()

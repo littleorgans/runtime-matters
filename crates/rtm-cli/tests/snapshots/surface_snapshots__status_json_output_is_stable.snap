@@ -1,9 +1,16 @@
 ---
 source: crates/rtm-cli/tests/surface_snapshots.rs
-expression: rows
+expression: value
 ---
 [
   {
+    "log_availability": {
+      "payload": {
+        "stderr_path": "[path]",
+        "stdout_path": "[path]"
+      },
+      "type": "headless"
+    },
     "runtime": "claude",
     "runtime_pid": "[pid]",
     "session_id": "[uuid]",

@@ -355,6 +355,15 @@ pub enum NudgeFailureReason {
     TmuxPaneDead,
 }
 
+impl NudgeFailureReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HeadlessLifecycle => "headless_lifecycle",
+            Self::TmuxPaneDead => "tmux_pane_dead",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ShimReady {
     pub session_id: Uuid,
@@ -385,6 +394,8 @@ pub struct Lifecycle {
     pub runtime_pid: Option<u32>,
     pub start_time: Option<DateTime<Utc>>,
     pub tmux_pane: Option<TmuxAddress>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_availability: Option<crate::LogAvailability>,
 }
 
 impl Lifecycle {
@@ -397,6 +408,7 @@ impl Lifecycle {
             runtime_pid: None,
             start_time: None,
             tmux_pane: None,
+            log_availability: None,
         }
     }
 
@@ -499,12 +511,9 @@ impl Display for TerminationEvidence {
 
 /// Runtime lifecycle observation emitted by rtmd.
 ///
-/// `RuntimeRpc::Events` returns these values in the order the current daemon
-/// process appended them. `Running` is recorded after shim ready is stored.
-/// `Terminated` and `Lost` are recorded when rtmd observes exit or loss
-/// evidence. v0.2 retains this vector only in daemon process memory and exposes
-/// no cursor, replay, or retention window. Clients should poll and dedupe by
-/// session id plus full event content.
+/// `RuntimeRpc::Events` returns these values in durable append order. `Running`
+/// is recorded after shim ready is stored. `Terminated` and `Lost` are recorded
+/// when rtmd observes exit or loss evidence.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum RuntimeEvent {
@@ -537,6 +546,15 @@ mod tests {
             start_time: Utc::now(),
             tmux_pane: None,
         }
+    }
+
+    #[test]
+    fn nudge_outcome_reason_strings_match_public_contract() {
+        assert_eq!(
+            NudgeFailureReason::HeadlessLifecycle.as_str(),
+            "headless_lifecycle"
+        );
+        assert_eq!(NudgeFailureReason::TmuxPaneDead.as_str(), "tmux_pane_dead");
     }
 
     #[test]

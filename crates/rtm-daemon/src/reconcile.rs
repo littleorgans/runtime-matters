@@ -208,7 +208,7 @@ fn chrono_duration_env(name: &'static str, default: chrono::Duration) -> Result<
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use chrono::{DateTime, TimeZone};
@@ -283,7 +283,8 @@ mod tests {
             .await
             .expect("persist lost");
 
-        let state = Arc::new(ServerState::new(test_config(), store.clone()));
+        let state =
+            Arc::new(ServerState::new(test_config(temp.path()), store.clone()).expect("state"));
         let probe = FakeProbe {
             alive: HashSet::from([202]),
             start_times: HashMap::from([(202, Utc.timestamp_opt(2_001, 0).unwrap())]),
@@ -309,7 +310,8 @@ mod tests {
         .await
         .expect("store");
         let lifecycle = persist_running(&store, 404, Utc.timestamp_opt(4_000, 0).unwrap()).await;
-        let state = Arc::new(ServerState::new(test_config(), store.clone()));
+        let state =
+            Arc::new(ServerState::new(test_config(temp.path()), store.clone()).expect("state"));
         let probe = VanishingProbe {
             alive_checks: AtomicUsize::new(0),
         };
@@ -329,7 +331,8 @@ mod tests {
         .await
         .expect("store");
         let lifecycle = persist_running(&store, 505, Utc.timestamp_opt(5_000, 0).unwrap()).await;
-        let state = Arc::new(ServerState::new(test_config(), store.clone()));
+        let state =
+            Arc::new(ServerState::new(test_config(temp.path()), store.clone()).expect("state"));
 
         let events = reconcile_startup(state, &GoneProbe)
             .await
@@ -349,7 +352,8 @@ mod tests {
         .expect("store");
         let dead = persist_running(&store, 101, Utc.timestamp_opt(1_000, 0).unwrap()).await;
         let reused = persist_running(&store, 202, Utc.timestamp_opt(2_000, 0).unwrap()).await;
-        let state = Arc::new(ServerState::new(test_config(), store.clone()));
+        let state =
+            Arc::new(ServerState::new(test_config(temp.path()), store.clone()).expect("state"));
         let probe = FakeProbe {
             alive: HashSet::from([202]),
             start_times: HashMap::from([(202, Utc.timestamp_opt(2_001, 0).unwrap())]),
@@ -371,7 +375,18 @@ mod tests {
 
         assert_lost(&store, dead.session_id, LostEvidence::PidNotAlive).await;
         assert_lost(&store, reused.session_id, LostEvidence::PidReuseDetected).await;
-        assert_eq!(state.events().await.len(), 2);
+        assert_eq!(
+            state
+                .events(lilo_rm_core::EventsRequest {
+                    since: Some(0),
+                    wait_ms: None
+                })
+                .await
+                .expect("events")
+                .events
+                .len(),
+            2
+        );
         assert_eq!(store.running().await.expect("running").len(), 0);
     }
 
@@ -418,7 +433,17 @@ mod tests {
     async fn wait_for_events(state: &ServerState, expected: usize) {
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
-                if state.events().await.len() == expected {
+                if state
+                    .events(lilo_rm_core::EventsRequest {
+                        since: Some(0),
+                        wait_ms: None,
+                    })
+                    .await
+                    .expect("events")
+                    .events
+                    .len()
+                    == expected
+                {
                     return;
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -428,13 +453,13 @@ mod tests {
         .expect("events reached expected count");
     }
 
-    fn test_config() -> DaemonConfig {
+    fn test_config(root: &Path) -> DaemonConfig {
         DaemonConfig {
-            socket_path: PathBuf::from("/tmp/rtm-test.sock"),
+            socket_path: root.join("rtm-test.sock"),
             shim_path: PathBuf::from("rtm"),
-            log_root: PathBuf::from("/tmp/rtm-test-logs"),
+            log_root: root.join("logs"),
             store: StoreConfig {
-                db_path: PathBuf::from("/tmp/rtm-test.sqlite"),
+                db_path: root.join("rtm-test.sqlite"),
             },
             reconcile: ReconcileConfig::default(),
         }

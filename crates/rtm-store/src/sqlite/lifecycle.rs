@@ -394,6 +394,7 @@ impl TryFrom<LifecycleRow> for Lifecycle {
             runtime_pid: decode_u32(row.runtime_pid, "runtime_pid")?,
             start_time: row.start_time.map(|time| parse_time(&time)).transpose()?,
             tmux_pane: decode_tmux_pane(row.tmux_pane)?,
+            log_availability: None,
         })
     }
 }

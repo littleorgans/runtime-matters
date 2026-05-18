@@ -22,6 +22,7 @@ expression: doctor
     "lost": "[count]",
     "running": "[count]"
   },
+  "log_availability": [],
   "recent_lost": [],
   "socket_path": "[socket]",
   "sqlite": {
@@ -35,8 +36,8 @@ expression: doctor
   },
   "tmux": {
     "available": "[tmux]",
-    "error": "[tmux]",
-    "version": "[tmux]"
+    "error": "[launcher_error]",
+    "version": "[version]"
   },
   "uptime_secs": "[uptime]",
   "version": {
@@ -46,13 +47,17 @@ expression: doctor
       "status_session_set_filter",
       "status_updated_since_filter",
       "typed_nudge_outcomes",
-      "validate_target_preflight"
+      "validate_target_preflight",
+      "events_cursor",
+      "events_long_poll",
+      "tmux_pane_snapshot"
     ],
     "git_sha": "[git_sha]",
-    "protocol_version": "0.2",
+    "protocol_version": "0.3",
     "version": "[version]"
   },
   "watchers": {
+    "event_waiters": 0,
     "kqueue_watchers": "[count]",
     "shim_sockets": "[count]"
   }

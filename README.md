@@ -56,24 +56,18 @@ cargo run -p rtm-cli --example test_spawn -- --target headless --runtime claude 
 
 ## Events Contract
 
-`RuntimeRpc::Events` is the v0.2 event endpoint. It returns
-`RuntimeResponse::Events { events: Vec<RuntimeEvent> }`.
+`RuntimeRpc::Events` is the v0.3 event endpoint. It returns
+`RuntimeResponse::Events { events: Vec<RuntimeEvent>, cursor }`.
 
 The daemon appends events in observation order as they are recorded by the
-current rtmd process: `Running` after shim ready is stored, `Terminated` or
+global durable event log: `Running` after shim ready is stored, `Terminated` or
 `Lost` when exit or loss evidence is observed. Each poll preserves that append
-order. The vector is a recent in memory view for the current daemon process.
-There is no cursor, retention window, sqlite replay, or limit policy. Restarting
-rtmd starts a fresh in memory vector.
+order. Clients can pass `--since CURSOR` to resume after the last returned
+cursor without duplicate delivery across daemon restarts.
 
-For session-matters v0.2, poll `Events`, filter to the session ids it owns, and
-dedupe using the session id plus full event content. Use `Status` with
-`session_ids` and `updated_since` as the authoritative lifecycle view when
-reconciliation matters.
-
-Cursor support is reserved for v0.3. The deferred shape is
-`Events { since } -> { cursor, events }`; v0.2 clients should neither send nor
-expect a cursor.
+If a cursor falls behind the retained log floor, rtmd returns
+`RuntimeResponse::CursorExpired { oldest }`. Use `Status` with `session_ids` and
+`updated_since` as the authoritative lifecycle view when reconciliation matters.
 
 Stop the daemon:
 
@@ -122,5 +116,5 @@ The public crates.io contract is limited to `lilo-rm-core` and `lilo-rm-client`.
 | `rtm_kill_by_pid` | Admin escape hatch that signals a runtime process by pid, waits for the grace period, then sends SIGKILL if the process remains alive. |
 | `rtm_status` | Return rtmd Lifecycle rows, optionally filtered by session id, session set, runtime, lifecycle state, and updated time. |
 | `rtm_version` | Return the rtmd package version, build git sha, protocol version, and advertised capabilities. |
-| `rtm_watchers` | Return rtmd operator visibility counters for kqueue watchers and pending shim socket waiters. |
+| `rtm_watchers` | Return rtmd operator visibility counters for kqueue watchers, pending shim socket waiters, and Events long poll waiters. |
 <!-- rtm-admin-tools:end -->

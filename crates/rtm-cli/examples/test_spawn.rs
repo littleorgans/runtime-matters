@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     let response =
         spawn_support::spawn_runtime(&socket_path, args.session_id, args.runtime, args.target)
             .await?;
-    let events = rtm_cli::shared::events(&socket_path).await?;
+    let events = rtm_cli::shared::events(&socket_path, None, None).await?;
 
     report_support::print_spawned(response)?;
     println!("runtime events observed={}", events.len());

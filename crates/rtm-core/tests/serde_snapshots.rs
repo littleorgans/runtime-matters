@@ -1,12 +1,14 @@
 use chrono::{TimeZone, Utc};
 use lilo_rm_core::{
-    DoctorResponse, ErrorCode, KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec,
-    LauncherStatus, Lifecycle, LifecycleCounts, LostEvidence, McpBridgeRequest, MigrationState,
-    NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RecentLostEvent, RuntimeEvent,
-    RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit,
-    ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, StatusRequest, TerminationEvidence,
-    TmuxSpawnTarget, TmuxStatus, ValidateTargetOutcome, ValidateTargetRequest,
-    ValidateTargetResponse, VersionInfo, WatcherCounts,
+    CaptureError, CaptureRequest, CaptureResponse, DoctorResponse, ErrorCode, EventsRequest,
+    KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, LauncherStatus, Lifecycle,
+    LifecycleCounts, LifecycleLogAvailability, LogAvailability, LogsUnavailableReason,
+    LostEvidence, McpBridgeRequest, MigrationState, NudgeFailureReason, NudgeOutcome, NudgeRequest,
+    NudgeResponse, PaneSnapshot, RecentLostEvent, RuntimeEvent, RuntimeExit, RuntimeKind,
+    RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady,
+    SpawnRequest, SpawnTarget, StatusRequest, TerminationEvidence, TmuxSpawnTarget, TmuxStatus,
+    ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse, VersionInfo,
+    WatcherCounts,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -52,6 +54,12 @@ fn runtime_rpc_json_shapes_are_stable() {
                 content: "wake up".to_owned(),
             },
         },
+        RuntimeRpc::Capture {
+            request: CaptureRequest {
+                target_id: session_id,
+                scrollback_lines: Some(500),
+            },
+        },
         RuntimeRpc::Status {
             request: StatusRequest {
                 session_id: Some(session_id),
@@ -64,7 +72,12 @@ fn runtime_rpc_json_shapes_are_stable() {
         RuntimeRpc::Version,
         RuntimeRpc::Watchers,
         RuntimeRpc::Doctor,
-        RuntimeRpc::Events,
+        RuntimeRpc::Events {
+            request: EventsRequest {
+                since: Some(7),
+                wait_ms: Some(500),
+            },
+        },
         RuntimeRpc::Stop,
         RuntimeRpc::McpBridge {
             request: McpBridgeRequest {
@@ -115,8 +128,13 @@ fn runtime_response_json_shapes_are_stable() {
     let session_id = session_id();
     let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
     assert!(lifecycle.mark_running(ready(session_id)));
+    lifecycle.log_availability = Some(LogAvailability::Headless {
+        stdout_path: "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stdout.log".into(),
+        stderr_path: "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stderr.log".into(),
+    });
     let mut tmux_lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
     assert!(tmux_lifecycle.mark_running(ready(session_id)));
+    tmux_lifecycle.log_availability = Some(LogAvailability::TmuxPaneSnapshot);
     let responses = vec![
         RuntimeResponse::Spawned {
             lifecycle,
@@ -190,6 +208,12 @@ fn runtime_response_json_shapes_are_stable() {
                 outcome: NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead),
             },
         },
+        RuntimeResponse::Capture {
+            response: CaptureResponse::Captured(pane_snapshot()),
+        },
+        RuntimeResponse::Capture {
+            response: CaptureResponse::Failed(CaptureError::PaneUnavailable),
+        },
         RuntimeResponse::Version {
             version: version_info(),
         },
@@ -201,15 +225,53 @@ fn runtime_response_json_shapes_are_stable() {
             code: ErrorCode::LaunchFailed,
             message: "failed".to_owned(),
         },
+        RuntimeResponse::CursorExpired { oldest: 7 },
         RuntimeResponse::Events {
             events: vec![RuntimeEvent::Lost {
                 session_id,
                 evidence: LostEvidence::PidNotAlive,
             }],
+            cursor: 8,
         },
     ];
 
     insta::assert_json_snapshot!(responses);
+}
+
+#[test]
+fn log_availability_json_shapes_are_stable() {
+    let values = vec![
+        LogAvailability::Headless {
+            stdout_path: "/tmp/rtm/stdout.log".into(),
+            stderr_path: "/tmp/rtm/stderr.log".into(),
+        },
+        LogAvailability::TmuxPaneSnapshot,
+        LogAvailability::Unavailable {
+            reason: LogsUnavailableReason::TmuxTarget,
+        },
+    ];
+
+    insta::assert_json_snapshot!(values);
+}
+
+#[test]
+fn pane_snapshot_json_shape_is_stable() {
+    insta::assert_json_snapshot!(pane_snapshot());
+}
+
+#[test]
+fn capture_error_json_names_are_stable() {
+    let errors = vec![
+        CaptureError::NotATmuxTarget,
+        CaptureError::PaneUnavailable,
+        CaptureError::SessionMissing,
+        CaptureError::TmuxNotAvailable,
+        CaptureError::CapturePaneFailed {
+            stderr: "no pane".to_owned(),
+        },
+    ];
+
+    insta::assert_json_snapshot!(errors);
 }
 
 #[test]
@@ -305,6 +367,7 @@ fn doctor_response() -> DoctorResponse {
         watchers: WatcherCounts {
             kqueue_watchers: 5,
             shim_sockets: 6,
+            event_waiters: 3,
         },
         launchers: vec![LauncherStatus {
             runtime: "claude".to_owned(),
@@ -316,12 +379,26 @@ fn doctor_response() -> DoctorResponse {
             version: Some("tmux 3.5a".to_owned()),
             error: None,
         },
+        log_availability: vec![LifecycleLogAvailability {
+            session_id: session_id(),
+            log_availability: LogAvailability::TmuxPaneSnapshot,
+        }],
         last_probe_sweep: Some(timestamp()),
         recent_lost: vec![RecentLostEvent {
             session_id: other_session_id(),
             evidence: LostEvidence::PidNotAlive,
             occurred_at: timestamp(),
         }],
+    }
+}
+
+fn pane_snapshot() -> PaneSnapshot {
+    PaneSnapshot {
+        content: "\u{1b}[32mhello\u{1b}[0m".to_owned(),
+        captured_at_ms: 1_700_000_001_000,
+        scrollback_lines_requested: 1000,
+        scrollback_lines_included: 1,
+        pane_history_lines: 2000,
     }
 }
 

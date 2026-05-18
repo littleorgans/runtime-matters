@@ -16,6 +16,7 @@ lilo-rm-core.workspace = true
 rtm-launchers.workspace = true
 rtm-platform.workspace = true
 rtm-store.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true

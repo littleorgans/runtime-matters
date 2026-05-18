@@ -6,20 +6,18 @@
 //!
 //! ## Events contract
 //!
-//! v0.2 events use [`RuntimeRpc::Events`] and
-//! [`RuntimeResponse::Events { events }`](RuntimeResponse::Events). The response
-//! is the current daemon process vector in append order. rtmd appends
-//! [`RuntimeEvent::Running`] when shim ready is stored, then appends
-//! [`RuntimeEvent::Terminated`] or [`RuntimeEvent::Lost`] when exit or loss
-//! evidence is observed.
+//! v0.3 events use [`RuntimeRpc::Events`] and
+//! [`RuntimeResponse::Events { events, cursor }`](RuntimeResponse::Events).
+//! The daemon appends lifecycle observations to a durable JSONL log in global
+//! order. Clients pass the returned cursor as `since` to resume without
+//! duplicate delivery after client or daemon restarts.
 //!
-//! Events are kept only in the current daemon process memory. There is no v0.2
-//! cursor, retention window, sqlite replay, or limit policy. Clients such as
-//! session-matters should poll, filter to their session set, and dedupe by
-//! session id plus full event content. Cursor based
-//! `Events { since } -> { cursor, events }` support is deferred to v0.3.
+//! If a cursor is older than the retained log floor, rtmd returns
+//! [`RuntimeResponse::CursorExpired { oldest }`](RuntimeResponse::CursorExpired).
 
 pub mod admin;
+pub mod capture;
+mod cli_output;
 pub mod error;
 pub mod launcher;
 pub mod mcp;
@@ -31,8 +29,14 @@ mod version;
 
 pub use admin::{
     DoctorResponse, KillByPidRequest, KillByPidResponse, LauncherStatus, LifecycleCounts,
-    MigrationState, RecentLostEvent, StatusFilter, StatusResponse, TmuxStatus, WatcherCounts,
+    LifecycleLogAvailability, MigrationState, RecentLostEvent, StatusFilter, StatusResponse,
+    TmuxStatus, WatcherCounts,
 };
+pub use capture::{
+    CaptureError, CaptureRequest, CaptureResponse, LogAvailability, LogsUnavailableReason,
+    PaneSnapshot,
+};
+pub use cli_output::{Ack, CliOutput};
 pub use error::{ErrorCode, ProtocolError, RuntimeKindParseError};
 pub use launcher::{LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher};
 pub use mcp::{
@@ -40,8 +44,9 @@ pub use mcp::{
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,
 };
 pub use proto::{
-    RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line, read_json_line_blocking,
-    write_json_line, write_json_line_blocking,
+    EVENT_LOG_RETENTION_MIN_AGE_SECS, EVENT_LOG_RETENTION_MIN_EVENTS, EVENT_WAIT_MAX_MS,
+    EventCursor, EventsRequest, RuntimeResponse, RuntimeRpc, StatusRequest, clamped_event_wait_ms,
+    read_json_line, read_json_line_blocking, write_json_line, write_json_line_blocking,
 };
 pub use spawn_context::{
     CALLER_ENV_DENYLIST, CALLER_ENV_DENYLIST_PREFIXES, capture_caller_cwd, capture_caller_env,

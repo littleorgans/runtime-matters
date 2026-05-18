@@ -51,6 +51,10 @@ impl TmuxSession {
     pub fn kill(&self) {
         let _ = tmux_output(["kill-session", "-t", &self.name]);
     }
+
+    pub fn resize_height(&self, rows: u32) {
+        tmux(["resize-pane", "-t", &self.name, "-y", &rows.to_string()]);
+    }
 }
 
 impl Drop for TmuxSession {

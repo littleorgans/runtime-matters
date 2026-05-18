@@ -86,7 +86,7 @@ impl RtmHarness {
     }
 
     pub fn spawn_runtime(&self, session_id: &str, runtime: &str) -> Output {
-        self.spawn_command(session_id, runtime, "headless")
+        self.spawn_command(session_id, runtime, "headless", true)
             .output()
             .expect("spawn client")
     }
@@ -97,7 +97,7 @@ impl RtmHarness {
         runtime: &str,
         tmux_address: &str,
     ) -> Output {
-        self.spawn_command(session_id, runtime, &format!("tmux:{tmux_address}"))
+        self.spawn_command(session_id, runtime, &format!("tmux:{tmux_address}"), true)
             .output()
             .expect("spawn client")
     }
@@ -120,6 +120,8 @@ impl RtmHarness {
             .arg("status")
             .arg("--session-id")
             .arg(session_id)
+            .arg("--format")
+            .arg("human")
             .output()
             .expect("status client")
     }
@@ -142,6 +144,8 @@ impl RtmHarness {
             .arg(session_id)
             .arg("--content")
             .arg(content)
+            .arg("--format")
+            .arg("human")
             .output()
             .expect("nudge client")
     }
@@ -149,6 +153,30 @@ impl RtmHarness {
     pub fn events(&self) -> Output {
         self.rtm_command()
             .arg("events")
+            .arg("--format")
+            .arg("human")
+            .output()
+            .expect("events client")
+    }
+
+    pub fn events_since(&self, cursor: u64) -> Output {
+        self.rtm_command()
+            .arg("events")
+            .arg("--since")
+            .arg(cursor.to_string())
+            .arg("--format")
+            .arg("human")
+            .output()
+            .expect("events client")
+    }
+
+    pub fn events_wait_ms(&self, cursor: u64, wait_ms: u32) -> Output {
+        self.rtm_command()
+            .arg("events")
+            .arg("--since")
+            .arg(cursor.to_string())
+            .arg("--wait-ms")
+            .arg(wait_ms.to_string())
             .output()
             .expect("events client")
     }
@@ -156,8 +184,14 @@ impl RtmHarness {
     pub fn doctor(&self) -> Output {
         self.rtm_command()
             .arg("doctor")
+            .arg("--format")
+            .arg("human")
             .output()
             .expect("doctor client")
+    }
+
+    pub fn cli(&self, args: &[&str]) -> Output {
+        self.rtm_command().args(args).output().expect("rtm client")
     }
 
     pub fn mcp_line(&self, line: &str) -> Output {
@@ -226,7 +260,7 @@ impl RtmHarness {
         command
     }
 
-    fn spawn_command(&self, session_id: &str, runtime: &str, target: &str) -> Command {
+    fn spawn_command(&self, session_id: &str, runtime: &str, target: &str, human: bool) -> Command {
         let mut command = self.rtm_command();
         command
             .arg("spawn")
@@ -236,11 +270,19 @@ impl RtmHarness {
             .arg(session_id)
             .arg("--target")
             .arg(target);
+        if human {
+            command.arg("--format").arg("human");
+        }
         command
     }
 
     fn cleanup_processes(&self) {
-        let output = self.rtm_command().arg("status").output();
+        let output = self
+            .rtm_command()
+            .arg("status")
+            .arg("--format")
+            .arg("human")
+            .output();
         let Ok(output) = output else {
             return;
         };
@@ -278,6 +320,11 @@ pub fn output_stderr(output: Output) -> String {
 }
 
 pub fn parse_runtime_pid(stdout: &str) -> u32 {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(stdout) {
+        return value["payload"]["lifecycle"]["runtime_pid"]
+            .as_u64()
+            .expect("runtime pid in spawn json") as u32;
+    }
     stdout
         .split("runtime_pid=")
         .nth(1)
@@ -287,7 +334,10 @@ pub fn parse_runtime_pid(stdout: &str) -> u32 {
 }
 
 pub fn parse_status_pid(stdout: &str) -> u32 {
-    stdout.trim().parse().expect("status pid")
+    stdout.trim().parse().unwrap_or_else(|_| {
+        let value: serde_json::Value = serde_json::from_str(stdout).expect("status json");
+        value[0]["runtime_pid"].as_u64().expect("status pid") as u32
+    })
 }
 
 pub fn spawn_ok(harness: &RtmHarness, session_id: &str, runtime: &str) -> String {
@@ -303,10 +353,22 @@ pub fn spawn_output_ok(output: Output, runtime: &str) -> String {
     output_stdout(output)
 }
 
-pub fn status_pid(harness: &RtmHarness, session_id: &str, format: &str) -> u32 {
-    let output = harness.status_format(session_id, format);
+pub fn status_pid(harness: &RtmHarness, session_id: &str, field: &str) -> u32 {
+    let output = harness.status_format(session_id, "json");
     assert!(output.status.success(), "status failed: {output:?}");
-    parse_status_pid(&output_stdout(output))
+    status_json_pid(&output_stdout(output), status_pid_field(field))
+}
+
+pub fn status_json_pid(stdout: &str, field: &str) -> u32 {
+    let value: serde_json::Value = serde_json::from_str(stdout).expect("status json");
+    value[0][field].as_u64().expect("status pid field") as u32
+}
+
+fn status_pid_field(field: &str) -> &str {
+    match field {
+        "pid" => "runtime_pid",
+        other => other,
+    }
 }
 
 fn parse_status_field(line: &str, key: &str) -> Option<u32> {

@@ -5,8 +5,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use common::{
-    RtmHarness, status_pid, terminate_process, wait_for_events, wait_for_headless_runtime_ready,
-    wait_for_status, wait_for_status_timeout, wait_until_not_alive,
+    RtmHarness, output_stdout, status_pid, terminate_process, wait_for_headless_runtime_ready,
+    wait_for_status, wait_for_status_timeout, wait_until, wait_until_not_alive,
 };
 use lilo_rm_core::StatusFilter;
 use rtm_store::{LifecycleStore, StoreConfig};
@@ -44,7 +44,7 @@ fn pass4_restart_reconciles_sqlite_lifecycles() {
     let status3 = wait_for_status(&harness, &sid3, "state=Running");
     assert!(status3.contains("runtime=codex"), "{status3}");
 
-    let events = wait_for_events(&harness, 1);
+    let events = wait_for_events_since(&harness, 3, 1);
     assert!(events.contains("runtime event=Lost"), "{events}");
     assert!(events.contains(&sid2), "{events}");
     assert!(events.contains("evidence=PidNotAlive"), "{events}");
@@ -57,6 +57,15 @@ fn pass4_restart_reconciles_sqlite_lifecycles() {
         Some("Lost(PidNotAlive)")
     );
     assert_eq!(states.get(&sid3).map(String::as_str), Some("Running"));
+}
+
+fn wait_for_events_since(harness: &RtmHarness, cursor: u64, expected: usize) -> String {
+    wait_until(Duration::from_secs(5), || {
+        let output = harness.events_since(cursor);
+        let stdout = output_stdout(output);
+        (stdout.lines().count() == expected).then_some(stdout)
+    })
+    .unwrap_or_else(|| panic!("events after cursor {cursor} never reached {expected}"))
 }
 
 fn spawn(harness: &RtmHarness, session_id: &str, runtime: &str) {
