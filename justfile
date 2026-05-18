@@ -11,9 +11,12 @@ build:
 release-build:
     cargo build --workspace --release
 
-install-local: release-build
+build-local:
+    cargo build -p rtm-cli --bin rtm --profile install-local
+
+install-local: build-local
     @set -eu; \
-    src="$(pwd)/target/release/rtm"; \
+    src="$(pwd)/target/install-local/rtm"; \
     dest="{{RTM_LOCAL_BIN}}"; \
     case "$dest" in /*) ;; *) dest="$(pwd)/$dest";; esac; \
     if [ "$src" = "$dest" ]; then \

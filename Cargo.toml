@@ -57,3 +57,8 @@ strip = true
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[profile.install-local]
+inherits = "release"
+codegen-units = 16
+lto = false
