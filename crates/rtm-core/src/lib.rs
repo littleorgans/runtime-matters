@@ -6,18 +6,14 @@
 //!
 //! ## Events contract
 //!
-//! v0.2 events use [`RuntimeRpc::Events`] and
-//! [`RuntimeResponse::Events { events }`](RuntimeResponse::Events). The response
-//! is the current daemon process vector in append order. rtmd appends
-//! [`RuntimeEvent::Running`] when shim ready is stored, then appends
-//! [`RuntimeEvent::Terminated`] or [`RuntimeEvent::Lost`] when exit or loss
-//! evidence is observed.
+//! v0.3 events use [`RuntimeRpc::Events`] and
+//! [`RuntimeResponse::Events { events, cursor }`](RuntimeResponse::Events).
+//! The daemon appends lifecycle observations to a durable JSONL log in global
+//! order. Clients pass the returned cursor as `since` to resume without
+//! duplicate delivery after client or daemon restarts.
 //!
-//! Events are kept only in the current daemon process memory. There is no v0.2
-//! cursor, retention window, sqlite replay, or limit policy. Clients such as
-//! session-matters should poll, filter to their session set, and dedupe by
-//! session id plus full event content. Cursor based
-//! `Events { since } -> { cursor, events }` support is deferred to v0.3.
+//! If a cursor is older than the retained log floor, rtmd returns
+//! [`RuntimeResponse::CursorExpired { oldest }`](RuntimeResponse::CursorExpired).
 
 pub mod admin;
 pub mod error;
@@ -40,6 +36,7 @@ pub use mcp::{
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,
 };
 pub use proto::{
+    EVENT_LOG_RETENTION_MIN_AGE_SECS, EVENT_LOG_RETENTION_MIN_EVENTS, EventCursor, EventsRequest,
     RuntimeResponse, RuntimeRpc, StatusRequest, read_json_line, read_json_line_blocking,
     write_json_line, write_json_line_blocking,
 };

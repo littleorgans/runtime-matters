@@ -1,6 +1,6 @@
 use chrono::{TimeZone, Utc};
 use lilo_rm_core::{
-    DoctorResponse, ErrorCode, KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec,
+    DoctorResponse, ErrorCode, EventsRequest, KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec,
     LauncherStatus, Lifecycle, LifecycleCounts, LostEvidence, McpBridgeRequest, MigrationState,
     NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RecentLostEvent, RuntimeEvent,
     RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit,
@@ -64,7 +64,9 @@ fn runtime_rpc_json_shapes_are_stable() {
         RuntimeRpc::Version,
         RuntimeRpc::Watchers,
         RuntimeRpc::Doctor,
-        RuntimeRpc::Events,
+        RuntimeRpc::Events {
+            request: EventsRequest { since: Some(7) },
+        },
         RuntimeRpc::Stop,
         RuntimeRpc::McpBridge {
             request: McpBridgeRequest {
@@ -201,11 +203,13 @@ fn runtime_response_json_shapes_are_stable() {
             code: ErrorCode::LaunchFailed,
             message: "failed".to_owned(),
         },
+        RuntimeResponse::CursorExpired { oldest: 7 },
         RuntimeResponse::Events {
             events: vec![RuntimeEvent::Lost {
                 session_id,
                 evidence: LostEvidence::PidNotAlive,
             }],
+            cursor: 8,
         },
     ];
 

@@ -45,7 +45,7 @@ enum Command {
     Version,
     #[command(about = "Print rtmd substrate health diagnostics.")]
     Doctor,
-    Events,
+    Events(EventsArgs),
     Initdb,
     #[command(name = "__shim", hide = true)]
     Shim(shim::ShimArgs),
@@ -107,6 +107,12 @@ pub struct NudgeArgs {
     content: String,
 }
 
+#[derive(Debug, Args)]
+pub struct EventsArgs {
+    #[arg(long)]
+    since: Option<lilo_rm_core::EventCursor>,
+}
+
 impl Cli {
     pub async fn run(self) -> Result<()> {
         match self.command {
@@ -118,7 +124,7 @@ impl Cli {
             Command::Mcp => mcp::run().await,
             Command::Version => version::run().await,
             Command::Doctor => doctor::run().await,
-            Command::Events => events().await,
+            Command::Events(args) => events(args).await,
             Command::Initdb => initdb::run().await,
             Command::Shim(args) => shim::run(args).await,
         }
@@ -305,9 +311,9 @@ async fn status(args: StatusArgs) -> Result<()> {
     Ok(())
 }
 
-async fn events() -> Result<()> {
+async fn events(args: EventsArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
-    let events = crate::shared::events(&socket_path).await?;
+    let events = crate::shared::events(&socket_path, args.since).await?;
     for event in events {
         match event {
             lilo_rm_core::RuntimeEvent::Running {

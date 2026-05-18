@@ -14,6 +14,17 @@ use crate::{
     ValidateTargetResponse, WatcherCounts,
 };
 
+pub type EventCursor = u64;
+
+pub const EVENT_LOG_RETENTION_MIN_AGE_SECS: u64 = 7 * 24 * 60 * 60;
+pub const EVENT_LOG_RETENTION_MIN_EVENTS: usize = 10_000;
+
+#[derive(Clone, Copy, Debug, Default, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct EventsRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<EventCursor>,
+}
+
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 pub struct StatusRequest {
     pub session_id: Option<Uuid>,
@@ -75,12 +86,10 @@ pub enum RuntimeRpc {
     Version,
     Watchers,
     Doctor,
-    /// Return the current daemon process event vector.
-    ///
-    /// v0.2 has no cursor parameter. Clients poll this request, filter by
-    /// session, and dedupe by session id plus full event content. Cursor based
-    /// `Events { since } -> { cursor, events }` support is deferred to v0.3.
-    Events,
+    Events {
+        #[serde(default, flatten)]
+        request: EventsRequest,
+    },
     Stop,
     McpBridge {
         request: McpBridgeRequest,
@@ -128,11 +137,12 @@ pub enum RuntimeResponse {
         doctor: crate::DoctorResponse,
     },
     /// Events in daemon append order.
-    ///
-    /// The vector is retained only in current rtmd process memory. It has no
-    /// cursor, retention window, sqlite replay, or limit policy in v0.2.
     Events {
         events: Vec<RuntimeEvent>,
+        cursor: EventCursor,
+    },
+    CursorExpired {
+        oldest: EventCursor,
     },
     McpBridge {
         response: McpBridgeResponse,

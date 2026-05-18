@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub const RUNTIME_PROTOCOL_VERSION: &str = "0.2";
+pub const RUNTIME_PROTOCOL_VERSION: &str = "0.3";
 
 pub const RUNTIME_PROTOCOL_CAPABILITIES: &[RuntimeCapability] = &[
     RuntimeCapability::StructuredProtocolErrors,
@@ -12,6 +12,7 @@ pub const RUNTIME_PROTOCOL_CAPABILITIES: &[RuntimeCapability] = &[
     RuntimeCapability::StatusUpdatedSinceFilter,
     RuntimeCapability::TypedNudgeOutcomes,
     RuntimeCapability::ValidateTargetPreflight,
+    RuntimeCapability::EventsCursor,
 ];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -51,6 +52,8 @@ pub enum RuntimeCapability {
     TypedNudgeOutcomes,
     /// ValidateTarget checks a target string without spawning.
     ValidateTargetPreflight,
+    /// Events support durable cursor replay.
+    EventsCursor,
 }
 
 impl RuntimeCapability {
@@ -62,6 +65,7 @@ impl RuntimeCapability {
             Self::StatusUpdatedSinceFilter => "status_updated_since_filter",
             Self::TypedNudgeOutcomes => "typed_nudge_outcomes",
             Self::ValidateTargetPreflight => "validate_target_preflight",
+            Self::EventsCursor => "events_cursor",
         }
     }
 }
@@ -83,6 +87,7 @@ impl FromStr for RuntimeCapability {
             "status_updated_since_filter" => Ok(Self::StatusUpdatedSinceFilter),
             "typed_nudge_outcomes" => Ok(Self::TypedNudgeOutcomes),
             "validate_target_preflight" => Ok(Self::ValidateTargetPreflight),
+            "events_cursor" => Ok(Self::EventsCursor),
             other => Err(format!("unknown runtime capability {other}")),
         }
     }

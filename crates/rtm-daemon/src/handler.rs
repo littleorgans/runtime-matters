@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use lilo_rm_core::{RuntimeResponse, RuntimeRpc, read_json_line, write_json_line};
+use lilo_rm_core::{EventsRequest, RuntimeResponse, RuntimeRpc, read_json_line, write_json_line};
 use tokio::io::BufReader;
 use tokio::net::UnixStream;
 use tokio::sync::broadcast;
@@ -111,9 +111,7 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
         RuntimeRpc::Doctor => Ok(RuntimeResponse::Doctor {
             doctor: doctor::collect(state).await?,
         }),
-        RuntimeRpc::Events => Ok(RuntimeResponse::Events {
-            events: state.events().await,
-        }),
+        RuntimeRpc::Events { request } => events_response(&state, request).await,
         RuntimeRpc::Stop => Ok(RuntimeResponse::Stopping),
         RuntimeRpc::McpBridge { request } => Ok(RuntimeResponse::McpBridge {
             response: lilo_rm_core::McpBridgeResponse {
@@ -132,5 +130,17 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             let _ = state.record_shim_exit(exit).await?;
             Ok(RuntimeResponse::Ack)
         }
+    }
+}
+
+async fn events_response(state: &ServerState, request: EventsRequest) -> Result<RuntimeResponse> {
+    match state.events(request.since).await {
+        Ok(batch) => Ok(RuntimeResponse::Events {
+            events: batch.events,
+            cursor: batch.cursor,
+        }),
+        Err(expired) => Ok(RuntimeResponse::CursorExpired {
+            oldest: expired.oldest,
+        }),
     }
 }

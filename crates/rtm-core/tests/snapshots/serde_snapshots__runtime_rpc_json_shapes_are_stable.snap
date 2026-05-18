@@ -1,5 +1,6 @@
 ---
 source: crates/rtm-core/tests/serde_snapshots.rs
+assertion_line: 88
 expression: rpcs
 ---
 [
@@ -81,7 +82,10 @@ expression: rpcs
     "type": "doctor"
   },
   {
-    "type": "events"
+    "type": "events",
+    "payload": {
+      "since": 7
+    }
   },
   {
     "type": "stop"

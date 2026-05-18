@@ -1,5 +1,6 @@
 ---
 source: crates/rtm-core/tests/serde_snapshots.rs
+assertion_line: 221
 expression: "lilo_rm_core::RUNTIME_PROTOCOL_CAPABILITIES"
 ---
 [
@@ -8,5 +9,6 @@ expression: "lilo_rm_core::RUNTIME_PROTOCOL_CAPABILITIES"
   "status_session_set_filter",
   "status_updated_since_filter",
   "typed_nudge_outcomes",
-  "validate_target_preflight"
+  "validate_target_preflight",
+  "events_cursor"
 ]

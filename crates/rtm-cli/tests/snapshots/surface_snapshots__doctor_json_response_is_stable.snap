@@ -1,5 +1,6 @@
 ---
 source: crates/rtm-cli/tests/surface_snapshots.rs
+assertion_line: 50
 expression: doctor
 ---
 {
@@ -46,10 +47,11 @@ expression: doctor
       "status_session_set_filter",
       "status_updated_since_filter",
       "typed_nudge_outcomes",
-      "validate_target_preflight"
+      "validate_target_preflight",
+      "events_cursor"
     ],
     "git_sha": "[git_sha]",
-    "protocol_version": "0.2",
+    "protocol_version": "0.3",
     "version": "[version]"
   },
   "watchers": {

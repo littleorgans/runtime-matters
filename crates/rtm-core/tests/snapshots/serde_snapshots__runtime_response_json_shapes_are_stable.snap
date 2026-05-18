@@ -1,5 +1,6 @@
 ---
 source: crates/rtm-core/tests/serde_snapshots.rs
+assertion_line: 216
 expression: responses
 ---
 [
@@ -162,14 +163,15 @@ expression: responses
       "version": {
         "version": "0.1.6",
         "git_sha": "0123456",
-        "protocol_version": "0.2",
+        "protocol_version": "0.3",
         "capabilities": [
           "structured_protocol_errors",
           "headless_stdio_log_paths",
           "status_session_set_filter",
           "status_updated_since_filter",
           "typed_nudge_outcomes",
-          "validate_target_preflight"
+          "validate_target_preflight",
+          "events_cursor"
         ]
       }
     }
@@ -181,14 +183,15 @@ expression: responses
         "version": {
           "version": "0.1.6",
           "git_sha": "0123456",
-          "protocol_version": "0.2",
+          "protocol_version": "0.3",
           "capabilities": [
             "structured_protocol_errors",
             "headless_stdio_log_paths",
             "status_session_set_filter",
             "status_updated_since_filter",
             "typed_nudge_outcomes",
-            "validate_target_preflight"
+            "validate_target_preflight",
+            "events_cursor"
           ]
         },
         "socket_path": "/tmp/rtmd.sock",
@@ -246,6 +249,12 @@ expression: responses
     }
   },
   {
+    "type": "cursor_expired",
+    "payload": {
+      "oldest": 7
+    }
+  },
+  {
     "type": "events",
     "payload": {
       "events": [
@@ -256,7 +265,8 @@ expression: responses
             "evidence": "pid_not_alive"
           }
         }
-      ]
+      ],
+      "cursor": 8
     }
   }
 ]

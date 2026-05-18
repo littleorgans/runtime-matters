@@ -153,6 +153,15 @@ impl RtmHarness {
             .expect("events client")
     }
 
+    pub fn events_since(&self, cursor: u64) -> Output {
+        self.rtm_command()
+            .arg("events")
+            .arg("--since")
+            .arg(cursor.to_string())
+            .output()
+            .expect("events client")
+    }
+
     pub fn doctor(&self) -> Output {
         self.rtm_command()
             .arg("doctor")

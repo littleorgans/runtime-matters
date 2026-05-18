@@ -1,5 +1,6 @@
 ---
 source: crates/rtm-cli/tests/surface_snapshots.rs
+assertion_line: 79
 expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status\": status, \"version\":\n    version, \"watchers\": watchers, \"kill_by_pid\": kill,\n})"
 ---
 {
@@ -225,7 +226,7 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
     "result": {
       "content": [
         {
-          "text": "{\"capabilities\":[\"structured_protocol_errors\",\"headless_stdio_log_paths\",\"status_session_set_filter\",\"status_updated_since_filter\",\"typed_nudge_outcomes\",\"validate_target_preflight\"],\"git_sha\":\"[git_sha]\",\"protocol_version\":\"0.2\",\"version\":\"[version]\"}",
+          "text": "{\"capabilities\":[\"structured_protocol_errors\",\"headless_stdio_log_paths\",\"status_session_set_filter\",\"status_updated_since_filter\",\"typed_nudge_outcomes\",\"validate_target_preflight\",\"events_cursor\"],\"git_sha\":\"[git_sha]\",\"protocol_version\":\"0.3\",\"version\":\"[version]\"}",
           "type": "text"
         }
       ],
@@ -236,10 +237,11 @@ expression: "json!({\n    \"initialize\": initialize, \"tools\": tools, \"status
           "status_session_set_filter",
           "status_updated_since_filter",
           "typed_nudge_outcomes",
-          "validate_target_preflight"
+          "validate_target_preflight",
+          "events_cursor"
         ],
         "git_sha": "[git_sha]",
-        "protocol_version": "0.2",
+        "protocol_version": "0.3",
         "version": "[version]"
       }
     }

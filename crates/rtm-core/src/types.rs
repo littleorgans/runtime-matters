@@ -499,12 +499,9 @@ impl Display for TerminationEvidence {
 
 /// Runtime lifecycle observation emitted by rtmd.
 ///
-/// `RuntimeRpc::Events` returns these values in the order the current daemon
-/// process appended them. `Running` is recorded after shim ready is stored.
-/// `Terminated` and `Lost` are recorded when rtmd observes exit or loss
-/// evidence. v0.2 retains this vector only in daemon process memory and exposes
-/// no cursor, replay, or retention window. Clients should poll and dedupe by
-/// session id plus full event content.
+/// `RuntimeRpc::Events` returns these values in durable append order. `Running`
+/// is recorded after shim ready is stored. `Terminated` and `Lost` are recorded
+/// when rtmd observes exit or loss evidence.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum RuntimeEvent {

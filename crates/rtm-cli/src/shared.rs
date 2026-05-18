@@ -2,7 +2,10 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
-use lilo_rm_core::{RuntimeEvent, RuntimeResponse, RuntimeRpc, StatusFilter, StatusRequest};
+use lilo_rm_core::{
+    EventCursor, EventsRequest, RuntimeEvent, RuntimeResponse, RuntimeRpc, StatusFilter,
+    StatusRequest,
+};
 use uuid::Uuid;
 
 pub fn socket_path() -> Result<PathBuf> {
@@ -37,9 +40,19 @@ pub async fn status_filtered(socket_path: &Path, filter: StatusFilter) -> Result
     .await
 }
 
-pub async fn events(socket_path: &Path) -> Result<Vec<RuntimeEvent>> {
-    match request(socket_path, RuntimeRpc::Events).await? {
-        RuntimeResponse::Events { events } => Ok(events),
+pub async fn events(socket_path: &Path, since: Option<EventCursor>) -> Result<Vec<RuntimeEvent>> {
+    match request(
+        socket_path,
+        RuntimeRpc::Events {
+            request: EventsRequest { since },
+        },
+    )
+    .await?
+    {
+        RuntimeResponse::Events { events, .. } => Ok(events),
+        RuntimeResponse::CursorExpired { oldest } => {
+            bail!("events cursor expired; oldest available cursor is {oldest}")
+        }
         other => bail!("unexpected response to events request: {other:?}"),
     }
 }
