@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/littleorgans/runtime-matters/compare/v0.1.6...v0.1.7) (2026-05-18)
+
+
+### Bug Fixes
+
+* make install switch back to release ([#15](https://github.com/littleorgans/runtime-matters/issues/15)) ([3c9eccc](https://github.com/littleorgans/runtime-matters/commit/3c9eccc9bfebf23f3dcfa8b940088e87f4ea745d))
+
 ## [0.1.6](https://github.com/littleorgans/runtime-matters/compare/v0.1.5...v0.1.6) (2026-05-18)
 
 

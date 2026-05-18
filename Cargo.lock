@@ -1232,7 +1232,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-cli"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1253,7 +1253,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-core"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "chrono",
  "insta",
@@ -1267,7 +1267,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-daemon"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1284,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-launchers"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "rtm-core",
  "uuid",
@@ -1292,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-platform"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "rtm-store"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "chrono",
