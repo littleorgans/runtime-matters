@@ -106,6 +106,10 @@ pub struct TmuxStatus {
     pub error: Option<String>,
 }
 
+/// Stable v0.2 daemon diagnostics JSON.
+///
+/// Clients may rely on the field names and JSON value kinds in this response.
+/// The concrete diagnostic values are host and process specific.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DoctorResponse {
     pub version: VersionInfo,
