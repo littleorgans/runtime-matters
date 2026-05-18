@@ -1,4 +1,4 @@
-use rtm_core::{HeadlessSpawnTarget, RuntimeKind, RuntimeLauncher, SpawnRequest, SpawnTarget};
+use lilo_rm_core::{HeadlessSpawnTarget, RuntimeKind, RuntimeLauncher, SpawnRequest, SpawnTarget};
 use uuid::Uuid;
 
 #[test]
@@ -26,7 +26,7 @@ fn assert_launcher_conforms(launcher: &'static dyn RuntimeLauncher) {
         session_id: Uuid::now_v7(),
         runtime: launcher.kind(),
         env: Vec::new(),
-        cwd: rtm_core::launcher_probe_cwd(),
+        cwd: lilo_rm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
     };
 

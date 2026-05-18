@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Result, bail};
-use rtm_core::{McpBridgeRequest, RuntimeResponse, RuntimeRpc};
+use lilo_rm_core::{McpBridgeRequest, RuntimeResponse, RuntimeRpc};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 pub async fn run_stdio(socket_path: PathBuf) -> Result<()> {

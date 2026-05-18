@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use rtm_core::{RuntimeResponse, RuntimeRpc, read_json_line, write_json_line};
+use lilo_rm_core::{RuntimeResponse, RuntimeRpc, read_json_line, write_json_line};
 use tokio::io::BufReader;
 use tokio::net::UnixStream;
 use tokio::sync::broadcast;
@@ -80,7 +80,7 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             lifecycles: state.status(request.into()).await,
         }),
         RuntimeRpc::Version => Ok(RuntimeResponse::Version {
-            version: rtm_core::version_info(),
+            version: crate::version::runtime_version_info(),
         }),
         RuntimeRpc::Watchers => Ok(RuntimeResponse::Watchers {
             watchers: state.watcher_counts().await,
@@ -93,7 +93,7 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
         }),
         RuntimeRpc::Stop => Ok(RuntimeResponse::Stopping),
         RuntimeRpc::McpBridge { request } => Ok(RuntimeResponse::McpBridge {
-            response: rtm_core::McpBridgeResponse {
+            response: lilo_rm_core::McpBridgeResponse {
                 line: mcp_bridge::handle_line(&state, &request.line).await,
             },
         }),

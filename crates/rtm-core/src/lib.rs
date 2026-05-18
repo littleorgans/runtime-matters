@@ -1,3 +1,9 @@
+//! Runtime Matters core protocol types and JSON line transport helpers.
+//!
+//! This crate is the stable contract shared by `rtm` clients and rtmd. The
+//! daemon, CLI, platform, launcher, and store crates remain private
+//! implementation details.
+
 pub mod admin;
 pub mod error;
 pub mod launcher;

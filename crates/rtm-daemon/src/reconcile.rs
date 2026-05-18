@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use chrono::Utc;
-use rtm_core::{Lifecycle, LostEvidence, RuntimeEvent};
+use lilo_rm_core::{Lifecycle, LostEvidence, RuntimeEvent};
 use rtm_platform::process::ProcessStartTime;
 use tokio::sync::broadcast;
 use tokio::time::{Instant, sleep_until};
@@ -212,7 +212,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use chrono::{DateTime, TimeZone};
-    use rtm_core::{LifecycleState, RuntimeKind, ShimReady};
+    use lilo_rm_core::{LifecycleState, RuntimeKind, ShimReady};
     use rtm_store::{LifecycleStore, StoreConfig};
     use uuid::Uuid;
 

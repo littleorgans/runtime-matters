@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
-use rtm_core::{DoctorResponse, LifecycleCounts, RuntimeResponse, RuntimeRpc};
+use lilo_rm_core::{DoctorResponse, LifecycleCounts, RuntimeResponse, RuntimeRpc};
 
 pub async fn run() -> Result<()> {
     let socket_path = crate::shared::socket_path()?;

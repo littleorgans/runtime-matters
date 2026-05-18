@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use rtm_core::{LaunchEnv, TmuxAddress};
+use lilo_rm_core::{LaunchEnv, TmuxAddress};
 use tokio::process::Command;
 
 pub struct TmuxGateway;

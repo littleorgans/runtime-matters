@@ -1,7 +1,7 @@
 mod common;
 
 use common::{RtmHarness, output_stderr, output_stdout, spawn_ok, wait_for_log};
-use rtm_core::{
+use lilo_rm_core::{
     HeadlessSpawnTarget, LaunchEnv, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest,
     SpawnTarget,
 };

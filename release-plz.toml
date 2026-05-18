@@ -1,0 +1,31 @@
+[workspace]
+release = false
+publish = false
+semver_check = true
+changelog_update = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_name = "{{ package }}-v{{ version }}"
+release_always = false
+
+[[package]]
+name = "lilo-rm-core"
+release = true
+version_group = "rm-contract"
+
+[[package]]
+name = "lilo-rm-client"
+release = true
+version_group = "rm-contract"
+
+[changelog]
+header = """# Changelog\n\nAll notable changes documented here.\n"""
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug Fixes" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Refactoring", default_scope = "internal" },
+  { message = "^doc", group = "Documentation", default_scope = "internal" },
+  { message = "^chore", group = "Miscellaneous", default_scope = "internal" },
+  { message = "^test", group = "Tests", default_scope = "internal" },
+  { message = "^ci", group = "CI", default_scope = "internal" },
+]

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use rtm_core::{
+use lilo_rm_core::{
     KillByPidRequest, KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse,
     RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
 };
@@ -123,8 +123,8 @@ impl Cli {
 
 async fn spawn(args: SpawnArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
-    let cwd = rtm_core::capture_caller_cwd().context("failed to capture caller cwd")?;
-    let env = rtm_core::capture_caller_env();
+    let cwd = lilo_rm_core::capture_caller_cwd().context("failed to capture caller cwd")?;
+    let env = lilo_rm_core::capture_caller_env();
     let response = crate::shared::request(
         &socket_path,
         RuntimeRpc::Spawn {
@@ -265,7 +265,7 @@ async fn events() -> Result<()> {
     let events = crate::shared::events(&socket_path).await?;
     for event in events {
         match event {
-            rtm_core::RuntimeEvent::Running {
+            lilo_rm_core::RuntimeEvent::Running {
                 session_id,
                 runtime_pid,
                 start_time,
@@ -275,7 +275,7 @@ async fn events() -> Result<()> {
                 runtime_pid,
                 start_time.to_rfc3339()
             ),
-            rtm_core::RuntimeEvent::Terminated {
+            lilo_rm_core::RuntimeEvent::Terminated {
                 session_id,
                 exit_code,
                 signal,
@@ -287,7 +287,7 @@ async fn events() -> Result<()> {
                 display_optional_i32(signal),
                 evidence
             ),
-            rtm_core::RuntimeEvent::Lost {
+            lilo_rm_core::RuntimeEvent::Lost {
                 session_id,
                 evidence,
             } => println!(
@@ -299,11 +299,11 @@ async fn events() -> Result<()> {
     Ok(())
 }
 
-pub fn event_name(event: &rtm_core::RuntimeEvent) -> &'static str {
+pub fn event_name(event: &lilo_rm_core::RuntimeEvent) -> &'static str {
     match event {
-        rtm_core::RuntimeEvent::Running { .. } => "Running",
-        rtm_core::RuntimeEvent::Terminated { .. } => "Terminated",
-        rtm_core::RuntimeEvent::Lost { .. } => "Lost",
+        lilo_rm_core::RuntimeEvent::Running { .. } => "Running",
+        lilo_rm_core::RuntimeEvent::Terminated { .. } => "Terminated",
+        lilo_rm_core::RuntimeEvent::Lost { .. } => "Lost",
     }
 }
 
@@ -358,7 +358,7 @@ fn display_optional_i32(value: Option<i32>) -> String {
         .unwrap_or_else(|| "-".to_owned())
 }
 
-fn display_optional_tmux_pane(value: Option<&rtm_core::TmuxAddress>) -> String {
+fn display_optional_tmux_pane(value: Option<&lilo_rm_core::TmuxAddress>) -> String {
     value
         .map(ToString::to_string)
         .unwrap_or_else(|| "-".to_owned())

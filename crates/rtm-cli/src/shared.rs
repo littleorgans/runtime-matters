@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
-use rtm_core::{
+use lilo_rm_core::{
     RuntimeEvent, RuntimeResponse, RuntimeRpc, StatusFilter, StatusRequest, read_json_line,
     write_json_line,
 };

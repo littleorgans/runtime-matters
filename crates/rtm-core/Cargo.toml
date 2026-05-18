@@ -1,9 +1,20 @@
 [package]
-name = "rtm-core"
-version.workspace = true
+name = "lilo-rm-core"
+description = "Runtime Matters core protocol types and JSON line wire contract for rtmd clients"
+readme = "README.md"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+keywords = ["runtime", "protocol", "agents", "helioy", "lilo"]
+categories = ["api-bindings", "development-tools"]
+
+[lib]
+name = "lilo_rm_core"
+path = "src/lib.rs"
 
 [dependencies]
 chrono.workspace = true

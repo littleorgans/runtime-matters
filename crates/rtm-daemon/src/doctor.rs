@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use rtm_core::{
+use lilo_rm_core::{
     DoctorResponse, HeadlessSpawnTarget, LauncherStatus, SpawnRequest, SpawnTarget, TmuxStatus,
 };
 use uuid::Uuid;
@@ -13,7 +13,7 @@ const RECENT_LOST_WINDOW: Duration = Duration::hours(24);
 
 pub(crate) async fn collect(state: Arc<ServerState>) -> Result<DoctorResponse> {
     Ok(DoctorResponse {
-        version: rtm_core::version_info(),
+        version: crate::version::runtime_version_info(),
         socket_path: socket::display_socket_path(&state.config().socket_path),
         uptime_secs: state.uptime_secs(),
         sqlite: state.store().migration_state().await?,
@@ -36,13 +36,13 @@ fn launcher_statuses() -> Vec<LauncherStatus> {
         .collect()
 }
 
-fn launcher_status(launcher: &'static dyn rtm_core::RuntimeLauncher) -> LauncherStatus {
+fn launcher_status(launcher: &'static dyn lilo_rm_core::RuntimeLauncher) -> LauncherStatus {
     let runtime = launcher.kind();
     let request = SpawnRequest {
         session_id: Uuid::nil(),
         runtime: runtime.clone(),
         env: Vec::new(),
-        cwd: rtm_core::launcher_probe_cwd(),
+        cwd: lilo_rm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
     };
     match launcher.argv(&request) {

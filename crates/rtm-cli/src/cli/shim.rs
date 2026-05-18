@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
-use rtm_core::{LaunchSpec, RuntimeExit, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady};
+use lilo_rm_core::{
+    LaunchSpec, RuntimeExit, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady,
+};
 use uuid::Uuid;
 
 pub const SHIM_RECONNECT_MAX_ATTEMPTS: usize = 10;
@@ -146,7 +148,7 @@ fn runtime_exit(status: ExitStatus) -> RuntimeExit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rtm_core::LaunchEnv;
+    use lilo_rm_core::LaunchEnv;
     use std::path::PathBuf;
 
     #[test]

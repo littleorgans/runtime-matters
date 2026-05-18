@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rtm_core::{
+use lilo_rm_core::{
     LaunchEnv, LaunchSpec, RuntimeResponse, RuntimeRpc, ShimExit, ShimLaunchRequest, ShimReady,
     SpawnRequest, SpawnTarget, read_json_line, read_json_line_blocking, write_json_line,
     write_json_line_blocking,

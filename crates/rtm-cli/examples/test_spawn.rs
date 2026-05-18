@@ -5,7 +5,7 @@ mod spawn_support;
 
 use anyhow::Result;
 use clap::Parser;
-use rtm_core::{RuntimeKind, SpawnTarget};
+use lilo_rm_core::{RuntimeKind, SpawnTarget};
 use uuid::Uuid;
 
 #[derive(Debug, Parser)]

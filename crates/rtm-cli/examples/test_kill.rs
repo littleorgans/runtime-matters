@@ -5,7 +5,9 @@ mod spawn_support;
 
 use anyhow::{Result, bail};
 use clap::Parser;
-use rtm_core::{KillRequest, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnTarget};
+use lilo_rm_core::{
+    KillRequest, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnTarget,
+};
 use uuid::Uuid;
 
 #[derive(Debug, Parser)]

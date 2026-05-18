@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 static CONTRACT_REGISTRY: OnceLock<ToolRegistry> = OnceLock::new();
-const TOOLS_TOML: &str = include_str!("../../../tools.toml");
+const TOOLS_TOML: &str = include_str!("../tools.toml");
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 pub struct ToolRegistry {

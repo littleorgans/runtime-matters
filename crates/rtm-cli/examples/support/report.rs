@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use rtm_core::{Lifecycle, RuntimeResponse};
+use lilo_rm_core::{Lifecycle, RuntimeResponse};
 
 pub fn print_spawned(response: RuntimeResponse) -> Result<Lifecycle> {
     let RuntimeResponse::Spawned {

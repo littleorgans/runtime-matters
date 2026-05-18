@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
-use rtm_core::{
+use lilo_rm_core::{
     Lifecycle, LifecycleCounts, LifecycleState, LostEvidence, MigrationState, RecentLostEvent,
     RuntimeExit, RuntimeKind, TmuxAddress,
 };
@@ -475,7 +475,7 @@ fn parse_time(value: &str) -> Result<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rtm_core::ShimReady;
+    use lilo_rm_core::ShimReady;
     use tempfile::TempDir;
 
     #[tokio::test]

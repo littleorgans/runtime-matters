@@ -83,7 +83,9 @@ The load gate also prints raw RSS and OS footprint for diagnostics. The assertio
 
 ## Release
 
-Release Please owns changelog and version bumps through `.release-please-manifest.json` and `release-please-config.json`. cargo-dist owns binary artifact planning and tagged release builds. This pass does not create a release tag.
+Release Please owns binary changelog and version bumps through `.release-please-manifest.json` and `release-please-config.json`. cargo-dist owns binary artifact planning and tagged release builds. This pass does not create a release tag.
+
+The public crates.io contract is limited to `lilo-rm-core` and `lilo-rm-client`. release-plz owns their crate release PRs and GitHub Releases, while `publish.yml` uploads only the tagged public crate. The daemon, CLI, platform, launchers, and store crates are private implementation details.
 
 ## Roadmap
 

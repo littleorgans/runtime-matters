@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 pub use claude::ClaudeLauncher;
 pub use codex::CodexLauncher;
-use rtm_core::{
+use lilo_rm_core::{
     HeadlessSpawnTarget, LaunchEnv, LauncherError, RuntimeKind, RuntimeLauncher, SpawnRequest,
     SpawnTarget,
 };
@@ -33,7 +33,7 @@ pub fn warm_registry() -> Result<(), LauncherError> {
             session_id: uuid::Uuid::nil(),
             runtime: launcher.kind(),
             env: Vec::new(),
-            cwd: rtm_core::launcher_probe_cwd(),
+            cwd: lilo_rm_core::launcher_probe_cwd(),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
         };
         launcher.argv(&request)?;
