@@ -376,6 +376,34 @@ pub fn wait_until<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) ->
     None
 }
 
+pub fn wait_for_headless_runtime_ready(harness: &RtmHarness, session_id: &str) {
+    wait_for_log(
+        harness
+            .rtm_home()
+            .join("logs")
+            .join(session_id)
+            .join("stdout.log"),
+        &format!("{FAKE_RUNTIME_READY}\n"),
+    );
+}
+
+pub fn wait_for_log(path: impl AsRef<Path>, expected: &str) {
+    let path = path.as_ref();
+    if wait_until(Duration::from_secs(5), || {
+        std::fs::read_to_string(path)
+            .ok()
+            .filter(|contents| contents == expected)
+    })
+    .is_none()
+    {
+        let observed = std::fs::read_to_string(path);
+        panic!(
+            "log {} expected {expected:?}, observed {observed:?}",
+            path.display()
+        );
+    }
+}
+
 pub fn wait_until_not_alive(pid: u32) {
     wait_until(Duration::from_secs(5), || {
         (!process_alive(pid)).then_some(())

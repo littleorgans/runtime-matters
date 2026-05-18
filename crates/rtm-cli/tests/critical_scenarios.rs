@@ -4,8 +4,9 @@ use std::time::Duration;
 
 use common::{
     FAKE_RUNTIME_READY, RtmHarness, output_stderr, output_stdout, persist_running, spawn_ok,
-    spawn_output_ok, status_pid, terminate_process, unused_pid, wait_for_events, wait_for_status,
-    wait_for_status_timeout, wait_until, wait_until_not_alive,
+    spawn_output_ok, status_pid, terminate_process, unused_pid, wait_for_events,
+    wait_for_headless_runtime_ready, wait_for_status, wait_for_status_timeout, wait_until,
+    wait_until_not_alive,
 };
 use uuid::Uuid;
 
@@ -56,6 +57,7 @@ fn rtmd_restart_keeps_live_sessions_running() {
     let mut harness = RtmHarness::start();
     let session_id = Uuid::now_v7().to_string();
     spawn_ok(&harness, &session_id, "claude");
+    wait_for_headless_runtime_ready(&harness, &session_id);
 
     harness.stop_rtmd();
     harness.start_rtmd();
@@ -69,6 +71,7 @@ fn rtmd_restart_reconciles_dead_sessions_lost() {
     let mut harness = RtmHarness::start();
     let session_id = Uuid::now_v7().to_string();
     spawn_ok(&harness, &session_id, "claude");
+    wait_for_headless_runtime_ready(&harness, &session_id);
     let runtime_pid = status_pid(&harness, &session_id, "pid");
 
     harness.stop_rtmd();

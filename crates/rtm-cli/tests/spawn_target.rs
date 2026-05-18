@@ -1,13 +1,11 @@
 mod common;
 
-use common::{RtmHarness, output_stderr, output_stdout, spawn_ok};
+use common::{RtmHarness, output_stderr, output_stdout, spawn_ok, wait_for_log};
 use rtm_core::{
     HeadlessSpawnTarget, LaunchEnv, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest,
     SpawnTarget,
 };
 use serde_json::Value;
-use std::path::Path;
-use std::time::Duration;
 use uuid::Uuid;
 
 #[test]
@@ -66,21 +64,4 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
     );
     wait_for_log(log_dir.join("stdout.log"), "HELLO\n");
     wait_for_log(log_dir.join("stderr.log"), "WORLD\n");
-}
-
-fn wait_for_log(path: impl AsRef<Path>, expected: &str) {
-    let path = path.as_ref();
-    if common::wait_until(Duration::from_secs(5), || {
-        std::fs::read_to_string(path)
-            .ok()
-            .filter(|contents| contents == expected)
-    })
-    .is_none()
-    {
-        let observed = std::fs::read_to_string(path);
-        panic!(
-            "log {} expected {expected:?}, observed {observed:?}",
-            path.display()
-        );
-    }
 }
