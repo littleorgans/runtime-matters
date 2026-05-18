@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/littleorgans/runtime-matters/compare/v0.1.8...v0.1.9) (2026-05-18)
+
+
+### Bug Fixes
+
+* restore cargo-dist rtm release ([#20](https://github.com/littleorgans/runtime-matters/issues/20)) ([1016fd5](https://github.com/littleorgans/runtime-matters/commit/1016fd588df4762bb954e7b2a2de864ba814ad3d))
+
 ## [0.1.8](https://github.com/littleorgans/runtime-matters/compare/v0.1.7...v0.1.8) (2026-05-18)
 
 
