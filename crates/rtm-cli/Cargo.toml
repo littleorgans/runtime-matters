@@ -10,6 +10,9 @@ authors.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.dist]
+dist = true
+
 [[bin]]
 name = "rtm"
 path = "src/main.rs"

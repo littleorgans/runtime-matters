@@ -6,6 +6,7 @@ cargo-dist-version = "0.31.0"
 ci = ["github"]
 installers = []
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+tag-namespace = "v"
 # release-please creates the GitHub Release; cargo-dist only uploads into it.
 create-release = false
 github-attestations = true
