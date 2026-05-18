@@ -3,7 +3,9 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use rtm_core::{RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest};
+use rtm_core::{
+    HeadlessSpawnTarget, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget,
+};
 use uuid::Uuid;
 
 const DEFAULT_SAMPLES: usize = 10;
@@ -27,6 +29,7 @@ fn main() {
                         runtime: RuntimeKind::Claude,
                         env: Vec::new(),
                         cwd: None,
+                        target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
                     },
                 },
             ))

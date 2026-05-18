@@ -1,29 +1,44 @@
 #[path = "../tests/common/mod.rs"]
 mod common;
+#[path = "support/spawn.rs"]
+mod spawn_support;
 
 use std::process::Command;
 
-use rtm_core::{Lifecycle, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest};
-use uuid::Uuid;
+use anyhow::{Result, ensure};
+use clap::Parser;
+use rtm_core::{Lifecycle, RuntimeKind, RuntimeResponse, SpawnTarget};
 
 const DEFAULT_SESSIONS: usize = 50;
 const APP_FOOTPRINT_LIMIT_KIB: u64 = 90 * 1024;
 const NON_APP_FOOTPRINT_CATEGORIES: &[&str] =
     &["page table", "stack", "unused dyld shared cache area"];
 
+#[derive(Debug, Parser)]
+struct Args {
+    #[arg(long, default_value_t = DEFAULT_SESSIONS)]
+    sessions: usize,
+    #[arg(long, value_name = "headless")]
+    target: SpawnTarget,
+}
+
 struct FootprintSample {
     total_kib: u64,
     app_kib: u64,
 }
 
-fn main() {
-    let sessions = sessions_arg();
+fn main() -> Result<()> {
+    let args = Args::parse();
+    ensure!(
+        matches!(args.target, SpawnTarget::Headless(_)),
+        "load_test requires --target headless"
+    );
     let harness = common::RtmHarness::start();
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-    let mut lifecycles = Vec::with_capacity(sessions);
+    let mut lifecycles = Vec::with_capacity(args.sessions);
 
-    for _ in 0..sessions {
-        lifecycles.push(spawn_one(&runtime, &harness));
+    for _ in 0..args.sessions {
+        lifecycles.push(spawn_one(&runtime, &harness, args.target.clone()));
     }
 
     let pids = substrate_pids(harness.daemon_pid(), &lifecycles);
@@ -34,7 +49,7 @@ fn main() {
         .map(|sample| sample.total_kib)
         .sum::<u64>();
     let app_footprint_kib = footprints.iter().map(|sample| sample.app_kib).sum::<u64>();
-    println!("sessions={sessions}");
+    println!("sessions={}", args.sessions);
     println!("combined_rss_kib={rss_kib}");
     println!("combined_rss_mib={:.2}", rss_kib as f64 / 1024.0);
     println!("combined_footprint_kib={footprint_kib}");
@@ -51,20 +66,20 @@ fn main() {
         app_footprint_kib < APP_FOOTPRINT_LIMIT_KIB,
         "combined app footprint {app_footprint_kib} KiB exceeded {APP_FOOTPRINT_LIMIT_KIB} KiB"
     );
+    Ok(())
 }
 
-fn spawn_one(runtime: &tokio::runtime::Runtime, harness: &common::RtmHarness) -> Lifecycle {
+fn spawn_one(
+    runtime: &tokio::runtime::Runtime,
+    harness: &common::RtmHarness,
+    target: SpawnTarget,
+) -> Lifecycle {
     let response = runtime
-        .block_on(rtm_cli::shared::request(
+        .block_on(spawn_support::spawn_runtime(
             harness.socket_path(),
-            RuntimeRpc::Spawn {
-                request: SpawnRequest {
-                    session_id: Uuid::now_v7(),
-                    runtime: RuntimeKind::Claude,
-                    env: Vec::new(),
-                    cwd: None,
-                },
-            },
+            uuid::Uuid::now_v7(),
+            RuntimeKind::Claude,
+            target,
         ))
         .expect("spawn rpc");
     match response {
@@ -143,16 +158,4 @@ fn parse_kib(text: &str) -> Option<u64> {
         _ => return None,
     }
     .into()
-}
-
-fn sessions_arg() -> usize {
-    let mut args = std::env::args().skip(1);
-    let Some(flag) = args.next() else {
-        return DEFAULT_SESSIONS;
-    };
-    assert_eq!(flag, "--sessions", "usage: load_test [--sessions N]");
-    args.next()
-        .expect("--sessions value")
-        .parse()
-        .expect("session count")
 }

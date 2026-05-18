@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use rtm_core::{
     KillByPidRequest, KillRequest, Lifecycle, NudgeRequest, RuntimeKind, RuntimeResponse,
-    RuntimeRpc, RuntimeSignal, SpawnRequest, StatusFilter,
+    RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
 };
 use uuid::Uuid;
 
@@ -54,6 +54,8 @@ pub struct SpawnArgs {
     runtime: RuntimeKind,
     #[arg(long)]
     session_id: Uuid,
+    #[arg(long, value_name = "headless|tmux:SESSION:WINDOW.PANE")]
+    target: SpawnTarget,
 }
 
 #[derive(Debug, Args)]
@@ -126,22 +128,28 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
             request: SpawnRequest {
                 session_id: args.session_id,
                 runtime: args.runtime,
-                env: crate::shared::client_launch_env(),
+                env: Vec::new(),
                 cwd: None,
+                target: args.target,
             },
         },
     )
     .await?;
 
     match response {
-        RuntimeResponse::Spawned { lifecycle, event } => {
+        RuntimeResponse::Spawned {
+            lifecycle,
+            event,
+            log_dir,
+        } => {
             println!(
-                "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={}",
+                "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={}",
                 lifecycle.state,
                 event_name(&event),
                 lifecycle
                     .runtime_pid
-                    .expect("running lifecycle runtime pid")
+                    .expect("running lifecycle runtime pid"),
+                display_optional_path(log_dir.as_deref())
             );
         }
         other => anyhow::bail!("unexpected spawn response: {other:?}"),
@@ -347,8 +355,14 @@ fn display_optional_i32(value: Option<i32>) -> String {
         .unwrap_or_else(|| "-".to_owned())
 }
 
-fn display_optional_tmux_pane(value: Option<&rtm_core::TmuxPane>) -> String {
+fn display_optional_tmux_pane(value: Option<&rtm_core::TmuxAddress>) -> String {
     value
         .map(ToString::to_string)
+        .unwrap_or_else(|| "-".to_owned())
+}
+
+pub fn display_optional_path(value: Option<&std::path::Path>) -> String {
+    value
+        .map(|path| path.display().to_string())
         .unwrap_or_else(|| "-".to_owned())
 }

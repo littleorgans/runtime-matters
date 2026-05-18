@@ -1,4 +1,5 @@
 use std::io::{BufRead, Write};
+use std::path::PathBuf;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -55,6 +56,7 @@ pub enum RuntimeResponse {
     Spawned {
         lifecycle: Lifecycle,
         event: RuntimeEvent,
+        log_dir: Option<PathBuf>,
     },
     Status {
         lifecycles: Vec<Lifecycle>,

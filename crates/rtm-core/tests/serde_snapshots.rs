@@ -1,10 +1,11 @@
 use chrono::{TimeZone, Utc};
 use rtm_core::{
-    KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, LostEvidence, McpBridgeRequest,
-    NudgeRequest, RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc,
-    RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, StatusRequest,
-    TerminationEvidence,
+    KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, Lifecycle, LostEvidence,
+    McpBridgeRequest, NudgeRequest, RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeResponse,
+    RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget,
+    StatusRequest, TerminationEvidence, TmuxSpawnTarget,
 };
+use serde_json::json;
 use uuid::Uuid;
 
 #[test]
@@ -16,8 +17,11 @@ fn runtime_rpc_json_shapes_are_stable() {
             request: SpawnRequest {
                 session_id,
                 runtime: RuntimeKind::Claude,
-                env: vec![LaunchEnv::new("TMUX_PANE", "%1")],
+                env: Vec::new(),
                 cwd: Some("/tmp/rtm".into()),
+                target: SpawnTarget::Tmux(TmuxSpawnTarget {
+                    address: "rtm:0.1".parse().expect("address"),
+                }),
             },
         },
         RuntimeRpc::Kill {
@@ -99,7 +103,18 @@ fn runtime_event_json_shapes_are_stable() {
 #[test]
 fn runtime_response_json_shapes_are_stable() {
     let session_id = session_id();
+    let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
+    assert!(lifecycle.mark_running(ready(session_id)));
     let responses = vec![
+        RuntimeResponse::Spawned {
+            lifecycle,
+            event: RuntimeEvent::Running {
+                session_id,
+                runtime_pid: 4242,
+                start_time: timestamp(),
+            },
+            log_dir: Some("/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001".into()),
+        },
         RuntimeResponse::ShimLaunch {
             launch: LaunchSpec {
                 argv: vec!["claude".to_owned(), "--resume".to_owned()],
@@ -121,6 +136,22 @@ fn runtime_response_json_shapes_are_stable() {
     ];
 
     insta::assert_json_snapshot!(responses);
+}
+
+#[test]
+fn spawn_request_json_requires_target() {
+    let error = serde_json::from_value::<SpawnRequest>(json!({
+        "session_id": session_id(),
+        "runtime": "claude",
+        "env": [],
+        "cwd": null
+    }))
+    .expect_err("spawn request without target should fail");
+
+    assert!(
+        error.to_string().contains("missing field `target`"),
+        "{error}"
+    );
 }
 
 fn ready(session_id: Uuid) -> ShimReady {

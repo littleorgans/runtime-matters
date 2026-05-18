@@ -5,8 +5,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use common::{
-    RtmHarness, status_pid, terminate_process, wait_for_events, wait_for_status,
-    wait_for_status_timeout, wait_until_not_alive,
+    RtmHarness, status_pid, terminate_process, wait_for_events, wait_for_headless_runtime_ready,
+    wait_for_status, wait_for_status_timeout, wait_until_not_alive,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use uuid::Uuid;
@@ -21,6 +21,9 @@ fn pass4_restart_reconciles_sqlite_lifecycles() {
     spawn(&harness, &sid1, "claude");
     spawn(&harness, &sid2, "claude");
     spawn(&harness, &sid3, "codex");
+    wait_for_headless_runtime_ready(&harness, &sid1);
+    wait_for_headless_runtime_ready(&harness, &sid2);
+    wait_for_headless_runtime_ready(&harness, &sid3);
     let pid2 = status_pid(&harness, &sid2, "pid");
 
     harness.stop_rtmd();

@@ -20,6 +20,7 @@ use crate::{event_channel, handler, reconcile, socket};
 pub struct DaemonConfig {
     pub socket_path: PathBuf,
     pub shim_path: PathBuf,
+    pub log_root: PathBuf,
     pub store: StoreConfig,
     pub reconcile: reconcile::ReconcileConfig,
 }
@@ -34,10 +35,30 @@ impl DaemonConfig {
         Ok(Self {
             socket_path,
             shim_path,
+            log_root: default_log_root()?,
             store: StoreConfig::from_env()?,
             reconcile: reconcile::ReconcileConfig::from_env()?,
         })
     }
+
+    pub fn session_log_dir(&self, session_id: Uuid) -> PathBuf {
+        self.log_root.join(session_id.to_string())
+    }
+}
+
+fn default_log_root() -> Result<PathBuf> {
+    Ok(default_rtm_home()?.join("logs"))
+}
+
+fn default_rtm_home() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("RTM_HOME")
+        && !path.as_os_str().is_empty()
+    {
+        return Ok(PathBuf::from(path));
+    }
+
+    let home = std::env::var_os("HOME").context("HOME is required for default rtm log path")?;
+    Ok(PathBuf::from(home).join(".rtm"))
 }
 
 pub async fn run_daemon(config: DaemonConfig) -> Result<()> {
@@ -133,6 +154,7 @@ impl ServerState {
         if self.store.get(request.session_id).await?.is_some() {
             bail!("session {} already exists", request.session_id);
         }
+        self.validate_spawn_target(request).await?;
 
         let lifecycle = Lifecycle::forking(request.session_id, request.runtime.clone());
         self.store.insert_forking(&lifecycle).await?;
@@ -147,6 +169,15 @@ impl ServerState {
                 Err(error)
             }
         }
+    }
+
+    async fn validate_spawn_target(&self, request: &SpawnRequest) -> Result<()> {
+        if let Some(address) = request.target.tmux_address()
+            && !rtm_platform::tmux::TmuxGateway::is_alive(address).await?
+        {
+            bail!("tmux address {address} is not alive");
+        }
+        Ok(())
     }
 
     async fn begin_ready_wait(&self, session_id: Uuid) -> Result<oneshot::Receiver<ShimReady>> {
@@ -204,6 +235,7 @@ impl ServerState {
                 request.session_id
             );
         }
+        lifecycle.tmux_pane = request.target.tmux_address().cloned();
         self.store.update_lifecycle(&lifecycle).await?;
         let event = event_channel::running_event(&lifecycle)?;
 
@@ -267,10 +299,12 @@ impl ServerState {
             .get(request.session_id)
             .await?
             .ok_or_else(|| anyhow!("session {} not found", request.session_id))?;
-        let tmux_pane = lifecycle
-            .tmux_pane
-            .as_ref()
-            .ok_or_else(|| anyhow!("session {} has no tmux pane", request.session_id))?;
+        let tmux_pane = lifecycle.tmux_pane.as_ref().ok_or_else(|| {
+            anyhow!(
+                "nudge not supported for headless lifecycle {}",
+                request.session_id
+            )
+        })?;
         rtm_platform::tmux::TmuxGateway::nudge(tmux_pane, &request.content).await
     }
 
@@ -509,6 +543,7 @@ mod tests {
             DaemonConfig {
                 socket_path: PathBuf::from("/tmp/rtm-test.sock"),
                 shim_path: PathBuf::from("rtm"),
+                log_root: temp.path().join("logs"),
                 store: store_config,
                 reconcile: reconcile::ReconcileConfig::default(),
             },

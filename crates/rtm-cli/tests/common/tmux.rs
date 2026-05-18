@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use uuid::Uuid;
 
-use super::{RtmHarness, output_stdout, wait_until};
+use super::{output_stdout, wait_until};
 
 pub struct TmuxSession {
     name: String,
@@ -31,24 +31,21 @@ impl TmuxSession {
             .to_owned()
     }
 
-    pub fn send_spawn_command(&self, harness: &RtmHarness, session_id: &str) {
-        let command = format!(
-            "RTM_SOCKET_PATH={} RTM_DB_PATH={} {} spawn --runtime claude --session-id {}",
-            harness.socket_path().display(),
-            harness.db_path().display(),
-            harness.rtm_path().display(),
-            session_id
-        );
-        tmux(["send-keys", "-t", &self.name, "-l", &command]);
-        tmux(["send-keys", "-t", &self.name, "Enter"]);
+    pub fn assert_pane_listed(&self, pane: &str) {
+        let panes = tmux_stdout(["list-panes", "-s", "-t", &self.name, "-F", "#S:#I.#P"]);
+        assert!(panes.lines().any(|line| line == pane), "{panes}");
     }
 
     pub fn wait_for_capture(&self, needle: &str) {
         wait_until(Duration::from_secs(5), || {
-            let capture = tmux_stdout(["capture-pane", "-p", "-t", &self.name]);
+            let capture = self.capture();
             capture.contains(needle).then_some(())
         })
         .unwrap_or_else(|| panic!("tmux pane never contained {needle}"));
+    }
+
+    pub fn capture(&self) -> String {
+        tmux_stdout(["capture-pane", "-p", "-t", &self.name])
     }
 
     pub fn kill(&self) {

@@ -2,8 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use rtm_core::{Lifecycle, LostEvidence, RuntimeEvent};
+use rtm_platform::process::ProcessStartTime;
 use tokio::sync::broadcast;
 use tokio::time::{Instant, sleep_until};
 
@@ -48,7 +49,7 @@ impl Default for ReconcileConfig {
 
 pub trait ProcessProbe {
     fn pid_alive(&self, pid: u32) -> bool;
-    fn start_time_for_pid(&self, pid: u32) -> Result<Option<DateTime<Utc>>>;
+    fn start_time_for_pid(&self, pid: u32) -> Result<ProcessStartTime>;
 }
 
 pub struct SystemProcessProbe;
@@ -58,8 +59,8 @@ impl ProcessProbe for SystemProcessProbe {
         rtm_platform::process::pid_alive(pid)
     }
 
-    fn start_time_for_pid(&self, pid: u32) -> Result<Option<DateTime<Utc>>> {
-        rtm_platform::process::start_time_for_pid(pid)
+    fn start_time_for_pid(&self, pid: u32) -> Result<ProcessStartTime> {
+        rtm_platform::process::start_time_probe_for_pid(pid)
     }
 }
 
@@ -160,8 +161,21 @@ fn lost_evidence(lifecycle: &Lifecycle, probe: &impl ProcessProbe) -> Result<Opt
     let Some(stored_start_time) = lifecycle.start_time else {
         return Ok(None);
     };
-    let Some(current_start_time) = probe.start_time_for_pid(runtime_pid)? else {
-        return Ok(None);
+    let current_start_time = match probe.start_time_for_pid(runtime_pid) {
+        Ok(ProcessStartTime::Known(start_time)) => start_time,
+        Ok(ProcessStartTime::Gone) => return Ok(Some(LostEvidence::PidNotAlive)),
+        Ok(ProcessStartTime::Unsupported) => {
+            if !probe.pid_alive(runtime_pid) {
+                return Ok(Some(LostEvidence::PidNotAlive));
+            }
+            return Ok(None);
+        }
+        Err(error) => {
+            if !probe.pid_alive(runtime_pid) {
+                return Ok(Some(LostEvidence::PidNotAlive));
+            }
+            return Err(error);
+        }
     };
     if current_start_time != stored_start_time {
         return Ok(Some(LostEvidence::PidReuseDetected));
@@ -195,8 +209,9 @@ fn chrono_duration_env(name: &'static str, default: chrono::Duration) -> Result<
 mod tests {
     use std::collections::{HashMap, HashSet};
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use chrono::TimeZone;
+    use chrono::{DateTime, TimeZone};
     use rtm_core::{LifecycleState, RuntimeKind, ShimReady};
     use rtm_store::{LifecycleStore, StoreConfig};
     use uuid::Uuid;
@@ -214,8 +229,39 @@ mod tests {
             self.alive.contains(&pid)
         }
 
-        fn start_time_for_pid(&self, pid: u32) -> Result<Option<DateTime<Utc>>> {
-            Ok(self.start_times.get(&pid).copied())
+        fn start_time_for_pid(&self, pid: u32) -> Result<ProcessStartTime> {
+            Ok(self
+                .start_times
+                .get(&pid)
+                .copied()
+                .map(ProcessStartTime::Known)
+                .unwrap_or(ProcessStartTime::Unsupported))
+        }
+    }
+
+    struct VanishingProbe {
+        alive_checks: AtomicUsize,
+    }
+
+    impl ProcessProbe for VanishingProbe {
+        fn pid_alive(&self, _pid: u32) -> bool {
+            self.alive_checks.fetch_add(1, Ordering::SeqCst) == 0
+        }
+
+        fn start_time_for_pid(&self, pid: u32) -> Result<ProcessStartTime> {
+            Err(anyhow!("failed to read start time for pid {pid}"))
+        }
+    }
+
+    struct GoneProbe;
+
+    impl ProcessProbe for GoneProbe {
+        fn pid_alive(&self, _pid: u32) -> bool {
+            true
+        }
+
+        fn start_time_for_pid(&self, _pid: u32) -> Result<ProcessStartTime> {
+            Ok(ProcessStartTime::Gone)
         }
     }
 
@@ -252,6 +298,45 @@ mod tests {
         assert!(replay.is_empty(), "{replay:?}");
         assert_lost(&store, dead.session_id, LostEvidence::PidNotAlive).await;
         assert_lost(&store, reused.session_id, LostEvidence::PidReuseDetected).await;
+    }
+
+    #[tokio::test]
+    async fn startup_reconciliation_marks_pid_lost_when_start_time_races_exit() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let store = LifecycleStore::open(StoreConfig {
+            db_path: temp.path().join("rtm.sqlite"),
+        })
+        .await
+        .expect("store");
+        let lifecycle = persist_running(&store, 404, Utc.timestamp_opt(4_000, 0).unwrap()).await;
+        let state = Arc::new(ServerState::new(test_config(), store.clone()));
+        let probe = VanishingProbe {
+            alive_checks: AtomicUsize::new(0),
+        };
+
+        let events = reconcile_startup(state, &probe).await.expect("reconcile");
+
+        assert_eq!(events.len(), 1);
+        assert_lost(&store, lifecycle.session_id, LostEvidence::PidNotAlive).await;
+    }
+
+    #[tokio::test]
+    async fn startup_reconciliation_marks_pid_lost_when_probe_reports_gone() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let store = LifecycleStore::open(StoreConfig {
+            db_path: temp.path().join("rtm.sqlite"),
+        })
+        .await
+        .expect("store");
+        let lifecycle = persist_running(&store, 505, Utc.timestamp_opt(5_000, 0).unwrap()).await;
+        let state = Arc::new(ServerState::new(test_config(), store.clone()));
+
+        let events = reconcile_startup(state, &GoneProbe)
+            .await
+            .expect("reconcile");
+
+        assert_eq!(events.len(), 1);
+        assert_lost(&store, lifecycle.session_id, LostEvidence::PidNotAlive).await;
     }
 
     #[tokio::test]
@@ -347,6 +432,7 @@ mod tests {
         DaemonConfig {
             socket_path: PathBuf::from("/tmp/rtm-test.sock"),
             shim_path: PathBuf::from("rtm"),
+            log_root: PathBuf::from("/tmp/rtm-test-logs"),
             store: StoreConfig {
                 db_path: PathBuf::from("/tmp/rtm-test.sqlite"),
             },

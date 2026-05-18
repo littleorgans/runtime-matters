@@ -9,13 +9,14 @@ expression: rpcs
       "request": {
         "session_id": "018f6e28-0000-7000-8000-000000000001",
         "runtime": "claude",
-        "env": [
-          {
-            "key": "TMUX_PANE",
-            "value": "%1"
+        "env": [],
+        "cwd": "/tmp/rtm",
+        "target": {
+          "type": "tmux",
+          "payload": {
+            "address": "rtm:0.1"
           }
-        ],
-        "cwd": "/tmp/rtm"
+        }
       }
     }
   },

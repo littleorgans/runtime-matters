@@ -38,13 +38,6 @@ pub fn run_for_session_blocking(session_id: Uuid) -> Result<()> {
         .spawn()
         .context("failed to spawn runtime")?;
     let runtime_pid = child.id();
-    let tmux_pane = match rtm_platform::tmux::TmuxGateway::discover_blocking(session_id) {
-        Ok(tmux_pane) => tmux_pane,
-        Err(error) => {
-            tracing::warn!(%error, "failed to discover tmux pane");
-            None
-        }
-    };
 
     let ready = ShimReady {
         session_id,
@@ -52,7 +45,7 @@ pub fn run_for_session_blocking(session_id: Uuid) -> Result<()> {
         runtime_pid,
         start_time: rtm_platform::process::start_time_for_pid(runtime_pid)?
             .unwrap_or_else(chrono::Utc::now),
-        tmux_pane,
+        tmux_pane: None,
     };
     reconnecting("ShimReady", || {
         rtm_daemon::shim_socket::send_ready_blocking(&socket_path, ready.clone())

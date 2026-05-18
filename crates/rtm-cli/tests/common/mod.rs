@@ -3,6 +3,7 @@
 pub mod mcp;
 pub mod tmux;
 
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -14,44 +15,69 @@ use rtm_store::{LifecycleStore, StoreConfig};
 use tempfile::TempDir;
 use uuid::Uuid;
 
+pub const FAKE_RUNTIME_READY: &str = "rtm fake runtime ready";
+
 pub struct RtmHarness {
     temp: TempDir,
     socket: PathBuf,
     db: PathBuf,
+    rtm_home: PathBuf,
     rtm: PathBuf,
     daemon: Child,
     reconcile_env: Vec<(&'static str, String)>,
+    start_outside_tmux: bool,
 }
 
 impl RtmHarness {
     pub fn start() -> Self {
-        Self::start_with_reconcile_env(Vec::new())
+        Self::start_with_options(Vec::new(), false)
+    }
+
+    pub fn start_outside_tmux() -> Self {
+        Self::start_with_options(Vec::new(), true)
     }
 
     pub fn start_with_fast_resume_probe() -> Self {
-        Self::start_with_reconcile_env(vec![
-            ("RTM_PROBE_SWEEP_INTERVAL_MS", "30000".to_owned()),
-            ("RTM_RESUME_POLL_INTERVAL_MS", "25".to_owned()),
-            ("RTM_RESUME_GAP_THRESHOLD_MS", "1".to_owned()),
-        ])
+        Self::start_with_options(
+            vec![
+                ("RTM_PROBE_SWEEP_INTERVAL_MS", "30000".to_owned()),
+                ("RTM_RESUME_POLL_INTERVAL_MS", "25".to_owned()),
+                ("RTM_RESUME_GAP_THRESHOLD_MS", "1".to_owned()),
+            ],
+            false,
+        )
     }
 
-    fn start_with_reconcile_env(reconcile_env: Vec<(&'static str, String)>) -> Self {
+    fn start_with_options(
+        reconcile_env: Vec<(&'static str, String)>,
+        start_outside_tmux: bool,
+    ) -> Self {
         let temp = TempDir::new().expect("temp dir");
         let socket = temp.path().join("rtm.sock");
         let db = temp.path().join("rtm.sqlite");
+        let rtm_home = temp.path().join("rtm-home");
         write_fake_runtime(temp.path(), "claude");
         write_fake_runtime(temp.path(), "codex");
         let rtm = default_rtm_path();
-        let daemon = start_daemon(&rtm, &socket, &db, temp.path(), &reconcile_env);
-        wait_for_socket(&socket);
+        let mut daemon = start_daemon(
+            &rtm,
+            &socket,
+            &db,
+            &rtm_home,
+            temp.path(),
+            &reconcile_env,
+            start_outside_tmux,
+        );
+        wait_for_socket(&socket, &mut daemon);
         Self {
             temp,
             socket,
             db,
+            rtm_home,
             rtm,
             daemon,
             reconcile_env,
+            start_outside_tmux,
         }
     }
 
@@ -60,12 +86,18 @@ impl RtmHarness {
     }
 
     pub fn spawn_runtime(&self, session_id: &str, runtime: &str) -> Output {
-        self.rtm_command()
-            .arg("spawn")
-            .arg("--runtime")
-            .arg(runtime)
-            .arg("--session-id")
-            .arg(session_id)
+        self.spawn_command(session_id, runtime, "headless")
+            .output()
+            .expect("spawn client")
+    }
+
+    pub fn spawn_runtime_in_tmux(
+        &self,
+        session_id: &str,
+        runtime: &str,
+        tmux_address: &str,
+    ) -> Output {
+        self.spawn_command(session_id, runtime, &format!("tmux:{tmux_address}"))
             .output()
             .expect("spawn client")
     }
@@ -150,10 +182,12 @@ impl RtmHarness {
             &self.rtm,
             &self.socket,
             &self.db,
+            &self.rtm_home,
             self.temp.path(),
             &self.reconcile_env,
+            self.start_outside_tmux,
         );
-        wait_for_socket(&self.socket);
+        wait_for_socket(&self.socket, &mut self.daemon);
     }
 
     pub fn stop_rtmd(&mut self) {
@@ -166,6 +200,10 @@ impl RtmHarness {
 
     pub fn socket_path(&self) -> &Path {
         &self.socket
+    }
+
+    pub fn rtm_home(&self) -> &Path {
+        &self.rtm_home
     }
 
     pub fn rtm_path(&self) -> &Path {
@@ -185,6 +223,19 @@ impl RtmHarness {
         let mut command = Command::new(&self.rtm);
         command.env("RTM_SOCKET_PATH", &self.socket);
         command.env("RTM_DB_PATH", &self.db);
+        command
+    }
+
+    fn spawn_command(&self, session_id: &str, runtime: &str, target: &str) -> Command {
+        let mut command = self.rtm_command();
+        command
+            .arg("spawn")
+            .arg("--runtime")
+            .arg(runtime)
+            .arg("--session-id")
+            .arg(session_id)
+            .arg("--target")
+            .arg(target);
         command
     }
 
@@ -241,6 +292,10 @@ pub fn parse_status_pid(stdout: &str) -> u32 {
 
 pub fn spawn_ok(harness: &RtmHarness, session_id: &str, runtime: &str) -> String {
     let output = harness.spawn_runtime(session_id, runtime);
+    spawn_output_ok(output, runtime)
+}
+
+pub fn spawn_output_ok(output: Output, runtime: &str) -> String {
     assert!(
         output.status.success(),
         "{runtime} spawn failed: {output:?}"
@@ -289,12 +344,16 @@ pub fn wait_for_status_timeout(
     needle: &str,
     timeout: Duration,
 ) -> String {
+    let mut last_status = String::new();
     wait_until(timeout, || {
         let output = harness.status(session_id);
-        let stdout = output_stdout(output);
+        let success = output.status.success();
+        let stdout = String::from_utf8(output.stdout).expect("stdout");
+        let stderr = String::from_utf8(output.stderr).expect("stderr");
+        last_status = format!("success={success} stdout={stdout:?} stderr={stderr:?}");
         stdout.contains(needle).then_some(stdout)
     })
-    .unwrap_or_else(|| panic!("status never contained {needle}"))
+    .unwrap_or_else(|| panic!("status never contained {needle}; last status: {last_status}"))
 }
 
 pub fn wait_for_events(harness: &RtmHarness, expected: usize) -> String {
@@ -315,6 +374,34 @@ pub fn wait_until<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) ->
         std::thread::sleep(Duration::from_millis(25));
     }
     None
+}
+
+pub fn wait_for_headless_runtime_ready(harness: &RtmHarness, session_id: &str) {
+    wait_for_log(
+        harness
+            .rtm_home()
+            .join("logs")
+            .join(session_id)
+            .join("stdout.log"),
+        &format!("{FAKE_RUNTIME_READY}\n"),
+    );
+}
+
+pub fn wait_for_log(path: impl AsRef<Path>, expected: &str) {
+    let path = path.as_ref();
+    if wait_until(Duration::from_secs(5), || {
+        std::fs::read_to_string(path)
+            .ok()
+            .filter(|contents| contents == expected)
+    })
+    .is_none()
+    {
+        let observed = std::fs::read_to_string(path);
+        panic!(
+            "log {} expected {expected:?}, observed {observed:?}",
+            path.display()
+        );
+    }
 }
 
 pub fn wait_until_not_alive(pid: u32) {
@@ -379,7 +466,14 @@ pub fn unused_pid() -> u32 {
 
 fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
     let path = dir.join(name);
-    std::fs::write(&path, "#!/bin/sh\nexec sleep 60\n").expect("fake runtime");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exit 0\nfi\nprintf '{}\\n'\nexec sleep 60\n",
+            FAKE_RUNTIME_READY
+        ),
+    )
+    .expect("fake runtime");
     let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
     use std::os::unix::fs::PermissionsExt;
     permissions.set_mode(0o755);
@@ -391,8 +485,10 @@ fn start_daemon(
     rtm: &Path,
     socket: &Path,
     db: &Path,
+    rtm_home: &Path,
     fake_bin_dir: &Path,
     reconcile_env: &[(&'static str, String)],
+    start_outside_tmux: bool,
 ) -> Child {
     let mut command = Command::new(rtm);
     command
@@ -400,9 +496,13 @@ fn start_daemon(
         .arg("start")
         .env("RTM_SOCKET_PATH", socket)
         .env("RTM_DB_PATH", db)
+        .env("RTM_HOME", rtm_home)
         .env("PATH", test_path(fake_bin_dir))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if start_outside_tmux {
+        command.env_remove("TMUX").env_remove("TMUX_PANE");
+    }
     for (key, value) in reconcile_env {
         command.env(key, value);
     }
@@ -418,15 +518,27 @@ fn test_path(fake_bin_dir: &Path) -> String {
         .into_owned()
 }
 
-fn wait_for_socket(socket: &Path) {
+fn wait_for_socket(socket: &Path, daemon: &mut Child) {
     let deadline = Instant::now() + Duration::from_secs(5);
+    let mut last_error = None;
     while Instant::now() < deadline {
-        if socket.exists() {
-            return;
+        match UnixStream::connect(socket) {
+            Ok(_) => return,
+            Err(error) => last_error = Some(error),
+        }
+        if daemon.try_wait().expect("daemon try_wait").is_some() {
+            panic!(
+                "daemon exited before socket accepted connections at {}{}",
+                socket.display(),
+                daemon_debug(daemon)
+            );
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    panic!("daemon socket never appeared at {}", socket.display());
+    panic!(
+        "daemon socket never accepted connections at {}; last error={last_error:?}",
+        socket.display()
+    );
 }
 
 fn stop_daemon(rtm: &Path, socket: &Path, daemon: &mut Child) {

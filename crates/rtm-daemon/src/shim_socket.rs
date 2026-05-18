@@ -1,34 +1,111 @@
 use anyhow::{Context, Result};
 use rtm_core::{
-    LaunchSpec, RuntimeResponse, RuntimeRpc, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest,
-    read_json_line, read_json_line_blocking, write_json_line, write_json_line_blocking,
+    LaunchEnv, LaunchSpec, RuntimeResponse, RuntimeRpc, ShimExit, ShimLaunchRequest, ShimReady,
+    SpawnRequest, SpawnTarget, read_json_line, read_json_line_blocking, write_json_line,
+    write_json_line_blocking,
 };
 use std::io::BufReader as StdBufReader;
 use std::os::unix::net::UnixStream as StdUnixStream;
-use tokio::io::BufReader;
+use std::path::PathBuf;
+use std::process::Stdio;
+use tokio::fs::File;
+use tokio::io::{AsyncRead, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::process::Command;
 
 use crate::server::DaemonConfig;
 
-pub async fn launch_shim(config: &DaemonConfig, request: &SpawnRequest) -> Result<()> {
+pub async fn launch_shim(config: &DaemonConfig, request: &SpawnRequest) -> Result<Option<PathBuf>> {
+    let env = shim_env(config);
+    match &request.target {
+        SpawnTarget::Tmux(target) => {
+            let argv = shim_argv(config, request);
+            rtm_platform::tmux::TmuxGateway::respawn_pane(&target.address, &argv, &env)
+                .await
+                .with_context(|| format!("failed to respawn tmux pane {}", target.address))?;
+            Ok(None)
+        }
+        SpawnTarget::Headless(_) => launch_headless_shim(config, request, &env).await.map(Some),
+    }
+}
+
+async fn launch_headless_shim(
+    config: &DaemonConfig,
+    request: &SpawnRequest,
+    env: &[LaunchEnv],
+) -> Result<PathBuf> {
+    let log_dir = config.session_log_dir(request.session_id);
+    tokio::fs::create_dir_all(&log_dir)
+        .await
+        .with_context(|| format!("failed to create log directory {}", log_dir.display()))?;
+    let stdout = File::create(log_dir.join("stdout.log"))
+        .await
+        .context("failed to create headless stdout log")?;
+    let stderr = File::create(log_dir.join("stderr.log"))
+        .await
+        .context("failed to create headless stderr log")?;
+
     let mut command = Command::new(&config.shim_path);
     command
         .arg("__shim")
         .arg("--session-id")
-        .arg(request.session_id.to_string())
-        .env("RTM_SOCKET_PATH", &config.socket_path);
-    for env in request.env.iter().filter(|env| shim_env_key(&env.key)) {
-        command.env(&env.key, &env.value);
+        .arg(request.session_id.to_string());
+    for entry in env {
+        command.env(&entry.key, &entry.value);
     }
-    command
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .with_context(|| format!("failed to spawn shim {}", config.shim_path.display()))?;
+    let child_stdout = child
+        .stdout
+        .take()
+        .context("headless shim stdout missing")?;
+    let child_stderr = child
+        .stderr
+        .take()
+        .context("headless shim stderr missing")?;
+    spawn_log_copy(request.session_id, "stdout", child_stdout, stdout);
+    spawn_log_copy(request.session_id, "stderr", child_stderr, stderr);
+    Ok(log_dir)
+}
+
+fn spawn_log_copy<R>(session_id: uuid::Uuid, stream: &'static str, reader: R, file: File)
+where
+    R: AsyncRead + Send + Unpin + 'static,
+{
+    tokio::spawn(async move {
+        if let Err(error) = copy_log_stream(reader, file).await {
+            tracing::warn!(%error, %session_id, stream, "headless log copy failed");
+        }
+    });
+}
+
+async fn copy_log_stream<R>(mut reader: R, mut file: File) -> Result<()>
+where
+    R: AsyncRead + Unpin,
+{
+    tokio::io::copy(&mut reader, &mut file).await?;
+    file.flush().await?;
     Ok(())
 }
 
-fn shim_env_key(key: &str) -> bool {
-    matches!(key, "TMUX" | "TMUX_PANE")
+fn shim_argv(config: &DaemonConfig, request: &SpawnRequest) -> Vec<String> {
+    vec![
+        config.shim_path.to_string_lossy().into_owned(),
+        "__shim".to_owned(),
+        "--session-id".to_owned(),
+        request.session_id.to_string(),
+    ]
+}
+
+fn shim_env(config: &DaemonConfig) -> Vec<LaunchEnv> {
+    vec![LaunchEnv {
+        key: "RTM_SOCKET_PATH".to_owned(),
+        value: config.socket_path.to_string_lossy().into_owned(),
+    }]
 }
 
 pub async fn request_launch(
