@@ -111,7 +111,7 @@ description = "Matching Lifecycle rows."
 [tools.rtm_version]
 cli_name = "version"
 cli_about = "Print rtmd version metadata."
-mcp_description = "Return the rtmd package version and build git sha."
+mcp_description = "Return the rtmd package version, build git sha, protocol version, and advertised capabilities."
 args_type = "RtmVersionArgs"
 response_type = "RtmVersionResponse"
 response_description = "Version metadata for the running daemon."
@@ -125,6 +125,17 @@ description = "Package version."
 name = "git_sha"
 kind = "string"
 description = "Build git sha."
+
+[[tools.rtm_version.outputs]]
+name = "protocol_version"
+kind = "string"
+description = "Runtime protocol compatibility version."
+
+[[tools.rtm_version.outputs]]
+name = "capabilities"
+kind = "array"
+items_kind = "string"
+description = "Stable runtime protocol capability names."
 
 [tools.rtm_watchers]
 cli_name = "watchers"

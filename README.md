@@ -100,6 +100,6 @@ The public crates.io contract is limited to `lilo-rm-core` and `lilo-rm-client`.
 | --- | --- |
 | `rtm_kill_by_pid` | Admin escape hatch that signals a runtime process by pid, waits for the grace period, then sends SIGKILL if the process remains alive. |
 | `rtm_status` | Return rtmd Lifecycle rows, optionally filtered by session id, session set, runtime, lifecycle state, and updated time. |
-| `rtm_version` | Return the rtmd package version and build git sha. |
+| `rtm_version` | Return the rtmd package version, build git sha, protocol version, and advertised capabilities. |
 | `rtm_watchers` | Return rtmd operator visibility counters for kqueue watchers and pending shim socket waiters. |
 <!-- rtm-admin-tools:end -->

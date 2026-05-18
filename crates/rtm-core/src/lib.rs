@@ -39,4 +39,7 @@ pub use types::{
     SpawnTarget, SpawnTargetParseError, TerminationEvidence, TmuxAddress, TmuxAddressParseError,
     TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse,
 };
-pub use version::{VersionInfo, version_info};
+pub use version::{
+    RUNTIME_PROTOCOL_CAPABILITIES, RUNTIME_PROTOCOL_VERSION, RuntimeCapability, VersionInfo,
+    version_info,
+};

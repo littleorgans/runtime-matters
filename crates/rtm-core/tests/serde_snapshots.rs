@@ -1,10 +1,12 @@
 use chrono::{TimeZone, Utc};
 use lilo_rm_core::{
-    ErrorCode, KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, Lifecycle, LostEvidence,
-    McpBridgeRequest, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent,
+    DoctorResponse, ErrorCode, KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec,
+    LauncherStatus, Lifecycle, LifecycleCounts, LostEvidence, McpBridgeRequest, MigrationState,
+    NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RecentLostEvent, RuntimeEvent,
     RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit,
     ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, StatusRequest, TerminationEvidence,
-    TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse,
+    TmuxSpawnTarget, TmuxStatus, ValidateTargetOutcome, ValidateTargetRequest,
+    ValidateTargetResponse, VersionInfo, WatcherCounts,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -188,6 +190,12 @@ fn runtime_response_json_shapes_are_stable() {
                 outcome: NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead),
             },
         },
+        RuntimeResponse::Version {
+            version: version_info(),
+        },
+        RuntimeResponse::Doctor {
+            doctor: doctor_response(),
+        },
         RuntimeResponse::Stopping,
         RuntimeResponse::Error {
             code: ErrorCode::LaunchFailed,
@@ -202,6 +210,11 @@ fn runtime_response_json_shapes_are_stable() {
     ];
 
     insta::assert_json_snapshot!(responses);
+}
+
+#[test]
+fn runtime_capability_json_names_are_stable() {
+    insta::assert_json_snapshot!(lilo_rm_core::RUNTIME_PROTOCOL_CAPABILITIES);
 }
 
 #[test]
@@ -270,6 +283,50 @@ fn ready(session_id: Uuid) -> ShimReady {
         start_time: timestamp(),
         tmux_pane: Some("rtm:0.1".parse().expect("pane")),
     }
+}
+
+fn doctor_response() -> DoctorResponse {
+    DoctorResponse {
+        version: version_info(),
+        socket_path: "/tmp/rtmd.sock".to_owned(),
+        uptime_secs: 12,
+        sqlite: MigrationState {
+            applied: 2,
+            total: 2,
+            applied_descriptions: vec!["lifecycle".to_owned(), "probe state".to_owned()],
+            pending_descriptions: Vec::new(),
+        },
+        lifecycles: LifecycleCounts {
+            forking: 1,
+            running: 2,
+            exited: 3,
+            lost: 4,
+        },
+        watchers: WatcherCounts {
+            kqueue_watchers: 5,
+            shim_sockets: 6,
+        },
+        launchers: vec![LauncherStatus {
+            runtime: "claude".to_owned(),
+            command: Some("claude".to_owned()),
+            error: None,
+        }],
+        tmux: TmuxStatus {
+            available: true,
+            version: Some("tmux 3.5a".to_owned()),
+            error: None,
+        },
+        last_probe_sweep: Some(timestamp()),
+        recent_lost: vec![RecentLostEvent {
+            session_id: other_session_id(),
+            evidence: LostEvidence::PidNotAlive,
+            occurred_at: timestamp(),
+        }],
+    }
+}
+
+fn version_info() -> VersionInfo {
+    VersionInfo::new("0.1.6", "0123456")
 }
 
 fn session_id() -> Uuid {

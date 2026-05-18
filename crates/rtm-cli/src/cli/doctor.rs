@@ -1,6 +1,8 @@
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
-use lilo_rm_core::{DoctorResponse, LifecycleCounts, RuntimeResponse, RuntimeRpc};
+use lilo_rm_core::{
+    DoctorResponse, LifecycleCounts, RuntimeCapability, RuntimeResponse, RuntimeRpc,
+};
 
 pub async fn run() -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
@@ -19,6 +21,11 @@ fn print_doctor(doctor: &DoctorResponse) {
     println!(
         "  version             {} (git: {})",
         doctor.version.version, doctor.version.git_sha
+    );
+    println!("  protocol            {}", doctor.version.protocol_version);
+    println!(
+        "  capabilities        {}",
+        format_capabilities(&doctor.version.capabilities)
     );
     println!("  socket              {}", doctor.socket_path);
     println!(
@@ -87,6 +94,17 @@ fn format_migrations(values: &[String]) -> String {
         return "none".to_owned();
     }
     values.join(", ")
+}
+
+fn format_capabilities(values: &[RuntimeCapability]) -> String {
+    if values.is_empty() {
+        return "none".to_owned();
+    }
+    values
+        .iter()
+        .map(|capability| capability.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn format_tmux(doctor: &DoctorResponse) -> String {
