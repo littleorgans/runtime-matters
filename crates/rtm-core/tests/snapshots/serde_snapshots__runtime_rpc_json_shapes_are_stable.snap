@@ -21,6 +21,14 @@ expression: rpcs
     }
   },
   {
+    "type": "validate_target",
+    "payload": {
+      "request": {
+        "target": "tmux:rtm:0.1"
+      }
+    }
+  },
+  {
     "type": "kill",
     "payload": {
       "request": {

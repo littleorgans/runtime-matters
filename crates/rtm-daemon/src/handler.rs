@@ -85,6 +85,9 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
                 stderr_path,
             })
         }
+        RuntimeRpc::ValidateTarget { request } => Ok(RuntimeResponse::ValidateTarget {
+            response: state.validate_target_request(request).await?,
+        }),
         RuntimeRpc::Kill { request } => {
             state.kill_runtime(request).await?;
             Ok(RuntimeResponse::Ack)

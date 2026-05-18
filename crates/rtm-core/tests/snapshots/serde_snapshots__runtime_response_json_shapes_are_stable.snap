@@ -54,6 +54,53 @@ expression: responses
     }
   },
   {
+    "type": "validate_target",
+    "payload": {
+      "response": {
+        "valid": true,
+        "outcome": {
+          "kind": "valid"
+        }
+      }
+    }
+  },
+  {
+    "type": "validate_target",
+    "payload": {
+      "response": {
+        "valid": false,
+        "outcome": {
+          "kind": "invalid_target",
+          "message": "invalid spawn target tmux:not-a-pane; expected headless or tmux:<session>:<window>.<pane>"
+        }
+      }
+    }
+  },
+  {
+    "type": "validate_target",
+    "payload": {
+      "response": {
+        "valid": false,
+        "outcome": {
+          "kind": "tmux_pane_dead",
+          "address": "rtm:0.1"
+        }
+      }
+    }
+  },
+  {
+    "type": "validate_target",
+    "payload": {
+      "response": {
+        "valid": false,
+        "outcome": {
+          "kind": "unsupported_target",
+          "target": "ssh:remote"
+        }
+      }
+    }
+  },
+  {
     "type": "shim_launch",
     "payload": {
       "launch": {

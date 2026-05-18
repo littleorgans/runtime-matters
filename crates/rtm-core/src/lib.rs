@@ -37,6 +37,6 @@ pub use types::{
     NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeKind,
     RuntimeSignal, RuntimeSignalParseError, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest,
     SpawnTarget, SpawnTargetParseError, TerminationEvidence, TmuxAddress, TmuxAddressParseError,
-    TmuxSpawnTarget,
+    TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse,
 };
 pub use version::{VersionInfo, version_info};

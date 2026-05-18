@@ -4,7 +4,7 @@ use lilo_rm_core::{
     McpBridgeRequest, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent,
     RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit,
     ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, StatusRequest, TerminationEvidence,
-    TmuxSpawnTarget,
+    TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -23,6 +23,11 @@ fn runtime_rpc_json_shapes_are_stable() {
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {
                     address: "rtm:0.1".parse().expect("address"),
                 }),
+            },
+        },
+        RuntimeRpc::ValidateTarget {
+            request: ValidateTargetRequest {
+                target: "tmux:rtm:0.1".to_owned(),
             },
         },
         RuntimeRpc::Kill {
@@ -136,6 +141,26 @@ fn runtime_response_json_shapes_are_stable() {
             log_dir: None,
             stdout_path: None,
             stderr_path: None,
+        },
+        RuntimeResponse::ValidateTarget {
+            response: ValidateTargetResponse::valid(),
+        },
+        RuntimeResponse::ValidateTarget {
+            response: ValidateTargetResponse {
+                valid: false,
+                outcome: ValidateTargetOutcome::InvalidTarget {
+                    message: "invalid spawn target tmux:not-a-pane; expected headless or tmux:<session>:<window>.<pane>"
+                        .to_owned(),
+                },
+            },
+        },
+        RuntimeResponse::ValidateTarget {
+            response: ValidateTargetResponse::tmux_pane_dead(
+                "rtm:0.1".parse().expect("tmux address"),
+            ),
+        },
+        RuntimeResponse::ValidateTarget {
+            response: ValidateTargetResponse::unsupported_target("ssh:remote"),
         },
         RuntimeResponse::ShimLaunch {
             launch: LaunchSpec {

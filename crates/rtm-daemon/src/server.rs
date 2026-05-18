@@ -8,7 +8,8 @@ use lilo_rm_core::{
     KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, LifecycleState,
     LostEvidence, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent,
     RuntimeExit, RuntimeSignal, ShimExit, ShimReady, SpawnRequest, StatusFilter,
-    TerminationEvidence, WatcherCounts,
+    TerminationEvidence, ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse,
+    WatcherCounts,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use tokio::net::UnixListener;
@@ -173,12 +174,41 @@ impl ServerState {
     }
 
     async fn validate_spawn_target(&self, request: &SpawnRequest) -> Result<()> {
-        if let Some(address) = request.target.tmux_address()
+        match self.validate_target(&request.target).await?.outcome {
+            ValidateTargetOutcome::Valid => Ok(()),
+            ValidateTargetOutcome::TmuxPaneDead { address } => {
+                Err(RuntimeFailure::tmux_pane_dead(address))
+            }
+            ValidateTargetOutcome::InvalidTarget { message } => {
+                Err(RuntimeFailure::protocol_mismatch(message))
+            }
+            ValidateTargetOutcome::UnsupportedTarget { target } => Err(
+                RuntimeFailure::protocol_mismatch(format!("unsupported target {target}")),
+            ),
+        }
+    }
+
+    pub(crate) async fn validate_target_request(
+        &self,
+        request: ValidateTargetRequest,
+    ) -> Result<ValidateTargetResponse> {
+        let target = match request.target.parse() {
+            Ok(target) => target,
+            Err(error) => return Ok(ValidateTargetResponse::from_target_parse_error(error)),
+        };
+        self.validate_target(&target).await
+    }
+
+    async fn validate_target(
+        &self,
+        target: &lilo_rm_core::SpawnTarget,
+    ) -> Result<ValidateTargetResponse> {
+        if let Some(address) = target.tmux_address()
             && !rtm_platform::tmux::TmuxGateway::is_alive(address).await?
         {
-            return Err(RuntimeFailure::tmux_pane_dead(address.clone()));
+            return Ok(ValidateTargetResponse::tmux_pane_dead(address.clone()));
         }
-        Ok(())
+        Ok(ValidateTargetResponse::valid())
     }
 
     async fn begin_ready_wait(&self, session_id: Uuid) -> Result<oneshot::Receiver<ShimReady>> {

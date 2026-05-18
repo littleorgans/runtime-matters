@@ -10,7 +10,8 @@ use uuid::Uuid;
 use crate::{
     ErrorCode, KillByPidRequest, KillByPidResponse, KillRequest, LaunchSpec, Lifecycle,
     McpBridgeRequest, McpBridgeResponse, NudgeRequest, NudgeResponse, ProtocolError, RuntimeEvent,
-    ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, StatusFilter, WatcherCounts,
+    ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest, StatusFilter, ValidateTargetRequest,
+    ValidateTargetResponse, WatcherCounts,
 };
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
@@ -54,6 +55,7 @@ impl From<StatusFilter> for StatusRequest {
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum RuntimeRpc {
     Spawn { request: SpawnRequest },
+    ValidateTarget { request: ValidateTargetRequest },
     Kill { request: KillRequest },
     KillByPid { request: KillByPidRequest },
     Nudge { request: NudgeRequest },
@@ -78,6 +80,9 @@ pub enum RuntimeResponse {
         log_dir: Option<PathBuf>,
         stdout_path: Option<PathBuf>,
         stderr_path: Option<PathBuf>,
+    },
+    ValidateTarget {
+        response: ValidateTargetResponse,
     },
     Status {
         lifecycles: Vec<Lifecycle>,

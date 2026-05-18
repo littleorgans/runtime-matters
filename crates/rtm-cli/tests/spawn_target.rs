@@ -7,7 +7,8 @@ use common::{RtmHarness, output_stderr, output_stdout, spawn_ok, wait_for_log};
 use lilo_rm_core::{
     ErrorCode, HeadlessSpawnTarget, LaunchEnv, NudgeFailureReason, NudgeOutcome, NudgeRequest,
     NudgeResponse, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget,
-    read_json_line_blocking, write_json_line_blocking,
+    ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse, read_json_line_blocking,
+    write_json_line_blocking,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -116,6 +117,75 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
     assert_eq!(stderr_path, log_dir.join("stderr.log"));
     wait_for_log(stdout_path, "HELLO\n");
     wait_for_log(stderr_path, "WORLD\n");
+}
+
+#[test]
+fn validate_target_rpc_reports_headless_and_parse_outcomes() {
+    let harness = RtmHarness::start();
+
+    assert_eq!(
+        validate_target(&harness, "headless"),
+        RuntimeResponse::ValidateTarget {
+            response: ValidateTargetResponse::valid(),
+        }
+    );
+
+    let RuntimeResponse::ValidateTarget { response } = validate_target(&harness, "tmux:not-a-pane")
+    else {
+        panic!("expected validate target response");
+    };
+    assert!(!response.valid);
+    assert!(matches!(
+        response.outcome,
+        ValidateTargetOutcome::InvalidTarget { .. }
+    ));
+
+    assert_eq!(
+        validate_target(&harness, "ssh:remote"),
+        RuntimeResponse::ValidateTarget {
+            response: ValidateTargetResponse::unsupported_target("ssh:remote"),
+        }
+    );
+}
+
+#[test]
+fn validate_target_rpc_checks_tmux_liveness_when_available() {
+    let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-validate-target") else {
+        eprintln!("skipping tmux validate target test because tmux is unavailable");
+        return;
+    };
+    let harness = RtmHarness::start();
+    let target = format!("tmux:{}", tmux_session.pane());
+
+    assert_eq!(
+        validate_target(&harness, &target),
+        RuntimeResponse::ValidateTarget {
+            response: ValidateTargetResponse::valid(),
+        }
+    );
+
+    let address = tmux_session.pane();
+    tmux_session.kill();
+
+    assert_eq!(
+        validate_target(&harness, &target),
+        RuntimeResponse::ValidateTarget {
+            response: ValidateTargetResponse::tmux_pane_dead(
+                address.parse().expect("tmux address"),
+            ),
+        }
+    );
+}
+
+fn validate_target(harness: &RtmHarness, target: &str) -> RuntimeResponse {
+    request_raw(
+        harness,
+        RuntimeRpc::ValidateTarget {
+            request: ValidateTargetRequest {
+                target: target.to_owned(),
+            },
+        },
+    )
 }
 
 fn request_raw(harness: &RtmHarness, rpc: RuntimeRpc) -> RuntimeResponse {
