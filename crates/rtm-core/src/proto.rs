@@ -144,8 +144,18 @@ pub struct StatusPayload {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct KillByPidPayload {
+    pub response: KillByPidResponse,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 pub struct NudgePayload {
     pub response: NudgeResponse,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct CapturePayload {
+    pub response: crate::CaptureResponse,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
@@ -208,9 +218,9 @@ pub enum RuntimeResponse {
     Spawned(SpawnedPayload),
     ValidateTarget(ValidateTargetPayload),
     Status(StatusPayload),
-    KillByPid(#[serde(with = "kill_by_pid_response_payload")] KillByPidResponse),
+    KillByPid(KillByPidPayload),
     Nudge(NudgePayload),
-    Capture(#[serde(with = "capture_response_payload")] crate::CaptureResponse),
+    Capture(CapturePayload),
     Version(VersionPayload),
     Watchers(WatchersPayload),
     Doctor(DoctorPayload),
@@ -230,64 +240,6 @@ impl RuntimeResponse {
             code,
             message: message.into(),
         })
-    }
-}
-
-mod kill_by_pid_response_payload {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    use crate::KillByPidResponse;
-
-    #[derive(Deserialize)]
-    struct Owned {
-        response: KillByPidResponse,
-    }
-
-    #[derive(Serialize)]
-    struct Borrowed<'a> {
-        response: &'a KillByPidResponse,
-    }
-
-    pub fn serialize<S>(response: &KillByPidResponse, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        Borrowed { response }.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<KillByPidResponse, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Ok(Owned::deserialize(deserializer)?.response)
-    }
-}
-
-mod capture_response_payload {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    #[derive(Deserialize)]
-    struct Owned {
-        response: crate::CaptureResponse,
-    }
-
-    #[derive(Serialize)]
-    struct Borrowed<'a> {
-        response: &'a crate::CaptureResponse,
-    }
-
-    pub fn serialize<S>(response: &crate::CaptureResponse, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        Borrowed { response }.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<crate::CaptureResponse, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Ok(Owned::deserialize(deserializer)?.response)
     }
 }
 

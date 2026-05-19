@@ -63,7 +63,7 @@ impl RuntimeClient {
         request: KillByPidRequest,
     ) -> Result<KillByPidResponse, ClientError> {
         match self.request(RuntimeRpc::KillByPid { request }).await? {
-            RuntimeResponse::KillByPid(response) => Ok(response),
+            RuntimeResponse::KillByPid(payload) => Ok(payload.response),
             response => unexpected_response("KillByPid", &response),
         }
     }
@@ -92,7 +92,7 @@ impl RuntimeClient {
     /// Capture scrollback for a runtime session.
     pub async fn capture(&self, request: CaptureRequest) -> Result<CaptureResponse, ClientError> {
         match self.request(RuntimeRpc::Capture { request }).await? {
-            RuntimeResponse::Capture(response) => Ok(response),
+            RuntimeResponse::Capture(payload) => Ok(payload.response),
             response => unexpected_response("Capture", &response),
         }
     }

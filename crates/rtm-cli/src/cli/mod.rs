@@ -231,8 +231,8 @@ async fn kill_pid(args: KillArgs, pid: u32) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::KillByPid(response) => {
-            output::emit(&args.output, &response)?;
+        RuntimeResponse::KillByPid(payload) => {
+            output::emit(&args.output, &payload.response)?;
         }
         other => bail!("unexpected kill-by-pid response: {other:?}"),
     }
@@ -288,7 +288,7 @@ async fn capture(args: CaptureArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Capture(response) => match response.into_result() {
+        RuntimeResponse::Capture(payload) => match payload.response.into_result() {
             Ok(snapshot) => output::emit(&args.output, &snapshot)?,
             Err(error) => bail!(
                 "capture failed; error={error:?} session_id={}",

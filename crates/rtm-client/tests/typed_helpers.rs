@@ -2,14 +2,14 @@ use std::path::PathBuf;
 
 use lilo_rm_client::{ClientError, RuntimeClient, request};
 use lilo_rm_core::{
-    CaptureError, CaptureRequest, CaptureResponse, CursorExpiredPayload, DoctorPayload,
-    DoctorResponse, ErrorCode, EventBatch, EventsPayload, EventsRequest, HeadlessSpawnTarget,
-    KillByPidRequest, KillByPidResponse, KillRequest, Lifecycle, LifecycleCounts, MigrationState,
-    NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent,
-    RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget,
-    SpawnedPayload, StatusFilter, StatusPayload, ValidateTargetPayload, ValidateTargetRequest,
-    ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts, read_json_line,
-    write_json_line,
+    CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
+    DoctorPayload, DoctorResponse, ErrorCode, EventBatch, EventsPayload, EventsRequest,
+    HeadlessSpawnTarget, KillByPidPayload, KillByPidRequest, KillByPidResponse, KillRequest,
+    Lifecycle, LifecycleCounts, MigrationState, NudgeFailureReason, NudgeOutcome, NudgePayload,
+    NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, RuntimeRpc,
+    RuntimeSignal, SpawnRequest, SpawnTarget, SpawnedPayload, StatusFilter, StatusPayload,
+    ValidateTargetPayload, ValidateTargetRequest, ValidateTargetResponse, VersionInfo,
+    VersionPayload, WatcherCounts, read_json_line, write_json_line,
 };
 use tokio::io::BufReader;
 use tokio::net::UnixListener;
@@ -297,7 +297,9 @@ typed_helper_tests!(
     RuntimeRpc::KillByPid {
         request: kill_by_pid_request()
     },
-    RuntimeResponse::KillByPid(kill_by_pid_response()),
+    RuntimeResponse::KillByPid(KillByPidPayload {
+        response: kill_by_pid_response()
+    }),
     kill_by_pid_response(),
     "KillByPid"
 );
@@ -334,7 +336,9 @@ typed_helper_tests!(
     RuntimeRpc::Capture {
         request: capture_request()
     },
-    RuntimeResponse::Capture(CaptureResponse::Failed(CaptureError::PaneUnavailable)),
+    RuntimeResponse::Capture(CapturePayload {
+        response: CaptureResponse::Failed(CaptureError::PaneUnavailable)
+    }),
     CaptureResponse::Failed(CaptureError::PaneUnavailable),
     "Capture"
 );

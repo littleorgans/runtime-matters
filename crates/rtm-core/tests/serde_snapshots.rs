@@ -1,14 +1,14 @@
 mod support;
 
 use lilo_rm_core::{
-    CaptureError, CaptureRequest, CaptureResponse, CursorExpiredPayload, DoctorPayload, ErrorCode,
-    ErrorPayload, EventsPayload, EventsRequest, KillByPidRequest, KillRequest, LogAvailability,
-    LogsUnavailableReason, LostEvidence, McpBridgeRequest, NudgeFailureReason, NudgeOutcome,
-    NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeKind,
-    RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchPayload, ShimLaunchRequest,
-    SpawnRequest, SpawnTarget, SpawnedPayload, StatusRequest, TerminationEvidence, TmuxSpawnTarget,
-    ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetRequest, ValidateTargetResponse,
-    VersionPayload,
+    CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
+    DoctorPayload, ErrorCode, ErrorPayload, EventsPayload, EventsRequest, KillByPidRequest,
+    KillRequest, LogAvailability, LogsUnavailableReason, LostEvidence, McpBridgeRequest,
+    NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent,
+    RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit,
+    ShimLaunchPayload, ShimLaunchRequest, SpawnRequest, SpawnTarget, SpawnedPayload, StatusRequest,
+    TerminationEvidence, TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetPayload,
+    ValidateTargetRequest, ValidateTargetResponse, VersionPayload,
 };
 use serde_json::json;
 use support::{
@@ -200,8 +200,12 @@ fn runtime_response_json_shapes_are_stable() {
                 outcome: NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead),
             },
         }),
-        RuntimeResponse::Capture(CaptureResponse::Captured(pane_snapshot())),
-        RuntimeResponse::Capture(CaptureResponse::Failed(CaptureError::PaneUnavailable)),
+        RuntimeResponse::Capture(CapturePayload {
+            response: CaptureResponse::Captured(pane_snapshot()),
+        }),
+        RuntimeResponse::Capture(CapturePayload {
+            response: CaptureResponse::Failed(CaptureError::PaneUnavailable),
+        }),
         RuntimeResponse::Version(VersionPayload {
             version: version_info(),
         }),

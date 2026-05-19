@@ -6,12 +6,12 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 use lilo_rm_core::{
-    CaptureError, CaptureResponse, CursorExpiredPayload, DoctorPayload, ErrorCode, ErrorPayload,
-    EventsPayload, KillByPidResponse, LaunchEnv, LaunchSpec, LauncherStatus, Lifecycle,
-    LifecycleCounts, LifecycleLogAvailability, LogAvailability, McpBridgePayload,
-    McpBridgeResponse, MigrationState, NudgeFailureReason, NudgeOutcome, NudgePayload,
-    NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, ShimLaunchPayload, SpawnedPayload,
-    StatusPayload, TmuxStatus, ValidateTargetOutcome, ValidateTargetPayload,
+    CaptureError, CapturePayload, CaptureResponse, CursorExpiredPayload, DoctorPayload, ErrorCode,
+    ErrorPayload, EventsPayload, KillByPidPayload, KillByPidResponse, LaunchEnv, LaunchSpec,
+    LauncherStatus, Lifecycle, LifecycleCounts, LifecycleLogAvailability, LogAvailability,
+    McpBridgePayload, McpBridgeResponse, MigrationState, NudgeFailureReason, NudgeOutcome,
+    NudgePayload, NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, ShimLaunchPayload,
+    SpawnedPayload, StatusPayload, TmuxStatus, ValidateTargetOutcome, ValidateTargetPayload,
     ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts, WatchersPayload,
 };
 use support::{other_session_id, session_id, timestamp};
@@ -80,7 +80,9 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
         ("ack.json", RuntimeResponse::Ack),
         (
             "capture.json",
-            RuntimeResponse::Capture(CaptureResponse::Failed(CaptureError::NotATmuxTarget)),
+            RuntimeResponse::Capture(CapturePayload {
+                response: CaptureResponse::Failed(CaptureError::NotATmuxTarget),
+            }),
         ),
         (
             "cursor_expired.json",
@@ -111,10 +113,12 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
         ),
         (
             "kill_by_pid.json",
-            RuntimeResponse::KillByPid(KillByPidResponse {
-                pid: 77689,
-                signal: 15,
-                killed_after_grace: false,
+            RuntimeResponse::KillByPid(KillByPidPayload {
+                response: KillByPidResponse {
+                    pid: 77689,
+                    signal: 15,
+                    killed_after_grace: false,
+                },
             }),
         ),
         (

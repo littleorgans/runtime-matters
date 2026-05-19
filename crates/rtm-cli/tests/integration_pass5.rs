@@ -64,8 +64,12 @@ fn capture_tmux_pane_returns_snapshot_json() {
     tmux_session.wait_for_capture(&marker);
 
     let response = capture_rpc(&harness, session_id.parse().expect("session id"), Some(200));
-    let RuntimeResponse::Capture(CaptureResponse::Captured(snapshot)) = response else {
+    let RuntimeResponse::Capture(payload) = response else {
         panic!("unexpected capture response: {response:?}");
+    };
+    let snapshot = match payload.response {
+        CaptureResponse::Captured(snapshot) => snapshot,
+        other => panic!("unexpected capture payload: {other:?}"),
     };
     assert_eq!(snapshot.scrollback_lines_requested, 200);
     assert!(snapshot.content.contains(&marker), "{snapshot:?}");
@@ -87,10 +91,13 @@ fn capture_headless_target_returns_not_tmux_target() {
     spawn_ok(&harness, &session_id.to_string(), "claude");
 
     let response = capture_rpc(&harness, session_id, None);
-    let RuntimeResponse::Capture(CaptureResponse::Failed(CaptureError::NotATmuxTarget)) = response
-    else {
+    let RuntimeResponse::Capture(payload) = response else {
         panic!("unexpected capture response: {response:?}");
     };
+    match payload.response {
+        CaptureResponse::Failed(CaptureError::NotATmuxTarget) => {}
+        other => panic!("unexpected capture payload: {other:?}"),
+    }
 
     harness.stop();
 }
@@ -113,10 +120,13 @@ fn capture_dead_tmux_pane_returns_pane_unavailable() {
     tmux_session.kill();
 
     let response = capture_rpc(&harness, session_id, None);
-    let RuntimeResponse::Capture(CaptureResponse::Failed(CaptureError::PaneUnavailable)) = response
-    else {
+    let RuntimeResponse::Capture(payload) = response else {
         panic!("unexpected capture response: {response:?}");
     };
+    match payload.response {
+        CaptureResponse::Failed(CaptureError::PaneUnavailable) => {}
+        other => panic!("unexpected capture payload: {other:?}"),
+    }
 
     harness.stop();
 }

@@ -44,11 +44,11 @@ pub use mcp::{
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,
 };
 pub use proto::{
-    CursorExpiredPayload, DoctorPayload, EVENT_LOG_RETENTION_MIN_AGE_SECS,
+    CapturePayload, CursorExpiredPayload, DoctorPayload, EVENT_LOG_RETENTION_MIN_AGE_SECS,
     EVENT_LOG_RETENTION_MIN_EVENTS, EVENT_WAIT_MAX_MS, ErrorPayload, EventBatch, EventCursor,
-    EventsPayload, EventsRequest, McpBridgePayload, NudgePayload, RuntimeResponse, RuntimeRpc,
-    ShimLaunchPayload, SpawnedPayload, StatusPayload, StatusRequest, ValidateTargetPayload,
-    VersionPayload, WatchersPayload, clamped_event_wait_ms, read_json_line,
+    EventsPayload, EventsRequest, KillByPidPayload, McpBridgePayload, NudgePayload,
+    RuntimeResponse, RuntimeRpc, ShimLaunchPayload, SpawnedPayload, StatusPayload, StatusRequest,
+    ValidateTargetPayload, VersionPayload, WatchersPayload, clamped_event_wait_ms, read_json_line,
     read_json_line_blocking, write_json_line, write_json_line_blocking,
 };
 pub use spawn_context::{

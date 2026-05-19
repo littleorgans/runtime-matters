@@ -3,10 +3,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use lilo_rm_core::{
-    CursorExpiredPayload, DoctorPayload, EventsPayload, EventsRequest, McpBridgePayload,
-    NudgePayload, RuntimeResponse, RuntimeRpc, ShimLaunchPayload, SpawnedPayload, StatusPayload,
-    ValidateTargetPayload, VersionPayload, WatchersPayload, clamped_event_wait_ms, read_json_line,
-    write_json_line,
+    CapturePayload, CursorExpiredPayload, DoctorPayload, EventsPayload, EventsRequest,
+    KillByPidPayload, McpBridgePayload, NudgePayload, RuntimeResponse, RuntimeRpc,
+    ShimLaunchPayload, SpawnedPayload, StatusPayload, ValidateTargetPayload, VersionPayload,
+    WatchersPayload, clamped_event_wait_ms, read_json_line, write_json_line,
 };
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 use tokio::net::UnixStream;
@@ -140,16 +140,16 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             state.kill_runtime(request).await?;
             Ok(RuntimeResponse::Ack)
         }
-        RuntimeRpc::KillByPid { request } => {
-            Ok(RuntimeResponse::KillByPid(state.kill_pid(request).await?))
-        }
+        RuntimeRpc::KillByPid { request } => Ok(RuntimeResponse::KillByPid(KillByPidPayload {
+            response: state.kill_pid(request).await?,
+        })),
         RuntimeRpc::Nudge { request } => {
             let response = state.nudge_runtime(request).await?;
             Ok(RuntimeResponse::Nudge(NudgePayload { response }))
         }
-        RuntimeRpc::Capture { request } => {
-            Ok(RuntimeResponse::Capture(state.capture_pane(request).await?))
-        }
+        RuntimeRpc::Capture { request } => Ok(RuntimeResponse::Capture(CapturePayload {
+            response: state.capture_pane(request).await?,
+        })),
         RuntimeRpc::Status { request } => Ok(RuntimeResponse::Status(StatusPayload {
             lifecycles: state.status(request.into()).await,
         })),
