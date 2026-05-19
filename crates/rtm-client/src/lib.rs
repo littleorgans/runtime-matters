@@ -81,10 +81,13 @@ impl RuntimeClient {
         }
     }
 
-    /// Send a text nudge to a runtime session.
-    pub async fn nudge(&self, request: lilo_rm_core::NudgeRequest) -> Result<(), ClientError> {
+    /// Send a text nudge to a runtime session and return the delivery outcome.
+    pub async fn nudge(
+        &self,
+        request: lilo_rm_core::NudgeRequest,
+    ) -> Result<lilo_rm_core::NudgeResponse, ClientError> {
         match self.request(RuntimeRpc::Nudge { request }).await? {
-            RuntimeResponse::Nudge(_) => Ok(()),
+            RuntimeResponse::Nudge(payload) => Ok(payload.response),
             response => unexpected_response("Nudge", &response),
         }
     }

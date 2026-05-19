@@ -218,6 +218,19 @@ fn nudge_request() -> NudgeRequest {
 
 fn nudge_payload() -> NudgePayload {
     NudgePayload {
+        response: nudge_response(NudgeOutcome::Delivered),
+    }
+}
+
+fn nudge_response(outcome: NudgeOutcome) -> NudgeResponse {
+    NudgeResponse {
+        delivered: matches!(outcome, NudgeOutcome::Delivered),
+        outcome,
+    }
+}
+
+fn unsupported_nudge_payload() -> NudgePayload {
+    NudgePayload {
         response: NudgeResponse {
             delivered: false,
             outcome: NudgeOutcome::Unsupported(NudgeFailureReason::HeadlessLifecycle),
@@ -326,9 +339,57 @@ typed_helper_tests!(
         request: nudge_request()
     },
     RuntimeResponse::Nudge(nudge_payload()),
-    (),
+    nudge_response(NudgeOutcome::Delivered),
     "Nudge"
 );
+
+#[tokio::test]
+async fn nudge_helper_preserves_unsupported_headless_outcome() {
+    let (client, server) = mock_response(
+        RuntimeRpc::Nudge {
+            request: nudge_request(),
+        },
+        RuntimeResponse::Nudge(unsupported_nudge_payload()),
+    )
+    .await;
+
+    let actual = client
+        .nudge(nudge_request())
+        .await
+        .expect("unsupported nudge response is caller visible");
+
+    assert_eq!(
+        actual,
+        nudge_response(NudgeOutcome::Unsupported(
+            NudgeFailureReason::HeadlessLifecycle
+        ))
+    );
+    server.await.expect("server task");
+}
+
+#[tokio::test]
+async fn nudge_helper_preserves_tmux_pane_dead_outcome() {
+    let (client, server) = mock_response(
+        RuntimeRpc::Nudge {
+            request: nudge_request(),
+        },
+        RuntimeResponse::Nudge(NudgePayload {
+            response: nudge_response(NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead)),
+        }),
+    )
+    .await;
+
+    let actual = client
+        .nudge(nudge_request())
+        .await
+        .expect("failed nudge response is caller visible");
+
+    assert_eq!(
+        actual,
+        nudge_response(NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead))
+    );
+    server.await.expect("server task");
+}
 
 typed_helper_tests!(
     capture_helper,
