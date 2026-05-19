@@ -197,9 +197,8 @@ pub enum EventBatch {
         events: Vec<RuntimeEvent>,
         cursor: EventCursor,
     },
-    CursorExpired {
-        oldest: EventCursor,
-    },
+    /// The watcher's cursor has been advanced to `oldest`. Calling `.next()` again will return events from `oldest` onward without an intervening reconcile. The caller is expected to perform a `client.status()` reconcile and optionally `.seek()` to a freshly-discovered cursor before continuing, otherwise events will replay.
+    CursorExpired { oldest: EventCursor },
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]

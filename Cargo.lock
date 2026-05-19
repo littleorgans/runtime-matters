@@ -844,6 +844,7 @@ dependencies = [
  "lilo-rm-core",
  "rtm-daemon",
  "rtm-store",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokio",

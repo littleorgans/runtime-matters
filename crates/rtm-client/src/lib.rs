@@ -8,13 +8,17 @@ use std::path::{Path, PathBuf};
 
 use lilo_rm_core::{
     CaptureRequest, CaptureResponse, DoctorPayload, ErrorCode, EventBatch, EventsRequest,
-    KillByPidRequest, KillByPidResponse, KillRequest, ProtocolError, RuntimeResponse, RuntimeRpc,
-    SpawnRequest, SpawnedPayload, StatusFilter, StatusPayload, ValidateTargetRequest,
-    ValidateTargetResponse, VersionPayload, read_json_line, write_json_line,
+    KillByPidRequest, KillByPidResponse, KillRequest, ProtocolError, RUNTIME_PROTOCOL_VERSION,
+    RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnedPayload, StatusFilter, StatusPayload,
+    ValidateTargetRequest, ValidateTargetResponse, VersionPayload, read_json_line, write_json_line,
 };
 use thiserror::Error;
 use tokio::io::BufReader;
 use tokio::net::UnixStream;
+
+mod event_watcher;
+
+pub use event_watcher::{EventWatcher, EventWatcherBuilder};
 
 /// Async client for the rtmd Unix socket JSON line protocol.
 #[derive(Clone, Debug)]
@@ -138,6 +142,21 @@ impl RuntimeClient {
                 oldest: payload.oldest,
             }),
             response => unexpected_response("Events or CursorExpired", &response),
+        }
+    }
+
+    async fn check_protocol_version(&self) -> Result<(), ClientError> {
+        let payload = self.version().await?;
+        let got = payload.version.protocol_version;
+        if got == RUNTIME_PROTOCOL_VERSION {
+            Ok(())
+        } else {
+            Err(ClientError::Protocol {
+                source: ProtocolError::UnsupportedVersion {
+                    expected: RUNTIME_PROTOCOL_VERSION,
+                    got,
+                },
+            })
         }
     }
 }

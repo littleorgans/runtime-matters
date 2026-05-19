@@ -44,6 +44,8 @@ pub enum ProtocolError {
     Io(#[from] std::io::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("unsupported runtime protocol version: expected {expected}, got {got}")]
+    UnsupportedVersion { expected: &'static str, got: String },
 }
 
 #[derive(Debug, Error)]
