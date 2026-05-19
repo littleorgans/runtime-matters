@@ -35,7 +35,7 @@ fn pass6_mcp_lists_admin_tools_and_reports_status_version_watchers() {
 
     let watchers = call_tool(&harness, 4, "rtm_watchers", json!({}));
     let watcher_text: Value = serde_json::from_str(content_text(&watchers)).expect("watchers text");
-    assert_eq!(watcher_text["kqueue_watchers"], 0);
+    assert_eq!(watcher_text["process_exit_watchers"], 0);
     assert_eq!(watcher_text["shim_sockets"], 0);
 
     harness.stop();

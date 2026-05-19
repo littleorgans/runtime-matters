@@ -192,7 +192,7 @@ expression: snapshot
           }
         },
         {
-          "description": "Return rtmd operator visibility counters for kqueue watchers, pending shim socket waiters, and Events long poll waiters.",
+          "description": "Return rtmd operator visibility counters for process exit watchers, pending shim socket waiters, and Events long poll waiters.",
           "inputSchema": {
             "additionalProperties": false,
             "properties": {},
@@ -208,8 +208,8 @@ expression: snapshot
                 "description": "Active Events long poll waiters.",
                 "type": "integer"
               },
-              "kqueue_watchers": {
-                "description": "Active kqueue process exit watchers.",
+              "process_exit_watchers": {
+                "description": "Active process exit watchers.",
                 "type": "integer"
               },
               "shim_sockets": {
@@ -257,13 +257,13 @@ expression: snapshot
     "result": {
       "content": [
         {
-          "text": "{\"kqueue_watchers\":0,\"shim_sockets\":0,\"event_waiters\":0}",
+          "text": "{\"process_exit_watchers\":0,\"shim_sockets\":0,\"event_waiters\":0}",
           "type": "text"
         }
       ],
       "structuredContent": {
         "event_waiters": 0,
-        "kqueue_watchers": "[count]",
+        "process_exit_watchers": "[count]",
         "shim_sockets": "[count]"
       }
     }

@@ -16,10 +16,17 @@ cargo install --path crates/rtm-cli
 rtm daemon start
 ```
 
-Release artifacts are built through cargo-dist for macOS:
+Release artifacts are built through cargo-dist for supported native hosts:
 
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`
+- `x86_64-unknown-linux-gnu`
+
+| Host | Support |
+| --- | --- |
+| macOS | Supported for headless and tmux runtimes. |
+| Linux | Supported for headless runtimes. Tmux support is optional and depends on the host tmux capability. |
+| Windows | Native Windows is out of scope. Use a supported Unix host. |
 
 ## Development
 
@@ -46,6 +53,10 @@ target="$(tmux split-window -P -F '#S:#I.#P' -d)"
 cargo run -p rtm-cli --example test_spawn -- --target "tmux:${target}" --runtime claude --session-id "$(uuidgen)"
 ```
 
+`RTM_SOCKET_PATH` is authoritative when set. Without it, Linux defaults to
+`$XDG_RUNTIME_DIR/rtm/sock` when `XDG_RUNTIME_DIR` is available, then falls back
+to `~/.rtm/sock`. macOS defaults to `~/.rtm/sock`.
+
 ## Events Contract
 
 `RuntimeRpc::Events` is the v0.3 event endpoint. It returns
@@ -71,6 +82,10 @@ release-plz owns their crate release PRs, GitHub Releases, and crates.io
 publishing. The daemon, CLI, platform, launchers, and store crates are private
 implementation details.
 
+v0.4 starts with the public process exit observation rename from kqueue specific
+names to platform neutral watcher names. Linux runtime support is complete when
+the Linux cargo-dist artifact and this host support documentation are released.
+
 <!-- rtm-admin-tools:start -->
 ## Admin MCP Tools
 
@@ -79,5 +94,5 @@ implementation details.
 | `rtm_kill_by_pid` | Admin escape hatch that signals a runtime process by pid, waits for the grace period, then sends SIGKILL if the process remains alive. |
 | `rtm_status` | Return rtmd Lifecycle rows, optionally filtered by session id, session set, runtime, lifecycle state, and updated time. |
 | `rtm_version` | Return the rtmd package version, build git sha, protocol version, and advertised capabilities. |
-| `rtm_watchers` | Return rtmd operator visibility counters for kqueue watchers, pending shim socket waiters, and Events long poll waiters. |
+| `rtm_watchers` | Return rtmd operator visibility counters for process exit watchers, pending shim socket waiters, and Events long poll waiters. |
 <!-- rtm-admin-tools:end -->

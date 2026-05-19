@@ -56,7 +56,7 @@ fn direct_sigkill_runtime_is_reported_as_exited() {
 }
 
 #[test]
-fn kqueue_reports_lost_when_shim_dies_before_exit_report() {
+fn process_exit_watcher_reports_lost_when_shim_dies_before_exit_report() {
     let harness = RtmHarness::start();
     let session_id = Uuid::now_v7().to_string();
     spawn_runtime(&harness, &session_id);

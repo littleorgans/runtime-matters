@@ -1,6 +1,7 @@
 set shell := ["bash", "-cu"]
 
-RTM_LOCAL_BIN := env_var_or_default("RTM_LOCAL_BIN", "/Users/alphab/.cargo/bin/rtm")
+# Fall back to $HOME/.cargo/bin/rtm if RTM_LOCAL_BIN is not set in the host environment
+RTM_LOCAL_BIN := env("RTM_LOCAL_BIN", env("HOME") / ".cargo/bin/rtm")
 
 install: install-release
 
@@ -38,6 +39,10 @@ _install-bin src:
 
 test:
     cargo test --workspace
+
+linux-target-check:
+    cargo check -p rtm-platform --target x86_64-unknown-linux-gnu
+    cargo check -p lilo-rm-client --target x86_64-unknown-linux-gnu
 
 publish-dry-run:
     cargo publish -p lilo-rm-core -p lilo-rm-client --dry-run --allow-dirty

@@ -6,8 +6,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use common::{RtmHarness, output_stdout, spawn_ok, wait_until};
-use lilo_rm_core::{EventsRequest, RuntimeResponse, RuntimeRpc, WatcherCounts, write_json_line};
+use common::{RtmHarness, output_stdout, spawn_ok, status_pid, terminate_process, wait_until};
+use lilo_rm_core::{
+    EventsRequest, RuntimeEvent, RuntimeResponse, RuntimeRpc, WatcherCounts, write_json_line,
+};
 use serde_json::json;
 use tokio::net::UnixStream;
 use uuid::Uuid;
@@ -56,6 +58,31 @@ fn cli_events_since_matches_rpc_cursor_filter() {
     assert_eq!(events.len(), stdout.lines().count());
     assert!(stdout.contains(SECOND_SESSION), "{stdout}");
     assert!(!stdout.contains(FIRST_SESSION), "{stdout}");
+    harness.stop();
+}
+
+#[test]
+fn events_since_cursor_returns_terminal_lifecycle_event() {
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7();
+    spawn_ok(&harness, &session_id.to_string(), "claude");
+    let cursor = wait_for_rpc_events(&harness, None, 1).cursor();
+    let runtime_pid = status_pid(&harness, &session_id.to_string(), "pid");
+
+    terminate_process(runtime_pid, "KILL");
+
+    let response = wait_for_rpc_events(&harness, Some(cursor), 1);
+    let RuntimeResponse::Events { events, cursor: _ } = response else {
+        panic!("expected events response");
+    };
+    assert!(matches!(
+        &events[0],
+        RuntimeEvent::Terminated {
+            session_id: observed,
+            signal: Some(9),
+            ..
+        } if observed == &session_id
+    ));
     harness.stop();
 }
 

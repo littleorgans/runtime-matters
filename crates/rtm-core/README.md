@@ -44,7 +44,7 @@ session-matters may treat these JSON field names and value kinds as stable:
 - `socket_path` and `uptime_secs`
 - `sqlite.applied`, `sqlite.total`, `sqlite.applied_descriptions`, and `sqlite.pending_descriptions`
 - `lifecycles.forking`, `lifecycles.running`, `lifecycles.exited`, and `lifecycles.lost`
-- `watchers.kqueue_watchers` and `watchers.shim_sockets`
+- `watchers.process_exit_watchers` and `watchers.shim_sockets`
 - `launchers[].runtime`, `launchers[].command`, and `launchers[].error`
 - `tmux.available`, `tmux.version`, and `tmux.error`
 - `log_availability[].session_id` and `log_availability[].log_availability`

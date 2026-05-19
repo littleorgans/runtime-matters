@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* add Linux cargo-dist release artifact support for `x86_64-unknown-linux-gnu`
+* document macOS and Linux host support, including the Linux runtime socket path
+* start the v0.4 release notes with the public process exit observation rename
+
 ## [0.1.10](https://github.com/littleorgans/runtime-matters/compare/v0.1.9...v0.1.10) (2026-05-18)
 
 
