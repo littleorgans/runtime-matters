@@ -8,6 +8,13 @@
 * document macOS and Linux host support, including the Linux runtime socket path
 * start the v0.4 release notes with the public process exit observation rename
 
+## [0.2.2](https://github.com/littleorgans/runtime-matters/compare/v0.2.1...v0.2.2) (2026-05-19)
+
+
+### Bug Fixes
+
+* make rm client publishable ([7172b7c](https://github.com/littleorgans/runtime-matters/commit/7172b7c2c766b3bd1681f8442952150baf9ef3f3))
+
 ## [0.2.1](https://github.com/littleorgans/runtime-matters/compare/v0.2.0...v0.2.1) (2026-05-19)
 
 
