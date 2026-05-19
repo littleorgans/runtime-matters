@@ -59,7 +59,7 @@ to `~/.rtm/sock`. macOS defaults to `~/.rtm/sock`.
 
 ## Events Contract
 
-`RuntimeRpc::Events` is the v0.3 event endpoint. It returns
+`RuntimeRpc::Events` is the v0.4 event endpoint. It returns
 `RuntimeResponse::Events { events: Vec<RuntimeEvent>, cursor }`.
 
 The daemon appends events in observation order as they are recorded by the

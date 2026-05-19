@@ -53,7 +53,7 @@ expression: doctor
       "tmux_pane_snapshot"
     ],
     "git_sha": "[git_sha]",
-    "protocol_version": "0.3",
+    "protocol_version": "0.4",
     "version": "[version]"
   },
   "watchers": {

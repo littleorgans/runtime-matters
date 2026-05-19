@@ -6,7 +6,7 @@
 //!
 //! ## Events contract
 //!
-//! v0.3 events use [`RuntimeRpc::Events`] and
+//! v0.4 events use [`RuntimeRpc::Events`] and
 //! [`RuntimeResponse::Events { events, cursor }`](RuntimeResponse::Events).
 //! The daemon appends lifecycle observations to a durable JSONL log in global
 //! order. Clients pass the returned cursor as `since` to resume without
