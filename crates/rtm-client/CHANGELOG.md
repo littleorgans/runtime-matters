@@ -2,6 +2,12 @@
 
 All notable changes documented here.
 
+## [0.5.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.4.0...lilo-rm-client-v0.5.0) - 2026-05-19
+
+### Features
+
+- *(rtm-cli)* [**breaking**] make session id positional for operator commands ([#30](https://github.com/littleorgans/runtime-matters/pull/30))
+
 ## [0.4.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.3.0...lilo-rm-client-v0.4.0) - 2026-05-19
 
 ### Features
