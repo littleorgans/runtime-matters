@@ -455,7 +455,7 @@ mod tests {
 
     fn test_config(root: &Path) -> DaemonConfig {
         DaemonConfig {
-            socket_path: root.join("rtm-test.sock"),
+            endpoint: rtm_paths::RuntimeEndpoint::unix_socket(root.join("rtm-test.sock")),
             shim_path: PathBuf::from("rtm"),
             log_root: root.join("logs"),
             store: StoreConfig {

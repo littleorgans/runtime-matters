@@ -1,17 +1,21 @@
-use chrono::{TimeZone, Utc};
+mod support;
+
 use lilo_rm_core::{
-    CaptureError, CaptureRequest, CaptureResponse, DoctorResponse, ErrorCode, EventsRequest,
-    KillByPidRequest, KillRequest, LaunchEnv, LaunchSpec, LauncherStatus, Lifecycle,
-    LifecycleCounts, LifecycleLogAvailability, LogAvailability, LogsUnavailableReason,
-    LostEvidence, McpBridgeRequest, MigrationState, NudgeFailureReason, NudgeOutcome, NudgeRequest,
-    NudgeResponse, PaneSnapshot, RecentLostEvent, RuntimeEvent, RuntimeExit, RuntimeKind,
-    RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady,
-    SpawnRequest, SpawnTarget, StatusRequest, TerminationEvidence, TmuxSpawnTarget, TmuxStatus,
-    ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse, VersionInfo,
-    WatcherCounts,
+    CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
+    DoctorPayload, ErrorCode, ErrorPayload, EventsPayload, EventsRequest, KillByPidRequest,
+    KillRequest, LogAvailability, LogsUnavailableReason, LostEvidence, McpBridgeRequest,
+    NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent,
+    RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit,
+    ShimLaunchPayload, ShimLaunchRequest, SpawnConflictKind, SpawnConflictPayload, SpawnRequest,
+    SpawnTarget, SpawnedPayload, StatusRequest, TerminationEvidence, TmuxSpawnTarget,
+    ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetRequest, ValidateTargetResponse,
+    VersionPayload,
 };
 use serde_json::json;
-use uuid::Uuid;
+use support::{
+    doctor_response, headless_lifecycle, launch_spec, other_session_id, pane_snapshot, ready,
+    session_id, test_version_info as version_info, timestamp, tmux_lifecycle,
+};
 
 #[test]
 fn runtime_rpc_json_shapes_are_stable() {
@@ -27,6 +31,8 @@ fn runtime_rpc_json_shapes_are_stable() {
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {
                     address: "rtm:0.1".parse().expect("address"),
                 }),
+                force: true,
+                shell_resume: None,
             },
         },
         RuntimeRpc::ValidateTarget {
@@ -126,17 +132,10 @@ fn runtime_event_json_shapes_are_stable() {
 #[test]
 fn runtime_response_json_shapes_are_stable() {
     let session_id = session_id();
-    let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
-    assert!(lifecycle.mark_running(ready(session_id)));
-    lifecycle.log_availability = Some(LogAvailability::Headless {
-        stdout_path: "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stdout.log".into(),
-        stderr_path: "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stderr.log".into(),
-    });
-    let mut tmux_lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
-    assert!(tmux_lifecycle.mark_running(ready(session_id)));
-    tmux_lifecycle.log_availability = Some(LogAvailability::TmuxPaneSnapshot);
+    let lifecycle = headless_lifecycle(session_id);
+    let tmux_lifecycle = tmux_lifecycle(session_id);
     let responses = vec![
-        RuntimeResponse::Spawned {
+        RuntimeResponse::Spawned(SpawnedPayload {
             lifecycle,
             event: RuntimeEvent::Running {
                 session_id,
@@ -150,9 +149,9 @@ fn runtime_response_json_shapes_are_stable() {
             stderr_path: Some(
                 "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stderr.log".into(),
             ),
-        },
-        RuntimeResponse::Spawned {
-            lifecycle: tmux_lifecycle,
+        }),
+        RuntimeResponse::Spawned(SpawnedPayload {
+            lifecycle: tmux_lifecycle.clone(),
             event: RuntimeEvent::Running {
                 session_id,
                 runtime_pid: 4243,
@@ -161,11 +160,15 @@ fn runtime_response_json_shapes_are_stable() {
             log_dir: None,
             stdout_path: None,
             stderr_path: None,
-        },
-        RuntimeResponse::ValidateTarget {
+        }),
+        RuntimeResponse::SpawnConflict(SpawnConflictPayload {
+            kind: SpawnConflictKind::TmuxPaneOccupancy,
+            lifecycle: tmux_lifecycle,
+        }),
+        RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::valid(),
-        },
-        RuntimeResponse::ValidateTarget {
+        }),
+        RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse {
                 valid: false,
                 outcome: ValidateTargetOutcome::InvalidTarget {
@@ -173,66 +176,62 @@ fn runtime_response_json_shapes_are_stable() {
                         .to_owned(),
                 },
             },
-        },
-        RuntimeResponse::ValidateTarget {
+        }),
+        RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::tmux_pane_dead(
                 "rtm:0.1".parse().expect("tmux address"),
             ),
-        },
-        RuntimeResponse::ValidateTarget {
+        }),
+        RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::unsupported_target("ssh:remote"),
-        },
-        RuntimeResponse::ShimLaunch {
-            launch: LaunchSpec {
-                argv: vec!["claude".to_owned(), "--resume".to_owned()],
-                env: vec![LaunchEnv::new("RTM", "1")],
-                cwd: "/tmp/rtm".into(),
-            },
-        },
+        }),
+        RuntimeResponse::ShimLaunch(ShimLaunchPayload {
+            launch: launch_spec(),
+        }),
         RuntimeResponse::Ack,
-        RuntimeResponse::Nudge {
+        RuntimeResponse::Nudge(NudgePayload {
             response: NudgeResponse {
                 delivered: true,
                 outcome: NudgeOutcome::Delivered,
             },
-        },
-        RuntimeResponse::Nudge {
+        }),
+        RuntimeResponse::Nudge(NudgePayload {
             response: NudgeResponse {
                 delivered: false,
                 outcome: NudgeOutcome::Unsupported(NudgeFailureReason::HeadlessLifecycle),
             },
-        },
-        RuntimeResponse::Nudge {
+        }),
+        RuntimeResponse::Nudge(NudgePayload {
             response: NudgeResponse {
                 delivered: false,
                 outcome: NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead),
             },
-        },
-        RuntimeResponse::Capture {
+        }),
+        RuntimeResponse::Capture(CapturePayload {
             response: CaptureResponse::Captured(pane_snapshot()),
-        },
-        RuntimeResponse::Capture {
+        }),
+        RuntimeResponse::Capture(CapturePayload {
             response: CaptureResponse::Failed(CaptureError::PaneUnavailable),
-        },
-        RuntimeResponse::Version {
+        }),
+        RuntimeResponse::Version(VersionPayload {
             version: version_info(),
-        },
-        RuntimeResponse::Doctor {
+        }),
+        RuntimeResponse::Doctor(DoctorPayload {
             doctor: doctor_response(),
-        },
+        }),
         RuntimeResponse::Stopping,
-        RuntimeResponse::Error {
+        RuntimeResponse::Error(ErrorPayload {
             code: ErrorCode::LaunchFailed,
             message: "failed".to_owned(),
-        },
-        RuntimeResponse::CursorExpired { oldest: 7 },
-        RuntimeResponse::Events {
+        }),
+        RuntimeResponse::CursorExpired(CursorExpiredPayload { oldest: 7 }),
+        RuntimeResponse::Events(EventsPayload {
             events: vec![RuntimeEvent::Lost {
                 session_id,
                 evidence: LostEvidence::PidNotAlive,
             }],
             cursor: 8,
-        },
+        }),
     ];
 
     insta::assert_json_snapshot!(responses);
@@ -288,6 +287,7 @@ fn error_code_json_names_are_stable() {
         ErrorCode::HeadlessNudgeUnsupported,
         ErrorCode::LaunchFailed,
         ErrorCode::InvalidTarget,
+        ErrorCode::SpawnConflict,
         ErrorCode::ProtocolMismatch,
     ];
 
@@ -335,85 +335,4 @@ fn spawn_request_json_requires_cwd() {
     .expect_err("spawn request without cwd should fail");
 
     assert!(error.to_string().contains("missing field `cwd`"), "{error}");
-}
-
-fn ready(session_id: Uuid) -> ShimReady {
-    ShimReady {
-        session_id,
-        shim_pid: 4241,
-        runtime_pid: 4242,
-        start_time: timestamp(),
-        tmux_pane: Some("rtm:0.1".parse().expect("pane")),
-    }
-}
-
-fn doctor_response() -> DoctorResponse {
-    DoctorResponse {
-        version: version_info(),
-        socket_path: "/tmp/rtmd.sock".to_owned(),
-        uptime_secs: 12,
-        sqlite: MigrationState {
-            applied: 2,
-            total: 2,
-            applied_descriptions: vec!["lifecycle".to_owned(), "probe state".to_owned()],
-            pending_descriptions: Vec::new(),
-        },
-        lifecycles: LifecycleCounts {
-            forking: 1,
-            running: 2,
-            exited: 3,
-            lost: 4,
-        },
-        watchers: WatcherCounts {
-            process_exit_watchers: 5,
-            shim_sockets: 6,
-            event_waiters: 3,
-        },
-        launchers: vec![LauncherStatus {
-            runtime: "claude".to_owned(),
-            command: Some("claude".to_owned()),
-            error: None,
-        }],
-        tmux: TmuxStatus {
-            available: true,
-            version: Some("tmux 3.5a".to_owned()),
-            error: None,
-        },
-        log_availability: vec![LifecycleLogAvailability {
-            session_id: session_id(),
-            log_availability: LogAvailability::TmuxPaneSnapshot,
-        }],
-        last_probe_sweep: Some(timestamp()),
-        recent_lost: vec![RecentLostEvent {
-            session_id: other_session_id(),
-            evidence: LostEvidence::PidNotAlive,
-            occurred_at: timestamp(),
-        }],
-    }
-}
-
-fn pane_snapshot() -> PaneSnapshot {
-    PaneSnapshot {
-        content: "\u{1b}[32mhello\u{1b}[0m".to_owned(),
-        captured_at_ms: 1_700_000_001_000,
-        scrollback_lines_requested: 1000,
-        scrollback_lines_included: 1,
-        pane_history_lines: 2000,
-    }
-}
-
-fn version_info() -> VersionInfo {
-    VersionInfo::new("0.1.6", "0123456")
-}
-
-fn session_id() -> Uuid {
-    Uuid::parse_str("018f6e28-0000-7000-8000-000000000001").expect("uuid")
-}
-
-fn other_session_id() -> Uuid {
-    Uuid::parse_str("018f6e28-0000-7000-8000-000000000002").expect("uuid")
-}
-
-fn timestamp() -> chrono::DateTime<Utc> {
-    Utc.timestamp_opt(1_700_000_000, 0).unwrap()
 }

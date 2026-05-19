@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{Mutex, Notify};
 
-const EVENT_LOG_FILE: &str = "events.jsonl";
 const EVENT_LOG_SYNC_BATCH: usize = 32;
 const EVENT_LOG_SYNC_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -61,7 +60,7 @@ struct EventLogRecord {
 
 impl EventLog {
     pub(crate) fn open(data_dir: impl AsRef<Path>) -> Result<Self> {
-        let path = data_dir.as_ref().join(EVENT_LOG_FILE);
+        let path = rtm_paths::event_log_path(data_dir.as_ref());
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
@@ -91,7 +90,7 @@ impl EventLog {
         let mut inner = self.inner.lock().await;
         let entry = EventLogEntry {
             seq: inner.next_seq,
-            ts_ms: Utc::now().timestamp_millis().try_into().unwrap_or(0),
+            ts_ms: current_timestamp_ms()?,
             event,
         };
         inner.next_seq = inner.next_seq.saturating_add(1);
@@ -294,7 +293,7 @@ fn sync_if_due(inner: &mut EventLogInner) -> Result<()> {
 }
 
 fn compact_if_due(path: &Path, inner: &mut EventLogInner) -> Result<()> {
-    let Some(retain_from) = retain_from_index(&inner.events) else {
+    let Some(retain_from) = retain_from_index(&inner.events)? else {
         return Ok(());
     };
     let retained = inner.events.split_off(retain_from);
@@ -319,16 +318,25 @@ fn compact_if_due(path: &Path, inner: &mut EventLogInner) -> Result<()> {
     Ok(())
 }
 
-fn retain_from_index(events: &[EventLogEntry]) -> Option<usize> {
-    let extra_events = events.len().checked_sub(EVENT_LOG_RETENTION_MIN_EVENTS)?;
-    let now_ms: u64 = Utc::now().timestamp_millis().try_into().unwrap_or(0);
+fn retain_from_index(events: &[EventLogEntry]) -> Result<Option<usize>> {
+    let Some(extra_events) = events.len().checked_sub(EVENT_LOG_RETENTION_MIN_EVENTS) else {
+        return Ok(None);
+    };
+    let now_ms = current_timestamp_ms()?;
     let max_age_ms = EVENT_LOG_RETENTION_MIN_AGE_SECS * 1_000;
     let old_events = events
         .iter()
         .take_while(|entry| now_ms.saturating_sub(entry.ts_ms) > max_age_ms)
         .count();
     let compact_count = extra_events.min(old_events);
-    (compact_count > 0).then_some(compact_count)
+    Ok((compact_count > 0).then_some(compact_count))
+}
+
+fn current_timestamp_ms() -> Result<u64> {
+    Utc::now()
+        .timestamp_millis()
+        .try_into()
+        .context("current timestamp is before Unix epoch")
 }
 
 fn oldest_valid_cursor(events: &[EventLogEntry]) -> Option<EventCursor> {
@@ -363,7 +371,7 @@ mod tests {
         let log = EventLog::open(temp.path()).expect("open");
         log.append(running_event()).await.expect("append");
         drop(log);
-        let path = temp.path().join(EVENT_LOG_FILE);
+        let path = rtm_paths::event_log_path(temp.path());
         let mut file = OpenOptions::new().append(true).open(&path).expect("append");
         file.write_all(br#"{"seq":2"#).expect("corrupt");
         drop(file);

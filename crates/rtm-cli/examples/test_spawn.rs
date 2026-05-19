@@ -5,7 +5,7 @@ mod spawn_support;
 
 use anyhow::Result;
 use clap::Parser;
-use lilo_rm_core::{RuntimeKind, SpawnTarget};
+use lilo_rm_core::{EventBatch, RuntimeKind, SpawnTarget};
 use uuid::Uuid;
 
 #[derive(Debug, Parser)]
@@ -28,6 +28,14 @@ async fn main() -> Result<()> {
     let events = rtm_cli::shared::events(&socket_path, None, None).await?;
 
     report_support::print_spawned(response)?;
-    println!("runtime events observed={}", events.len());
+    println!("runtime events observed={}", event_count(&events));
     Ok(())
+}
+
+fn event_count(events: &EventBatch) -> usize {
+    match events {
+        EventBatch::Events { events, .. } => events.len(),
+        EventBatch::CursorExpired { .. } => 0,
+        _ => 0,
+    }
 }

@@ -35,6 +35,8 @@ pub fn warm_registry() -> Result<(), LauncherError> {
             env: Vec::new(),
             cwd: lilo_rm_core::launcher_probe_cwd(),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
+            force: false,
+            shell_resume: None,
         };
         launcher.argv(&request)?;
     }

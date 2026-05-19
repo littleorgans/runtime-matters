@@ -5,8 +5,9 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    DoctorResponse, KillByPidResponse, Lifecycle, LifecycleCounts, NudgeOutcome, NudgeResponse,
-    PaneSnapshot, RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
+    DoctorResponse, EventsPayload, KillByPidResponse, KillOutcome, KilledPayload, Lifecycle,
+    LifecycleCounts, NudgeOutcome, NudgeResponse, PaneSnapshot, RuntimeCapability, RuntimeEvent,
+    RuntimeResponse, VersionInfo,
 };
 
 pub trait CliOutput: Serialize {
@@ -169,6 +170,13 @@ impl CliOutput for Vec<RuntimeEvent> {
     }
 }
 
+impl CliOutput for EventsPayload {
+    fn render_human(&self, f: &mut impl Write) -> fmt::Result {
+        self.events.render_human(f)?;
+        writeln!(f, "cursor: {}", self.cursor)
+    }
+}
+
 impl CliOutput for PaneSnapshot {
     fn render_human(&self, f: &mut impl Write) -> fmt::Result {
         write!(
@@ -186,23 +194,15 @@ impl CliOutput for PaneSnapshot {
 impl CliOutput for RuntimeResponse {
     fn render_human(&self, f: &mut impl Write) -> fmt::Result {
         match self {
-            Self::Spawned {
-                lifecycle,
-                event,
-                log_dir,
-                stdout_path,
-                stderr_path,
-            } => writeln!(
+            Self::Spawned(payload) => writeln!(
                 f,
                 "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={} stdout_path={} stderr_path={}",
-                lifecycle.state,
-                event_name(event),
-                lifecycle
-                    .runtime_pid
-                    .expect("running lifecycle runtime pid"),
-                display_optional_path(log_dir.as_deref()),
-                display_optional_path(stdout_path.as_deref()),
-                display_optional_path(stderr_path.as_deref())
+                payload.lifecycle.state,
+                event_name(&payload.event),
+                display_optional_u32(payload.lifecycle.runtime_pid),
+                display_optional_path(payload.log_dir.as_deref()),
+                display_optional_path(payload.stdout_path.as_deref()),
+                display_optional_path(payload.stderr_path.as_deref())
             ),
             other => write!(f, "unexpected runtime response: {other:?}"),
         }
@@ -216,6 +216,21 @@ impl CliOutput for KillByPidResponse {
             "kill OK; pid={} signal={} killed_after_grace={}",
             self.pid, self.signal, self.killed_after_grace
         )
+    }
+}
+
+impl CliOutput for KillOutcome {
+    fn render_human(&self, f: &mut impl Write) -> fmt::Result {
+        match self {
+            Self::Signalled => writeln!(f, "signalled"),
+            Self::AlreadyExited => writeln!(f, "already exited"),
+        }
+    }
+}
+
+impl CliOutput for KilledPayload {
+    fn render_human(&self, f: &mut impl Write) -> fmt::Result {
+        self.outcome.render_human(f)
     }
 }
 

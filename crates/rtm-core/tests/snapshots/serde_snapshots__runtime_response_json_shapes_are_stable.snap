@@ -64,6 +64,24 @@ expression: responses
     }
   },
   {
+    "type": "spawn_conflict",
+    "payload": {
+      "kind": "tmux_pane_occupancy",
+      "lifecycle": {
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
+        "runtime": "claude",
+        "state": "running",
+        "shim_pid": 4241,
+        "runtime_pid": 4242,
+        "start_time": "2023-11-14T22:13:20Z",
+        "tmux_pane": "rtm:0.1",
+        "log_availability": {
+          "type": "tmux_pane_snapshot"
+        }
+      }
+    }
+  },
+  {
     "type": "validate_target",
     "payload": {
       "response": {
@@ -198,7 +216,7 @@ expression: responses
       "version": {
         "version": "0.1.6",
         "git_sha": "0123456",
-        "protocol_version": "0.4",
+        "protocol_version": "0.6",
         "capabilities": [
           "structured_protocol_errors",
           "headless_stdio_log_paths",
@@ -208,7 +226,9 @@ expression: responses
           "validate_target_preflight",
           "events_cursor",
           "events_long_poll",
-          "tmux_pane_snapshot"
+          "tmux_pane_snapshot",
+          "kill_outcomes",
+          "spawn_conflicts"
         ]
       }
     }
@@ -220,7 +240,7 @@ expression: responses
         "version": {
           "version": "0.1.6",
           "git_sha": "0123456",
-          "protocol_version": "0.4",
+          "protocol_version": "0.6",
           "capabilities": [
             "structured_protocol_errors",
             "headless_stdio_log_paths",
@@ -230,7 +250,9 @@ expression: responses
             "validate_target_preflight",
             "events_cursor",
             "events_long_poll",
-            "tmux_pane_snapshot"
+            "tmux_pane_snapshot",
+            "kill_outcomes",
+            "spawn_conflicts"
           ]
         },
         "socket_path": "/tmp/rtmd.sock",

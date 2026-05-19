@@ -2,6 +2,7 @@ use std::io::Write;
 
 use anyhow::Result;
 use clap::{Args, ValueEnum};
+use lilo_rm_client::ClientError;
 use lilo_rm_core::CliOutput;
 use serde_json::Value;
 use serde_json::json;
@@ -20,7 +21,7 @@ pub struct OutputArgs {
 
 #[derive(serde::Serialize)]
 pub struct RtmError<'a> {
-    pub code: &'static str,
+    pub code: String,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<&'a serde_json::Value>,
@@ -43,11 +44,10 @@ pub fn emit<T: CliOutput>(args: &OutputArgs, response: &T) -> Result<()> {
 pub fn emit_error(format: OutputFormat, error: &anyhow::Error) -> Result<()> {
     match format {
         OutputFormat::Json => {
-            let details = error_chain(error);
-            let details = (!details.is_empty()).then(|| json!({ "causes": details }));
+            let details = error_details(error);
             let payload = RtmError {
-                code: "runtime_error",
-                message: error.to_string(),
+                code: error_code(error),
+                message: error_message(error),
                 details: details.as_ref(),
             };
             writeln!(
@@ -56,11 +56,64 @@ pub fn emit_error(format: OutputFormat, error: &anyhow::Error) -> Result<()> {
                 serde_json::to_string_pretty(&payload)?
             )?;
         }
-        OutputFormat::Human => {
-            writeln!(std::io::stderr(), "Error: {error:?}")?;
-        }
+        OutputFormat::Human => match spawn_conflict(error) {
+            Some(conflict) => writeln!(
+                std::io::stderr(),
+                "Error: spawn conflict; kind={:?} session_id={} state={} runtime_pid={} tmux_pane={}",
+                conflict.kind,
+                conflict.lifecycle.session_id,
+                conflict.lifecycle.state,
+                conflict
+                    .lifecycle
+                    .runtime_pid
+                    .map(|pid| pid.to_string())
+                    .unwrap_or_else(|| "-".to_owned()),
+                conflict
+                    .lifecycle
+                    .tmux_pane
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "-".to_owned())
+            )?,
+            None => writeln!(std::io::stderr(), "Error: {}", error_message(error))?,
+        },
     }
     Ok(())
+}
+
+fn error_message(error: &anyhow::Error) -> String {
+    match error.downcast_ref::<ClientError>() {
+        Some(ClientError::DaemonUnavailable {
+            socket_path,
+            source,
+        }) if source.kind() == std::io::ErrorKind::NotFound => format!(
+            "rtmd is not running; start it with `rtm daemon start` (socket: {})",
+            socket_path.display()
+        ),
+        _ => error.to_string(),
+    }
+}
+
+fn error_code(error: &anyhow::Error) -> String {
+    error
+        .downcast_ref::<ClientError>()
+        .map(|error| error.code().as_str().to_owned())
+        .unwrap_or_else(|| "runtime_error".to_owned())
+}
+
+fn error_details(error: &anyhow::Error) -> Option<Value> {
+    if let Some(conflict) = spawn_conflict(error) {
+        return Some(json!({ "conflict": conflict }));
+    }
+    let details = error_chain(error);
+    (!details.is_empty()).then(|| json!({ "causes": details }))
+}
+
+fn spawn_conflict(error: &anyhow::Error) -> Option<&lilo_rm_core::SpawnConflictPayload> {
+    match error.downcast_ref::<ClientError>() {
+        Some(ClientError::SpawnConflict(conflict)) => Some(conflict.as_ref()),
+        _ => None,
+    }
 }
 
 pub fn requested_format_from_env() -> OutputFormat {
@@ -166,6 +219,8 @@ macro_rules! assert_cli_json_snapshot {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
@@ -183,6 +238,20 @@ mod tests {
             requested_format(["status", "--format=human"]),
             OutputFormat::Human
         );
+    }
+
+    #[test]
+    fn missing_daemon_message_names_start_command() {
+        let error = anyhow::Error::new(ClientError::DaemonUnavailable {
+            socket_path: PathBuf::from("/tmp/rtm.sock"),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "missing"),
+        });
+
+        assert_eq!(
+            error_message(&error),
+            "rtmd is not running; start it with `rtm daemon start` (socket: /tmp/rtm.sock)"
+        );
+        assert_eq!(error_code(&error), "runtime_unavailable");
     }
 
     #[test]

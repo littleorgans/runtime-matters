@@ -103,7 +103,9 @@ fn launcher_error_code(error: &LauncherError) -> ErrorCode {
         LauncherError::NoLauncher { .. } | LauncherError::BinaryLookupFailed { .. } => {
             ErrorCode::RuntimeUnavailable
         }
-        LauncherError::EmptyArgv | LauncherError::EmptyEnv { .. } => ErrorCode::LaunchFailed,
+        LauncherError::EmptyArgv
+        | LauncherError::EmptyEnv { .. }
+        | LauncherError::EmptyShellArgv => ErrorCode::LaunchFailed,
     }
 }
 
@@ -149,25 +151,24 @@ mod tests {
         ];
 
         for (error, expected) in cases {
-            let RuntimeResponse::Error { code, .. } =
-                rpc_error_response(RpcErrorContext::Other, error)
+            let RuntimeResponse::Error(payload) = rpc_error_response(RpcErrorContext::Other, error)
             else {
                 panic!("expected error response");
             };
-            assert_eq!(code, expected);
+            assert_eq!(payload.code, expected);
         }
     }
 
     #[test]
     fn spawn_errors_default_to_launch_failed() {
-        let RuntimeResponse::Error { code, message } =
+        let RuntimeResponse::Error(payload) =
             rpc_error_response(RpcErrorContext::Spawn, anyhow!("boom"))
         else {
             panic!("expected error response");
         };
 
-        assert_eq!(code, ErrorCode::LaunchFailed);
-        assert_eq!(message, "boom");
+        assert_eq!(payload.code, ErrorCode::LaunchFailed);
+        assert_eq!(payload.message, "boom");
     }
 
     #[test]
@@ -196,12 +197,12 @@ mod tests {
         ];
 
         for (error, expected) in cases {
-            let RuntimeResponse::Error { code, .. } =
+            let RuntimeResponse::Error(payload) =
                 rpc_error_response(RpcErrorContext::Other, error.into())
             else {
                 panic!("expected error response");
             };
-            assert_eq!(code, expected);
+            assert_eq!(payload.code, expected);
         }
     }
 
@@ -221,11 +222,11 @@ mod tests {
         }))
         .expect_err("invalid tmux target");
 
-        let RuntimeResponse::Error { code, .. } =
+        let RuntimeResponse::Error(payload) =
             protocol_error_response(lilo_rm_core::ProtocolError::Json(error))
         else {
             panic!("expected error response");
         };
-        assert_eq!(code, ErrorCode::InvalidTarget);
+        assert_eq!(payload.code, ErrorCode::InvalidTarget);
     }
 }

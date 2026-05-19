@@ -3,8 +3,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use lilo_rm_core::{
-    EventsRequest, RuntimeResponse, RuntimeRpc, clamped_event_wait_ms, read_json_line,
-    write_json_line,
+    CapturePayload, CursorExpiredPayload, DoctorPayload, EventsPayload, EventsRequest,
+    KillByPidPayload, KilledPayload, McpBridgePayload, NudgePayload, RuntimeResponse, RuntimeRpc,
+    ShimLaunchPayload, SpawnedPayload, StatusPayload, ValidateTargetPayload, VersionPayload,
+    WatchersPayload, clamped_event_wait_ms, read_json_line, write_json_line,
 };
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 use tokio::net::UnixStream;
@@ -15,7 +17,7 @@ use crate::{
     error::{RpcErrorContext, protocol_error_response, rpc_error_response},
     mcp_bridge,
     server::ServerState,
-    shim_socket,
+    shim_socket, spawn_preflight,
 };
 
 pub(crate) async fn handle_connection(
@@ -98,6 +100,9 @@ fn error_context(rpc: &RuntimeRpc) -> RpcErrorContext {
 async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<RuntimeResponse> {
     match rpc {
         RuntimeRpc::Spawn { request } => {
+            if let Some(conflict) = spawn_preflight::check(&state, &request).await? {
+                return Ok(conflict);
+            }
             let launch = rtm_launchers::dispatch(&request.runtime)?.launch_spec(&request)?;
             let ready_rx = state.begin_spawn(&request, launch).await?;
             let log_paths = match shim_socket::launch_shim(state.config(), &request).await {
@@ -121,53 +126,54 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
                 ),
                 None => (None, None, None),
             };
-            Ok(RuntimeResponse::Spawned {
+            Ok(RuntimeResponse::Spawned(SpawnedPayload {
                 lifecycle,
                 event,
                 log_dir,
                 stdout_path,
                 stderr_path,
-            })
+            }))
         }
-        RuntimeRpc::ValidateTarget { request } => Ok(RuntimeResponse::ValidateTarget {
-            response: state.validate_target_request(request).await?,
-        }),
-        RuntimeRpc::Kill { request } => {
-            state.kill_runtime(request).await?;
-            Ok(RuntimeResponse::Ack)
+        RuntimeRpc::ValidateTarget { request } => {
+            Ok(RuntimeResponse::ValidateTarget(ValidateTargetPayload {
+                response: state.validate_target_request(request).await?,
+            }))
         }
-        RuntimeRpc::KillByPid { request } => Ok(RuntimeResponse::KillByPid {
+        RuntimeRpc::Kill { request } => Ok(RuntimeResponse::Killed(KilledPayload {
+            outcome: state.kill_runtime(request).await?,
+        })),
+        RuntimeRpc::KillByPid { request } => Ok(RuntimeResponse::KillByPid(KillByPidPayload {
             response: state.kill_pid(request).await?,
-        }),
+        })),
         RuntimeRpc::Nudge { request } => {
             let response = state.nudge_runtime(request).await?;
-            Ok(RuntimeResponse::Nudge { response })
+            Ok(RuntimeResponse::Nudge(NudgePayload { response }))
         }
-        RuntimeRpc::Capture { request } => Ok(RuntimeResponse::Capture {
+        RuntimeRpc::Capture { request } => Ok(RuntimeResponse::Capture(CapturePayload {
             response: state.capture_pane(request).await?,
-        }),
-        RuntimeRpc::Status { request } => Ok(RuntimeResponse::Status {
+        })),
+        RuntimeRpc::Status { request } => Ok(RuntimeResponse::Status(StatusPayload {
             lifecycles: state.status(request.into()).await,
-        }),
-        RuntimeRpc::Version => Ok(RuntimeResponse::Version {
+        })),
+        RuntimeRpc::Version => Ok(RuntimeResponse::Version(VersionPayload {
             version: crate::version::runtime_version_info(),
-        }),
-        RuntimeRpc::Watchers => Ok(RuntimeResponse::Watchers {
+        })),
+        RuntimeRpc::Watchers => Ok(RuntimeResponse::Watchers(WatchersPayload {
             watchers: state.watcher_counts().await,
-        }),
-        RuntimeRpc::Doctor => Ok(RuntimeResponse::Doctor {
+        })),
+        RuntimeRpc::Doctor => Ok(RuntimeResponse::Doctor(DoctorPayload {
             doctor: doctor::collect(state).await?,
-        }),
+        })),
         RuntimeRpc::Events { request } => events_response(&state, request).await,
         RuntimeRpc::Stop => Ok(RuntimeResponse::Stopping),
-        RuntimeRpc::McpBridge { request } => Ok(RuntimeResponse::McpBridge {
+        RuntimeRpc::McpBridge { request } => Ok(RuntimeResponse::McpBridge(McpBridgePayload {
             response: lilo_rm_core::McpBridgeResponse {
                 line: mcp_bridge::handle_line(&state, &request.line).await,
             },
-        }),
+        })),
         RuntimeRpc::ShimLaunch { request } => {
             let launch = state.take_launch_spec(request.session_id).await?;
-            Ok(RuntimeResponse::ShimLaunch { launch })
+            Ok(RuntimeResponse::ShimLaunch(ShimLaunchPayload { launch }))
         }
         RuntimeRpc::ShimReady { ready } => {
             state.complete_shim_ready(ready).await?;
@@ -177,17 +183,21 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             let _ = state.record_shim_exit(exit).await?;
             Ok(RuntimeResponse::Ack)
         }
+        _ => Ok(RuntimeResponse::error(
+            lilo_rm_core::ErrorCode::ProtocolMismatch,
+            "unsupported runtime rpc",
+        )),
     }
 }
 
 async fn events_response(state: &ServerState, request: EventsRequest) -> Result<RuntimeResponse> {
     match state.events(request).await {
-        Ok(batch) => Ok(RuntimeResponse::Events {
+        Ok(batch) => Ok(RuntimeResponse::Events(EventsPayload {
             events: batch.events,
             cursor: batch.cursor,
-        }),
-        Err(expired) => Ok(RuntimeResponse::CursorExpired {
+        })),
+        Err(expired) => Ok(RuntimeResponse::CursorExpired(CursorExpiredPayload {
             oldest: expired.oldest,
-        }),
+        })),
     }
 }

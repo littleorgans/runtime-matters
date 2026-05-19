@@ -21,6 +21,8 @@ pub async fn spawn_runtime(
                 env,
                 cwd,
                 target,
+                force: false,
+                shell_resume: None,
             },
         },
     )

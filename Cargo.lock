@@ -839,17 +839,22 @@ dependencies = [
 
 [[package]]
 name = "lilo-rm-client"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "lilo-rm-core",
+ "rtm-daemon",
+ "rtm-paths",
+ "rtm-store",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
 name = "lilo-rm-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "chrono",
  "insta",
@@ -1285,6 +1290,7 @@ dependencies = [
  "chrono",
  "lilo-rm-core",
  "rtm-launchers",
+ "rtm-paths",
  "rtm-platform",
  "rtm-store",
  "serde",
@@ -1304,6 +1310,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtm-paths"
+version = "0.2.0"
+
+[[package]]
 name = "rtm-platform"
 version = "0.2.0"
 dependencies = [
@@ -1321,6 +1331,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "lilo-rm-core",
+ "rtm-paths",
  "serde_json",
  "sqlx",
  "tempfile",

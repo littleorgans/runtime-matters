@@ -7,14 +7,17 @@ use lilo_rm_core::{
 };
 use uuid::Uuid;
 
-use crate::{server::ServerState, socket};
+use crate::server::ServerState;
 
 const RECENT_LOST_WINDOW: Duration = Duration::hours(24);
 
 pub(crate) async fn collect(state: Arc<ServerState>) -> Result<DoctorResponse> {
     Ok(DoctorResponse {
         version: crate::version::runtime_version_info(),
-        socket_path: socket::display_socket_path(&state.config().socket_path),
+        socket_path: state
+            .config()
+            .endpoint
+            .display_label(&rtm_paths::RuntimePathEnv::from_process()),
         uptime_secs: state.uptime_secs(),
         sqlite: state.store().migration_state().await?,
         lifecycles: state.store().lifecycle_counts().await?,
@@ -45,6 +48,8 @@ fn launcher_status(launcher: &'static dyn lilo_rm_core::RuntimeLauncher) -> Laun
         env: Vec::new(),
         cwd: lilo_rm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
+        force: false,
+        shell_resume: None,
     };
     match launcher.argv(&request) {
         Ok(argv) => LauncherStatus {

@@ -5,8 +5,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use common::{
-    RtmHarness, output_stdout, status_pid, terminate_process, wait_for_headless_runtime_ready,
-    wait_for_status, wait_for_status_timeout, wait_until, wait_until_not_alive,
+    RtmHarness, output_stdout, runtime_event_line_count, status_pid, terminate_process,
+    wait_for_headless_runtime_ready, wait_for_status, wait_for_status_timeout, wait_until,
+    wait_until_not_alive,
 };
 use lilo_rm_core::StatusFilter;
 use rtm_store::{LifecycleStore, StoreConfig};
@@ -63,7 +64,7 @@ fn wait_for_events_since(harness: &RtmHarness, cursor: u64, expected: usize) -> 
     wait_until(Duration::from_secs(5), || {
         let output = harness.events_since(cursor);
         let stdout = output_stdout(output);
-        (stdout.lines().count() == expected).then_some(stdout)
+        (runtime_event_line_count(&stdout) == expected).then_some(stdout)
     })
     .unwrap_or_else(|| panic!("events after cursor {cursor} never reached {expected}"))
 }

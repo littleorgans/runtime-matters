@@ -6,9 +6,13 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use common::{RtmHarness, output_stdout, spawn_ok, status_pid, terminate_process, wait_until};
+use common::{
+    RtmHarness, output_stderr, output_stdout, runtime_event_line_count, spawn_ok, status_pid,
+    terminate_process, wait_until,
+};
 use lilo_rm_core::{
-    EventsRequest, RuntimeEvent, RuntimeResponse, RuntimeRpc, WatcherCounts, write_json_line,
+    CursorExpiredPayload, EventsRequest, RuntimeEvent, RuntimeResponse, RuntimeRpc, WatcherCounts,
+    write_json_line,
 };
 use serde_json::json;
 use tokio::net::UnixStream;
@@ -29,9 +33,10 @@ fn events_resume_after_daemon_restart_without_duplication() {
 
     let resumed = wait_for_rpc_events(&harness, Some(cursor), 1);
 
-    let RuntimeResponse::Events { events, cursor: _ } = resumed else {
+    let RuntimeResponse::Events(payload) = resumed else {
         panic!("expected events response");
     };
+    let events = payload.events;
     assert_eq!(events.len(), 1);
     assert!(
         matches!(events[0], lilo_rm_core::RuntimeEvent::Running { .. }),
@@ -52,12 +57,43 @@ fn cli_events_since_matches_rpc_cursor_filter() {
     assert!(output.status.success(), "events --since failed: {output:?}");
     let stdout = output_stdout(output);
 
-    let RuntimeResponse::Events { events, cursor: _ } = rpc else {
+    let RuntimeResponse::Events(payload) = rpc else {
         panic!("expected events response");
     };
-    assert_eq!(events.len(), stdout.lines().count());
+    let events = payload.events;
+    assert_eq!(events.len(), runtime_event_line_count(&stdout));
     assert!(stdout.contains(SECOND_SESSION), "{stdout}");
     assert!(!stdout.contains(FIRST_SESSION), "{stdout}");
+    harness.stop();
+}
+
+#[test]
+fn cli_events_json_includes_resume_cursor() {
+    let harness = RtmHarness::start();
+    spawn_ok(&harness, FIRST_SESSION, "claude");
+    let cursor = wait_for_rpc_events(&harness, None, 1).cursor();
+
+    let output = harness.cli(&["events", "--format", "json"]);
+
+    assert!(output.status.success(), "events json failed: {output:?}");
+    let body: serde_json::Value =
+        serde_json::from_str(&output_stdout(output)).expect("events json");
+    assert_eq!(body["cursor"], cursor);
+    assert_eq!(body["events"].as_array().expect("events array").len(), 1);
+    harness.stop();
+}
+
+#[test]
+fn cli_events_human_appends_resume_cursor() {
+    let harness = RtmHarness::start();
+    spawn_ok(&harness, FIRST_SESSION, "claude");
+
+    let output = harness.events_since(0);
+
+    assert!(output.status.success(), "events human failed: {output:?}");
+    let stdout = output_stdout(output);
+    assert!(stdout.contains(FIRST_SESSION), "{stdout}");
+    assert_eq!(stdout.lines().last(), Some("cursor: 1"));
     harness.stop();
 }
 
@@ -72,9 +108,10 @@ fn events_since_cursor_returns_terminal_lifecycle_event() {
     terminate_process(runtime_pid, "KILL");
 
     let response = wait_for_rpc_events(&harness, Some(cursor), 1);
-    let RuntimeResponse::Events { events, cursor: _ } = response else {
+    let RuntimeResponse::Events(payload) = response else {
         panic!("expected events response");
     };
+    let events = payload.events;
     assert!(matches!(
         &events[0],
         RuntimeEvent::Terminated {
@@ -95,7 +132,43 @@ fn expired_cursor_returns_cursor_expired_frame() {
 
     let response = rpc_events(&harness, Some(0));
 
-    assert_eq!(response, RuntimeResponse::CursorExpired { oldest: 2 });
+    assert_eq!(
+        response,
+        RuntimeResponse::CursorExpired(CursorExpiredPayload { oldest: 2 })
+    );
+    harness.stop();
+}
+
+#[test]
+fn cli_events_json_surfaces_cursor_expiration() {
+    let mut harness = RtmHarness::start();
+    harness.stop_rtmd();
+    write_event_log(&harness, &[event_record(3, FIRST_SESSION)], "");
+    harness.start_rtmd();
+
+    let output = harness.cli(&["events", "--since", "0", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let body: serde_json::Value =
+        serde_json::from_str(&output_stdout(output)).expect("cursor expired json");
+    assert_eq!(body, json!({ "cursor_expired": true, "latest_cursor": 2 }));
+    harness.stop();
+}
+
+#[test]
+fn cli_events_human_surfaces_cursor_expiration_with_distinct_exit() {
+    let mut harness = RtmHarness::start();
+    harness.stop_rtmd();
+    write_event_log(&harness, &[event_record(3, FIRST_SESSION)], "");
+    harness.start_rtmd();
+
+    let output = harness.events_since(0);
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert_eq!(
+        output_stderr(output).trim(),
+        "cursor expired (latest_cursor: 2)"
+    );
     harness.stop();
 }
 
@@ -108,9 +181,11 @@ fn startup_recovery_drops_trailing_partial_event_line() {
 
     let response = rpc_events(&harness, Some(0));
 
-    let RuntimeResponse::Events { events, cursor } = response else {
+    let RuntimeResponse::Events(payload) = response else {
         panic!("expected events response");
     };
+    let events = payload.events;
+    let cursor = payload.cursor;
     assert_eq!(events.len(), 1);
     assert_eq!(cursor, 1);
     harness.stop();
@@ -124,9 +199,11 @@ fn long_poll_times_out_with_unchanged_cursor() {
     let response = rpc_events_wait(&harness, Some(0), Some(500));
     let elapsed = start.elapsed();
 
-    let RuntimeResponse::Events { events, cursor } = response else {
+    let RuntimeResponse::Events(payload) = response else {
         panic!("expected events response");
     };
+    let events = payload.events;
+    let cursor = payload.cursor;
     assert!(events.is_empty(), "{events:?}");
     assert_eq!(cursor, 0);
     assert!(elapsed >= Duration::from_millis(450), "{elapsed:?}");
@@ -145,9 +222,11 @@ fn long_poll_wakes_when_event_is_appended() {
     spawn_ok(&harness, FIRST_SESSION, "claude");
 
     let response = waiter.join().expect("waiter");
-    let RuntimeResponse::Events { events, cursor } = response else {
+    let RuntimeResponse::Events(payload) = response else {
         panic!("expected events response");
     };
+    let events = payload.events;
+    let cursor = payload.cursor;
     assert_eq!(events.len(), 1);
     assert_eq!(cursor, 1);
     assert!(start.elapsed() < Duration::from_secs(2));
@@ -182,9 +261,11 @@ fn concurrent_long_pollers_all_wake_on_single_append() {
 
     for waiter in waiters {
         let response = waiter.join().expect("waiter");
-        let RuntimeResponse::Events { events, cursor } = response else {
+        let RuntimeResponse::Events(payload) = response else {
             panic!("expected events response");
         };
+        let events = payload.events;
+        let cursor = payload.cursor;
         assert_eq!(events.len(), 1);
         assert_eq!(cursor, 1);
     }
@@ -202,7 +283,9 @@ fn cli_events_wait_ms_round_trips_through_json_scaffold() {
         output.status.success(),
         "events --wait-ms failed: {output:?}"
     );
-    assert_eq!(output_stdout(output).trim(), "[]");
+    let body: serde_json::Value =
+        serde_json::from_str(&output_stdout(output)).expect("events json");
+    assert_eq!(body, json!({ "events": [], "cursor": 0 }));
     assert!(start.elapsed() >= Duration::from_millis(450));
     harness.stop();
 }
@@ -214,7 +297,7 @@ trait Cursor {
 impl Cursor for RuntimeResponse {
     fn cursor(&self) -> u64 {
         match self {
-            RuntimeResponse::Events { cursor, .. } => *cursor,
+            RuntimeResponse::Events(payload) => payload.cursor,
             other => panic!("expected events response, got {other:?}"),
         }
     }
@@ -228,7 +311,7 @@ fn wait_for_rpc_events(
     wait_until(Duration::from_secs(5), || {
         let response = rpc_events(harness, since);
         match &response {
-            RuntimeResponse::Events { events, .. } if events.len() == expected => Some(response),
+            RuntimeResponse::Events(payload) if payload.events.len() == expected => Some(response),
             _ => None,
         }
     })
@@ -271,10 +354,10 @@ fn rpc_watchers(harness: &RtmHarness) -> WatcherCounts {
             RuntimeRpc::Watchers,
         ))
         .expect("watchers rpc");
-    let RuntimeResponse::Watchers { watchers } = response else {
+    let RuntimeResponse::Watchers(payload) = response else {
         panic!("expected watchers response");
     };
-    watchers
+    payload.watchers
 }
 
 fn wait_for_event_waiters(harness: &RtmHarness, expected: usize) {

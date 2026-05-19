@@ -1,10 +1,15 @@
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
+use lilo_rm_client::RuntimeClient;
 use lilo_rm_core::{
-    Ack, CaptureRequest, KillByPidRequest, KillRequest, NudgeOutcome, NudgeRequest, RuntimeKind,
-    RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
+    CaptureRequest, EventBatch, EventsPayload, KillByPidRequest, KillRequest, KilledPayload,
+    NudgeFailureReason, NudgeOutcome, NudgeRequest, RuntimeKind, RuntimeResponse, RuntimeRpc,
+    RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter, ValidateTargetOutcome,
+    ValidateTargetResponse,
 };
+use serde::Serialize;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::cli::daemon::DaemonCommand;
@@ -17,6 +22,8 @@ pub mod mcp;
 pub mod output;
 pub mod shim;
 pub mod version;
+
+const CURSOR_EXPIRED_EXIT_CODE: i32 = 2;
 
 #[derive(Debug, Parser)]
 #[command(name = "rtm")]
@@ -37,10 +44,15 @@ enum Command {
     Spawn(SpawnArgs),
     #[command(about = "Signal a runtime session by id, or a process by pid.")]
     Kill(KillArgs),
-    #[command(about = "Deliver a nudge message to a running runtime session.")]
+    #[command(
+        about = "Deliver a nudge message to a running runtime session.",
+        after_help = "Failure reasons: headless_lifecycle, session_ended, tmux_pane_dead."
+    )]
     Nudge(NudgeArgs),
     #[command(about = "Capture the pane snapshot for a runtime session.")]
     Capture(CaptureArgs),
+    #[command(about = "Validate a spawn target without starting a runtime.")]
+    ValidateTarget(ValidateTargetArgs),
     #[command(about = cli_help::STATUS_ABOUT)]
     Status(StatusArgs),
     #[command(about = cli_help::MCP_ABOUT)]
@@ -65,6 +77,13 @@ pub struct SpawnArgs {
     session_id: Uuid,
     #[arg(long, value_name = "headless|tmux:SESSION:WINDOW.PANE")]
     target: SpawnTarget,
+    #[arg(long, value_name = "PATH")]
+    cwd: Option<PathBuf>,
+    /// Pre-empt a live runtime that already occupies the requested tmux pane.
+    ///
+    /// Does not override session id reuse conflicts.
+    #[arg(long)]
+    force: bool,
 }
 
 #[derive(Debug, Args)]
@@ -120,6 +139,14 @@ pub struct CaptureArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct ValidateTargetArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
+    #[arg(value_name = "TARGET")]
+    target: String,
+}
+
+#[derive(Debug, Args)]
 pub struct EventsArgs {
     #[command(flatten)]
     output: output::OutputArgs,
@@ -149,6 +176,7 @@ impl Cli {
             Command::Kill(args) => kill(args).await,
             Command::Nudge(args) => nudge(args).await,
             Command::Capture(args) => capture(args).await,
+            Command::ValidateTarget(args) => validate_target(args).await,
             Command::Status(args) => status(args).await,
             Command::Mcp => mcp::run().await,
             Command::Version(args) => version::run(args.output).await,
@@ -161,43 +189,56 @@ impl Cli {
 }
 
 async fn spawn(args: SpawnArgs) -> Result<()> {
+    let SpawnArgs {
+        output,
+        runtime,
+        session_id,
+        target,
+        cwd,
+        force,
+    } = args;
+    let cwd = spawn_cwd(cwd)?;
     let socket_path = crate::shared::socket_path()?;
-    let cwd = lilo_rm_core::capture_caller_cwd().context("failed to capture caller cwd")?;
     let env = lilo_rm_core::capture_caller_env();
-    let response = crate::shared::request(
-        &socket_path,
-        RuntimeRpc::Spawn {
-            request: SpawnRequest {
-                session_id: args.session_id,
-                runtime: args.runtime,
-                env,
-                cwd,
-                target: args.target,
-            },
-        },
-    )
-    .await?;
+    let shell_resume = target
+        .tmux_address()
+        .map(|_| lilo_rm_core::capture_shell_resume(cwd.clone()));
+    let payload = RuntimeClient::new(socket_path)
+        .spawn(SpawnRequest {
+            session_id,
+            runtime,
+            env,
+            cwd,
+            target,
+            force,
+            shell_resume,
+        })
+        .await?;
 
-    match response {
-        RuntimeResponse::Spawned {
-            lifecycle,
-            event,
-            log_dir,
-            stdout_path,
-            stderr_path,
-        } => {
-            let response = RuntimeResponse::Spawned {
-                lifecycle,
-                event,
-                log_dir,
-                stdout_path,
-                stderr_path,
-            };
-            output::emit(&args.output, &response)?;
-        }
-        other => anyhow::bail!("unexpected spawn response: {other:?}"),
-    }
+    output::emit(&output, &RuntimeResponse::Spawned(payload))?;
     Ok(())
+}
+
+fn spawn_cwd(cwd: Option<PathBuf>) -> Result<PathBuf> {
+    let Some(path) = cwd else {
+        return lilo_rm_core::capture_caller_cwd().context("failed to capture caller cwd");
+    };
+    let caller_cwd = lilo_rm_core::capture_caller_cwd().context("failed to capture caller cwd")?;
+    let resolved = resolve_caller_path(&caller_cwd, &path);
+    let canonical = std::fs::canonicalize(&resolved)
+        .with_context(|| format!("spawn cwd does not exist: {}", resolved.display()))?;
+    if !canonical.is_dir() {
+        bail!("spawn cwd is not a directory: {}", canonical.display());
+    }
+    Ok(canonical)
+}
+
+fn resolve_caller_path(caller_cwd: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        caller_cwd.join(path)
+    }
 }
 
 async fn kill(args: KillArgs) -> Result<()> {
@@ -207,48 +248,28 @@ async fn kill(args: KillArgs) -> Result<()> {
     let session_id = args
         .session_id
         .ok_or_else(|| anyhow::anyhow!("session id or --pid is required"))?;
-    let socket_path = crate::shared::socket_path()?;
-    let response = crate::shared::request(
-        &socket_path,
-        RuntimeRpc::Kill {
-            request: KillRequest {
-                session_id,
-                signal: args.signal,
-                grace_secs: args.grace_secs,
-            },
-        },
-    )
-    .await?;
-
-    match response {
-        RuntimeResponse::Ack => {
-            output::emit(&args.output, &Ack { session_id })?;
-        }
-        other => bail!("unexpected kill response: {other:?}"),
-    }
+    let client = RuntimeClient::new(crate::shared::socket_path()?);
+    let outcome = client
+        .kill(KillRequest {
+            session_id,
+            signal: args.signal,
+            grace_secs: args.grace_secs,
+        })
+        .await?;
+    output::emit(&args.output, &KilledPayload { outcome })?;
     Ok(())
 }
 
 async fn kill_pid(args: KillArgs, pid: u32) -> Result<()> {
-    let socket_path = crate::shared::socket_path()?;
-    let response = crate::shared::request(
-        &socket_path,
-        RuntimeRpc::KillByPid {
-            request: KillByPidRequest {
-                pid,
-                signal: rtm_platform::signal::signal_number(args.signal),
-                grace_secs: args.grace_secs,
-            },
-        },
-    )
-    .await?;
-
-    match response {
-        RuntimeResponse::KillByPid { response } => {
-            output::emit(&args.output, &response)?;
-        }
-        other => bail!("unexpected kill-by-pid response: {other:?}"),
-    }
+    let client = RuntimeClient::new(crate::shared::socket_path()?);
+    let outcome = client
+        .kill_by_pid(KillByPidRequest {
+            pid,
+            signal: rtm_platform::signal::signal_number(args.signal),
+            grace_secs: args.grace_secs,
+        })
+        .await?;
+    output::emit(&args.output, &KilledPayload { outcome })?;
     Ok(())
 }
 
@@ -266,25 +287,38 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Nudge { response } if response.delivered => {
-            output::emit(&args.output, &response)?
+        RuntimeResponse::Nudge(payload) if payload.response.delivered => {
+            output::emit(&args.output, &payload.response)?
         }
-        RuntimeResponse::Nudge { response } => match response.outcome {
+        RuntimeResponse::Nudge(payload) => match payload.response.outcome {
             NudgeOutcome::Unsupported(reason) => bail!(
                 "nudge unsupported; reason={} session_id={}",
                 reason.as_str(),
                 args.session_id
             ),
-            NudgeOutcome::Failed(reason) => bail!(
-                "nudge failed; reason={} session_id={}",
-                reason.as_str(),
-                args.session_id
-            ),
-            NudgeOutcome::Delivered => bail!("inconsistent nudge response: {response:?}"),
+            NudgeOutcome::Failed(reason) => {
+                bail!("{}", nudge_failed_message(reason, args.session_id))
+            }
+            NudgeOutcome::Delivered => bail!("inconsistent nudge response: {:?}", payload.response),
         },
         other => bail!("unexpected nudge response: {other:?}"),
     }
     Ok(())
+}
+
+fn nudge_failed_message(reason: NudgeFailureReason, session_id: Uuid) -> String {
+    match reason {
+        NudgeFailureReason::SessionEnded => format!(
+            "nudge failed; reason={} session_id={} detail=session is no longer running",
+            reason.as_str(),
+            session_id
+        ),
+        _ => format!(
+            "nudge failed; reason={} session_id={}",
+            reason.as_str(),
+            session_id
+        ),
+    }
 }
 
 async fn capture(args: CaptureArgs) -> Result<()> {
@@ -301,7 +335,7 @@ async fn capture(args: CaptureArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Capture { response } => match response.into_result() {
+        RuntimeResponse::Capture(payload) => match payload.response.into_result() {
             Ok(snapshot) => output::emit(&args.output, &snapshot)?,
             Err(error) => bail!(
                 "capture failed; error={error:?} session_id={}",
@@ -311,6 +345,47 @@ async fn capture(args: CaptureArgs) -> Result<()> {
         other => bail!("unexpected capture response: {other:?}"),
     }
     Ok(())
+}
+
+async fn validate_target(args: ValidateTargetArgs) -> Result<()> {
+    let socket_path = crate::shared::socket_path()?;
+    let response = RuntimeClient::new(socket_path)
+        .validate_target(&args.target)
+        .await?;
+    emit_validate_target(&args.output, &args.target, &response)?;
+    if !response.valid {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn emit_validate_target(
+    args: &output::OutputArgs,
+    target: &str,
+    response: &ValidateTargetResponse,
+) -> Result<()> {
+    match args.format {
+        output::OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(response)?);
+        }
+        output::OutputFormat::Human => {
+            let validity = if response.valid { "valid" } else { "invalid" };
+            println!(
+                "{target}: {validity} ({})",
+                validate_target_outcome_name(&response.outcome)
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_target_outcome_name(outcome: &ValidateTargetOutcome) -> &'static str {
+    match outcome {
+        ValidateTargetOutcome::Valid => "Valid",
+        ValidateTargetOutcome::InvalidTarget { .. } => "InvalidTarget",
+        ValidateTargetOutcome::TmuxPaneDead { .. } => "TmuxPaneDead",
+        ValidateTargetOutcome::UnsupportedTarget { .. } => "UnsupportedTarget",
+    }
 }
 
 async fn status(args: StatusArgs) -> Result<()> {
@@ -327,7 +402,7 @@ async fn status(args: StatusArgs) -> Result<()> {
     )
     .await?;
     match response {
-        RuntimeResponse::Status { lifecycles } => output::emit(&args.output, &lifecycles)?,
+        RuntimeResponse::Status(payload) => output::emit(&args.output, &payload.lifecycles)?,
         other => anyhow::bail!("unexpected status response: {other:?}"),
     }
     Ok(())
@@ -335,9 +410,42 @@ async fn status(args: StatusArgs) -> Result<()> {
 
 async fn events(args: EventsArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
-    let events = crate::shared::events(&socket_path, args.since, args.wait_ms).await?;
-    output::emit(&args.output, &events)?;
+    let batch = crate::shared::events(&socket_path, args.since, args.wait_ms).await?;
+    match batch {
+        EventBatch::Events { events, cursor } => {
+            output::emit(&args.output, &EventsPayload { events, cursor })?;
+        }
+        EventBatch::CursorExpired { oldest } => emit_cursor_expired(args.output, oldest)?,
+        _ => bail!("unexpected events batch"),
+    }
     Ok(())
+}
+
+fn emit_cursor_expired(
+    args: output::OutputArgs,
+    latest_cursor: lilo_rm_core::EventCursor,
+) -> Result<()> {
+    match args.format {
+        output::OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&CursorExpiredOutput {
+                    cursor_expired: true,
+                    latest_cursor,
+                })?
+            );
+        }
+        output::OutputFormat::Human => {
+            eprintln!("cursor expired (latest_cursor: {latest_cursor})");
+        }
+    }
+    std::process::exit(CURSOR_EXPIRED_EXIT_CODE);
+}
+
+#[derive(Serialize)]
+struct CursorExpiredOutput {
+    cursor_expired: bool,
+    latest_cursor: lilo_rm_core::EventCursor,
 }
 
 fn parse_updated_since(value: &str) -> std::result::Result<DateTime<Utc>, chrono::ParseError> {

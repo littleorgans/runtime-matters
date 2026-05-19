@@ -25,7 +25,7 @@ fn main() {
                 StatusFilter::empty(),
             ))
             .expect("status rpc");
-        assert!(matches!(response, RuntimeResponse::Status { .. }));
+        assert!(matches!(response, RuntimeResponse::Status(_)));
         latencies.push(started.elapsed());
     }
 

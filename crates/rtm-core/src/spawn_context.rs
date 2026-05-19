@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use crate::LaunchEnv;
+use crate::{LaunchEnv, ShellResume};
 
 /// Exact env-var names dropped when forwarding caller env into a spawned runtime.
 ///
@@ -23,6 +23,18 @@ pub const CALLER_ENV_DENYLIST: &[&str] = &[
 /// like `CLAUDE_CODE_*` and `CLAUDE_PLUGIN_*` that describe the calling claude
 /// instance, not user state.
 pub const CALLER_ENV_DENYLIST_PREFIXES: &[&str] = &["CLAUDE_CODE_", "CLAUDE_PLUGIN_"];
+
+const SHELL_RESUME_ENV_ALLOWLIST: &[&str] = &[
+    "COLORTERM",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LOGNAME",
+    "PATH",
+    "SHELL",
+    "TERM",
+    "USER",
+];
 
 /// Capture the caller's environment, filtered through the denylist.
 ///
@@ -79,6 +91,40 @@ fn is_denied(key: &str) -> bool {
 /// Capture the caller's current working directory.
 pub fn capture_caller_cwd() -> std::io::Result<PathBuf> {
     std::env::current_dir()
+}
+
+pub fn capture_shell_resume(cwd: PathBuf) -> ShellResume {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
+    let mut env = capture_shell_resume_env(std::env::vars_os());
+    ensure_shell_env(&mut env, &shell);
+    ShellResume {
+        argv: vec![shell],
+        env,
+        cwd,
+    }
+}
+
+pub fn capture_shell_resume_env<I>(iter: I) -> Vec<LaunchEnv>
+where
+    I: IntoIterator<Item = (OsString, OsString)>,
+{
+    iter.into_iter()
+        .map(|(k, v)| {
+            (
+                k.to_string_lossy().into_owned(),
+                v.to_string_lossy().into_owned(),
+            )
+        })
+        .filter(|(k, _)| SHELL_RESUME_ENV_ALLOWLIST.contains(&k.as_str()))
+        .map(|(k, v)| LaunchEnv::new(k, v))
+        .collect()
+}
+
+fn ensure_shell_env(env: &mut Vec<LaunchEnv>, shell: &str) {
+    if env.iter().any(|entry| entry.key == "SHELL") {
+        return;
+    }
+    env.push(LaunchEnv::new("SHELL", shell));
 }
 
 /// Placeholder cwd for call sites that only exercise launcher resolution
@@ -155,5 +201,22 @@ mod tests {
         ]);
         let keys: Vec<&str> = env.iter().map(|e| e.key.as_str()).collect();
         assert_eq!(keys, vec!["PATH"]);
+    }
+
+    #[test]
+    fn shell_resume_env_keeps_shell_state_without_runtime_secrets() {
+        let env = capture_shell_resume_env([
+            (OsString::from("SHELL"), OsString::from("/bin/zsh")),
+            (OsString::from("HOME"), OsString::from("/Users/test")),
+            (OsString::from("PATH"), OsString::from("/usr/bin")),
+            (OsString::from("TERM"), OsString::from("xterm-256color")),
+            (OsString::from("RTM_SESSION_ID"), OsString::from("secret")),
+            (
+                OsString::from("ANTHROPIC_API_KEY"),
+                OsString::from("secret"),
+            ),
+        ]);
+        let keys: Vec<&str> = env.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(keys, vec!["SHELL", "HOME", "PATH", "TERM"]);
     }
 }

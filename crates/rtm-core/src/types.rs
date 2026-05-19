@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
-use crate::{LaunchEnv, RuntimeKindParseError};
+use crate::{LaunchEnv, RuntimeKindParseError, ShellResume};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeKind {
@@ -67,6 +67,7 @@ impl<'de> Deserialize<'de> for RuntimeKind {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleState {
     Forking,
@@ -277,6 +278,14 @@ pub struct SpawnRequest {
     pub env: Vec<LaunchEnv>,
     pub cwd: std::path::PathBuf,
     pub target: SpawnTarget,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub force: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell_resume: Option<ShellResume>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -352,6 +361,7 @@ pub enum NudgeOutcome {
 #[serde(rename_all = "snake_case")]
 pub enum NudgeFailureReason {
     HeadlessLifecycle,
+    SessionEnded,
     TmuxPaneDead,
 }
 
@@ -359,6 +369,7 @@ impl NudgeFailureReason {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::HeadlessLifecycle => "headless_lifecycle",
+            Self::SessionEnded => "session_ended",
             Self::TmuxPaneDead => "tmux_pane_dead",
         }
     }
@@ -474,6 +485,7 @@ impl Display for RuntimeExit {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum LostEvidence {
     ShimDiedBeforeReport,
@@ -492,6 +504,7 @@ impl Display for LostEvidence {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum TerminationEvidence {
     ShimExit,
@@ -554,6 +567,7 @@ mod tests {
             NudgeFailureReason::HeadlessLifecycle.as_str(),
             "headless_lifecycle"
         );
+        assert_eq!(NudgeFailureReason::SessionEnded.as_str(), "session_ended");
         assert_eq!(NudgeFailureReason::TmuxPaneDead.as_str(), "tmux_pane_dead");
     }
 

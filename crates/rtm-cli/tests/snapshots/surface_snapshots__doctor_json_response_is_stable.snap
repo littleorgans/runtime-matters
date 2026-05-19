@@ -50,10 +50,12 @@ expression: doctor
       "validate_target_preflight",
       "events_cursor",
       "events_long_poll",
-      "tmux_pane_snapshot"
+      "tmux_pane_snapshot",
+      "kill_outcomes",
+      "spawn_conflicts"
     ],
     "git_sha": "[git_sha]",
-    "protocol_version": "0.4",
+    "protocol_version": "0.6",
     "version": "[version]"
   },
   "watchers": {

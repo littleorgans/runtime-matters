@@ -1,4 +1,4 @@
-use std::os::unix::process::ExitStatusExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::process::{Command, ExitStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use lilo_rm_core::{
-    LaunchSpec, RuntimeExit, RuntimeSignal, ShimExit, ShimLaunchRequest, ShimReady,
+    LaunchSpec, RuntimeExit, RuntimeSignal, ShellResume, ShimExit, ShimLaunchRequest, ShimReady,
 };
 use uuid::Uuid;
 
@@ -61,6 +61,9 @@ pub fn run_for_session_blocking(session_id: Uuid) -> Result<()> {
     reconnecting("ShimExit", || {
         rtm_daemon::shim_socket::send_exit_blocking(&socket_path, exit.clone())
     })?;
+    if let Some(shell_resume) = launch.shell_resume.as_ref() {
+        exec_shell_resume(shell_resume)?;
+    }
     Ok(())
 }
 
@@ -82,13 +85,30 @@ where
             }
         }
     }
-    unreachable!("reconnect loop returns on success or final failure")
+    bail!("{label} failed: reconnect loop exhausted without success or final failure")
 }
 
 fn runtime_command(launch: &LaunchSpec) -> Result<Command> {
     let mut command = Command::new(launch.command()?);
     command.args(launch.argv.iter().skip(1));
     apply_launch_env_cwd(&mut command, launch);
+    Ok(command)
+}
+
+fn exec_shell_resume(resume: &ShellResume) -> Result<()> {
+    let mut command = shell_resume_command(resume)?;
+    let error = command.exec();
+    Err(error).context("failed to exec shell after runtime exit")
+}
+
+fn shell_resume_command(resume: &ShellResume) -> Result<Command> {
+    let mut command = Command::new(resume.command()?);
+    command.args(resume.argv.iter().skip(1));
+    command.env_clear();
+    for env in &resume.env {
+        command.env(&env.key, &env.value);
+    }
+    command.current_dir(&resume.cwd);
     Ok(command)
 }
 
@@ -162,6 +182,7 @@ mod tests {
             argv: vec!["/usr/bin/env".to_owned()],
             env: vec![LaunchEnv::new("RTM_ALLOWED_SENTINEL", "present")],
             cwd: PathBuf::from("/tmp"),
+            shell_resume: None,
         };
 
         let mut command = Command::new("/usr/bin/env");
@@ -186,6 +207,31 @@ mod tests {
         assert!(
             !stdout.contains("PATH="),
             "env_clear should have prevented PATH inheritance:\n{stdout}"
+        );
+    }
+
+    #[test]
+    fn shell_resume_command_clears_pre_existing_env() {
+        let resume = ShellResume {
+            argv: vec!["/usr/bin/env".to_owned()],
+            env: vec![LaunchEnv::new("SHELL_RESUME_SENTINEL", "present")],
+            cwd: PathBuf::from("/tmp"),
+        };
+
+        let output = shell_resume_command(&resume)
+            .expect("resume command")
+            .output()
+            .expect("/usr/bin/env runs");
+        assert!(output.status.success(), "env exited non-zero: {output:?}");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(
+            stdout.contains("SHELL_RESUME_SENTINEL=present"),
+            "shell resume env was not delivered:\n{stdout}"
+        );
+        assert!(
+            !stdout.contains("PATH="),
+            "shell resume inherited caller env:\n{stdout}"
         );
     }
 }

@@ -78,6 +78,7 @@ impl From<StatusFilter> for StatusRequest {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[non_exhaustive]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum RuntimeRpc {
     Spawn {
@@ -124,67 +125,146 @@ pub enum RuntimeRpc {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
-#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
-pub enum RuntimeResponse {
-    Spawned {
-        lifecycle: Lifecycle,
-        event: RuntimeEvent,
-        log_dir: Option<PathBuf>,
-        stdout_path: Option<PathBuf>,
-        stderr_path: Option<PathBuf>,
-    },
-    ValidateTarget {
-        response: ValidateTargetResponse,
-    },
-    Status {
-        lifecycles: Vec<Lifecycle>,
-    },
-    KillByPid {
-        response: KillByPidResponse,
-    },
-    Nudge {
-        response: NudgeResponse,
-    },
-    Capture {
-        response: crate::CaptureResponse,
-    },
-    Version {
-        version: crate::VersionInfo,
-    },
-    Watchers {
-        watchers: WatcherCounts,
-    },
-    Doctor {
-        doctor: crate::DoctorResponse,
-    },
-    /// Events in daemon append order.
+pub struct SpawnedPayload {
+    pub lifecycle: Lifecycle,
+    pub event: RuntimeEvent,
+    pub log_dir: Option<PathBuf>,
+    pub stdout_path: Option<PathBuf>,
+    pub stderr_path: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpawnConflictKind {
+    SessionId,
+    TmuxPaneOccupancy,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct SpawnConflictPayload {
+    pub kind: SpawnConflictKind,
+    pub lifecycle: Lifecycle,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct ValidateTargetPayload {
+    pub response: ValidateTargetResponse,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct StatusPayload {
+    pub lifecycles: Vec<Lifecycle>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct KillByPidPayload {
+    pub response: KillByPidResponse,
+}
+
+/// Session kill result.
+///
+/// `Signalled` means rtmd delivered the requested signal to the runtime
+/// process. `AlreadyExited` means the process naturally exited before the
+/// signal landed, so the kill request was a successful no-op.
+#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct KilledPayload {
+    pub outcome: crate::KillOutcome,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct NudgePayload {
+    pub response: NudgeResponse,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct CapturePayload {
+    pub response: crate::CaptureResponse,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct VersionPayload {
+    pub version: crate::VersionInfo,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct WatchersPayload {
+    pub watchers: WatcherCounts,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct DoctorPayload {
+    pub doctor: crate::DoctorResponse,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct EventsPayload {
+    pub events: Vec<RuntimeEvent>,
+    pub cursor: EventCursor,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct CursorExpiredPayload {
+    pub oldest: EventCursor,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct McpBridgePayload {
+    pub response: McpBridgeResponse,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct ShimLaunchPayload {
+    pub launch: LaunchSpec,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct ErrorPayload {
+    pub code: ErrorCode,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[non_exhaustive]
+pub enum EventBatch {
     Events {
         events: Vec<RuntimeEvent>,
         cursor: EventCursor,
     },
-    CursorExpired {
-        oldest: EventCursor,
-    },
-    McpBridge {
-        response: McpBridgeResponse,
-    },
-    ShimLaunch {
-        launch: LaunchSpec,
-    },
+    /// The watcher's cursor has been advanced to `oldest`. Calling `.next()` again will return events from `oldest` onward without an intervening reconcile. The caller is expected to perform a `client.status()` reconcile and optionally `.seek()` to a freshly-discovered cursor before continuing, otherwise events will replay.
+    CursorExpired { oldest: EventCursor },
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[non_exhaustive]
+#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
+pub enum RuntimeResponse {
+    Spawned(SpawnedPayload),
+    SpawnConflict(SpawnConflictPayload),
+    ValidateTarget(ValidateTargetPayload),
+    Status(StatusPayload),
+    Killed(KilledPayload),
+    KillByPid(KillByPidPayload),
+    Nudge(NudgePayload),
+    Capture(CapturePayload),
+    Version(VersionPayload),
+    Watchers(WatchersPayload),
+    Doctor(DoctorPayload),
+    /// Events in daemon append order.
+    Events(EventsPayload),
+    CursorExpired(CursorExpiredPayload),
+    McpBridge(McpBridgePayload),
+    ShimLaunch(ShimLaunchPayload),
     Ack,
     Stopping,
-    Error {
-        code: ErrorCode,
-        message: String,
-    },
+    Error(ErrorPayload),
 }
 
 impl RuntimeResponse {
     pub fn error(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self::Error {
+        Self::Error(ErrorPayload {
             code,
             message: message.into(),
-        }
+        })
     }
 }
 

@@ -28,6 +28,8 @@ fn assert_launcher_conforms(launcher: &'static dyn RuntimeLauncher) {
         env: Vec::new(),
         cwd: lilo_rm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
+        force: false,
+        shell_resume: None,
     };
 
     let argv = launcher.argv(&request).expect("argv");

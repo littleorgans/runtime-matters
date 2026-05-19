@@ -48,6 +48,13 @@ impl RtmHarness {
         )
     }
 
+    pub fn start_with_fast_periodic_probe() -> Self {
+        Self::start_with_options(
+            vec![("RTM_PROBE_SWEEP_INTERVAL_MS", "25".to_owned())],
+            false,
+        )
+    }
+
     fn start_with_options(
         reconcile_env: Vec<(&'static str, String)>,
         start_outside_tmux: bool,
@@ -258,7 +265,13 @@ impl RtmHarness {
         command
     }
 
-    fn spawn_command(&self, session_id: &str, runtime: &str, target: &str, human: bool) -> Command {
+    pub fn spawn_command(
+        &self,
+        session_id: &str,
+        runtime: &str,
+        target: &str,
+        human: bool,
+    ) -> Command {
         let mut command = self.rtm_command();
         command
             .arg("spawn")
@@ -420,9 +433,16 @@ pub fn wait_for_events(harness: &RtmHarness, expected: usize) -> String {
     wait_until(Duration::from_secs(5), || {
         let output = harness.events();
         let stdout = output_stdout(output);
-        (stdout.lines().count() == expected).then_some(stdout)
+        (runtime_event_line_count(&stdout) == expected).then_some(stdout)
     })
     .unwrap_or_else(|| panic!("events never reached {expected}"))
+}
+
+pub fn runtime_event_line_count(stdout: &str) -> usize {
+    stdout
+        .lines()
+        .filter(|line| line.starts_with("runtime event="))
+        .count()
 }
 
 pub fn wait_until<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) -> Option<T> {
@@ -529,7 +549,8 @@ fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
     std::fs::write(
         &path,
         format!(
-            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exec sleep 60\nfi\nprintf '{}\\n'\nexec sleep 60\n",
+            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exec sleep 60\nfi\nif [ \"${{RTM_TEST_PRINT_CWD:-}}\" = 1 ] || [ -f .rtm-print-cwd ]; then\n  printf '{} %s\\n' \"$(pwd)\"\n  exec sleep 60\nfi\nprintf '{}\\n'\nexec sleep 60\n",
+            FAKE_RUNTIME_READY,
             FAKE_RUNTIME_READY
         ),
     )

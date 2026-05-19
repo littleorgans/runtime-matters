@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 #[test]
 fn pass7_periodic_reconciliation_marks_lost_and_doctor_reports_it() {
-    let harness = RtmHarness::start();
+    let harness = RtmHarness::start_with_fast_periodic_probe();
     let session_id = Uuid::now_v7();
     let runtime_pid = unused_pid();
     persist_running(harness.db_path(), session_id, runtime_pid);
@@ -19,7 +19,7 @@ fn pass7_periodic_reconciliation_marks_lost_and_doctor_reports_it() {
         &harness,
         &session_id.to_string(),
         "state=Lost(PidNotAlive)",
-        Duration::from_secs(40),
+        Duration::from_secs(3),
     );
     assert!(status.contains("runtime=claude"), "{status}");
 

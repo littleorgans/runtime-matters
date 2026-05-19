@@ -1,6 +1,9 @@
 mod common;
 
-use common::{FAKE_RUNTIME_READY, RtmHarness, output_stdout, spawn_ok, spawn_output_ok};
+use common::{
+    FAKE_RUNTIME_READY, RtmHarness, output_stderr, output_stdout, spawn_ok, spawn_output_ok,
+    wait_for_status,
+};
 use lilo_rm_core::{CaptureError, CaptureRequest, CaptureResponse, RuntimeResponse, RuntimeRpc};
 use uuid::Uuid;
 
@@ -38,6 +41,71 @@ fn pass5_spawn_inside_tmux_captures_pane_and_nudges_it() {
 }
 
 #[test]
+fn nudge_rejects_terminal_tmux_session() {
+    let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-terminal-nudge") else {
+        eprintln!("skipping tmux terminal nudge test because tmux is unavailable");
+        return;
+    };
+
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+    let expected_pane = tmux_session.pane();
+
+    let spawn = harness.spawn_runtime_in_tmux(&session_id, "claude", &expected_pane);
+    spawn_output_ok(spawn, "claude");
+    tmux_session.wait_for_capture(FAKE_RUNTIME_READY);
+
+    let kill = harness.kill(&session_id, "TERM", 2);
+    assert!(kill.status.success(), "kill failed: {kill:?}");
+    wait_for_status(&harness, &session_id, "state=Exited");
+
+    let nudge = harness.nudge(&session_id, "after-exit");
+    assert!(!nudge.status.success(), "nudge succeeded: {nudge:?}");
+    let stderr = output_stderr(nudge);
+    assert!(
+        stderr.contains(&format!(
+            "nudge failed; reason=session_ended session_id={session_id}"
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("detail=session is no longer running"),
+        "{stderr}"
+    );
+
+    harness.stop();
+}
+
+#[test]
+fn tmux_spawn_cwd_flag_overrides_caller_cwd() {
+    let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-tmux-cwd") else {
+        eprintln!("skipping tmux cwd test because tmux is unavailable");
+        return;
+    };
+
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+    let caller_cwd = harness.rtm_home();
+    std::fs::create_dir_all(caller_cwd).expect("caller cwd");
+    let runtime_cwd = std::path::PathBuf::from(format!("/tmp/rtm-cwd-{}", Uuid::now_v7().simple()));
+    std::fs::create_dir_all(&runtime_cwd).expect("runtime cwd");
+    std::fs::write(runtime_cwd.join(".rtm-print-cwd"), "").expect("cwd marker");
+    let runtime_cwd = std::fs::canonicalize(runtime_cwd).expect("canonical runtime cwd");
+    let target = format!("tmux:{}", tmux_session.pane());
+
+    let output = harness
+        .spawn_command(&session_id, "claude", &target, true)
+        .arg("--cwd")
+        .arg(&runtime_cwd)
+        .current_dir(caller_cwd)
+        .output()
+        .expect("spawn client");
+    spawn_output_ok(output, "claude");
+
+    tmux_session.wait_for_capture(&format!("{FAKE_RUNTIME_READY} {}", runtime_cwd.display()));
+}
+
+#[test]
 fn capture_tmux_pane_returns_snapshot_json() {
     let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-capture") else {
         eprintln!("skipping tmux integration test because tmux is unavailable");
@@ -64,11 +132,12 @@ fn capture_tmux_pane_returns_snapshot_json() {
     tmux_session.wait_for_capture(&marker);
 
     let response = capture_rpc(&harness, session_id.parse().expect("session id"), Some(200));
-    let RuntimeResponse::Capture {
-        response: CaptureResponse::Captured(snapshot),
-    } = response
-    else {
+    let RuntimeResponse::Capture(payload) = response else {
         panic!("unexpected capture response: {response:?}");
+    };
+    let snapshot = match payload.response {
+        CaptureResponse::Captured(snapshot) => snapshot,
+        other => panic!("unexpected capture payload: {other:?}"),
     };
     assert_eq!(snapshot.scrollback_lines_requested, 200);
     assert!(snapshot.content.contains(&marker), "{snapshot:?}");
@@ -90,12 +159,13 @@ fn capture_headless_target_returns_not_tmux_target() {
     spawn_ok(&harness, &session_id.to_string(), "claude");
 
     let response = capture_rpc(&harness, session_id, None);
-    let RuntimeResponse::Capture {
-        response: CaptureResponse::Failed(CaptureError::NotATmuxTarget),
-    } = response
-    else {
+    let RuntimeResponse::Capture(payload) = response else {
         panic!("unexpected capture response: {response:?}");
     };
+    match payload.response {
+        CaptureResponse::Failed(CaptureError::NotATmuxTarget) => {}
+        other => panic!("unexpected capture payload: {other:?}"),
+    }
 
     harness.stop();
 }
@@ -118,12 +188,13 @@ fn capture_dead_tmux_pane_returns_pane_unavailable() {
     tmux_session.kill();
 
     let response = capture_rpc(&harness, session_id, None);
-    let RuntimeResponse::Capture {
-        response: CaptureResponse::Failed(CaptureError::PaneUnavailable),
-    } = response
-    else {
+    let RuntimeResponse::Capture(payload) = response else {
         panic!("unexpected capture response: {response:?}");
     };
+    match payload.response {
+        CaptureResponse::Failed(CaptureError::PaneUnavailable) => {}
+        other => panic!("unexpected capture payload: {other:?}"),
+    }
 
     harness.stop();
 }

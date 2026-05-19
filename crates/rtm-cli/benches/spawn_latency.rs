@@ -30,11 +30,13 @@ fn main() {
                         env: Vec::new(),
                         cwd: harness.rtm_home().to_path_buf(),
                         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
+                        force: false,
+                        shell_resume: None,
                     },
                 },
             ))
             .expect("spawn rpc");
-        assert!(matches!(response, RuntimeResponse::Spawned { .. }));
+        assert!(matches!(response, RuntimeResponse::Spawned(_)));
         latencies.push(started.elapsed());
     }
 

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     RuntimeUnavailable,
@@ -12,6 +13,7 @@ pub enum ErrorCode {
     HeadlessNudgeUnsupported,
     LaunchFailed,
     InvalidTarget,
+    SpawnConflict,
     ProtocolMismatch,
 }
 
@@ -24,6 +26,7 @@ impl ErrorCode {
             Self::HeadlessNudgeUnsupported => "headless_nudge_unsupported",
             Self::LaunchFailed => "launch_failed",
             Self::InvalidTarget => "invalid_target",
+            Self::SpawnConflict => "spawn_conflict",
             Self::ProtocolMismatch => "protocol_mismatch",
         }
     }
@@ -43,6 +46,8 @@ pub enum ProtocolError {
     Io(#[from] std::io::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("unsupported runtime protocol version: expected {expected}, got {got}")]
+    UnsupportedVersion { expected: &'static str, got: String },
 }
 
 #[derive(Debug, Error)]
