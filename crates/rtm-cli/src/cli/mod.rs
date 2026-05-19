@@ -179,21 +179,8 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Spawned {
-            lifecycle,
-            event,
-            log_dir,
-            stdout_path,
-            stderr_path,
-        } => {
-            let response = RuntimeResponse::Spawned {
-                lifecycle,
-                event,
-                log_dir,
-                stdout_path,
-                stderr_path,
-            };
-            output::emit(&args.output, &response)?;
+        RuntimeResponse::Spawned(payload) => {
+            output::emit(&args.output, &RuntimeResponse::Spawned(payload))?
         }
         other => anyhow::bail!("unexpected spawn response: {other:?}"),
     }
@@ -244,7 +231,7 @@ async fn kill_pid(args: KillArgs, pid: u32) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::KillByPid { response } => {
+        RuntimeResponse::KillByPid(response) => {
             output::emit(&args.output, &response)?;
         }
         other => bail!("unexpected kill-by-pid response: {other:?}"),
@@ -266,10 +253,10 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Nudge { response } if response.delivered => {
-            output::emit(&args.output, &response)?
+        RuntimeResponse::Nudge(payload) if payload.response.delivered => {
+            output::emit(&args.output, &payload.response)?
         }
-        RuntimeResponse::Nudge { response } => match response.outcome {
+        RuntimeResponse::Nudge(payload) => match payload.response.outcome {
             NudgeOutcome::Unsupported(reason) => bail!(
                 "nudge unsupported; reason={} session_id={}",
                 reason.as_str(),
@@ -280,7 +267,7 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
                 reason.as_str(),
                 args.session_id
             ),
-            NudgeOutcome::Delivered => bail!("inconsistent nudge response: {response:?}"),
+            NudgeOutcome::Delivered => bail!("inconsistent nudge response: {:?}", payload.response),
         },
         other => bail!("unexpected nudge response: {other:?}"),
     }
@@ -301,7 +288,7 @@ async fn capture(args: CaptureArgs) -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Capture { response } => match response.into_result() {
+        RuntimeResponse::Capture(response) => match response.into_result() {
             Ok(snapshot) => output::emit(&args.output, &snapshot)?,
             Err(error) => bail!(
                 "capture failed; error={error:?} session_id={}",
@@ -327,7 +314,7 @@ async fn status(args: StatusArgs) -> Result<()> {
     )
     .await?;
     match response {
-        RuntimeResponse::Status { lifecycles } => output::emit(&args.output, &lifecycles)?,
+        RuntimeResponse::Status(payload) => output::emit(&args.output, &payload.lifecycles)?,
         other => anyhow::bail!("unexpected status response: {other:?}"),
     }
     Ok(())

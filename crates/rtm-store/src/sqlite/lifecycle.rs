@@ -435,6 +435,7 @@ fn encode_state(
         LifecycleState::Running => ("Running", None, None, None),
         LifecycleState::Exited(exit) => ("Exited", exit.code, exit.signal, None),
         LifecycleState::Lost(evidence) => ("Lost", None, None, Some(encode_lost(*evidence))),
+        _ => unreachable!("unsupported lifecycle state variant"),
     }
 }
 
@@ -458,6 +459,7 @@ fn encode_lost(evidence: LostEvidence) -> &'static str {
         LostEvidence::ShimDiedBeforeReport => "ShimDiedBeforeReport",
         LostEvidence::PidNotAlive => "PidNotAlive",
         LostEvidence::PidReuseDetected => "PidReuseDetected",
+        _ => unreachable!("unsupported lost evidence variant"),
     }
 }
 

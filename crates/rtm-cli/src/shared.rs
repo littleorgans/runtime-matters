@@ -53,9 +53,12 @@ pub async fn events(
     )
     .await?
     {
-        RuntimeResponse::Events { events, .. } => Ok(events),
-        RuntimeResponse::CursorExpired { oldest } => {
-            bail!("events cursor expired; oldest available cursor is {oldest}")
+        RuntimeResponse::Events(payload) => Ok(payload.events),
+        RuntimeResponse::CursorExpired(payload) => {
+            bail!(
+                "events cursor expired; oldest available cursor is {}",
+                payload.oldest
+            )
         }
         other => bail!("unexpected response to events request: {other:?}"),
     }

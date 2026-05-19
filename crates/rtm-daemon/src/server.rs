@@ -428,6 +428,7 @@ impl ServerState {
                     .await?;
             }
             TerminationEvidence::ShimExit => {}
+            _ => unreachable!("unsupported termination evidence variant"),
         }
         Ok(())
     }
@@ -611,6 +612,7 @@ impl ServerState {
             TerminationEvidence::ShimExit | TerminationEvidence::ProcessExit => {
                 event_channel::terminated_event(lifecycle, evidence)
             }
+            _ => unreachable!("unsupported termination evidence variant"),
         };
         Ok(Some(self.append_event(event).await?))
     }
@@ -642,6 +644,7 @@ impl ServerState {
             LifecycleState::Exited(_) | LifecycleState::Lost(_) => {
                 bail!("session {} is already terminal", lifecycle.session_id)
             }
+            _ => unreachable!("unsupported lifecycle state variant"),
         }
     }
 

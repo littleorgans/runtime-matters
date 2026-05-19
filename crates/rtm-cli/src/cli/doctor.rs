@@ -7,7 +7,7 @@ pub async fn run(output_args: OutputArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
     let response = crate::shared::request(&socket_path, RuntimeRpc::Doctor).await?;
     match response {
-        RuntimeResponse::Doctor { doctor } => output::emit(&output_args, &doctor),
+        RuntimeResponse::Doctor(payload) => output::emit(&output_args, &payload.doctor),
         other => bail!("unexpected doctor response: {other:?}"),
     }
 }

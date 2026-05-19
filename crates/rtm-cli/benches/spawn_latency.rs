@@ -34,7 +34,7 @@ fn main() {
                 },
             ))
             .expect("spawn rpc");
-        assert!(matches!(response, RuntimeResponse::Spawned { .. }));
+        assert!(matches!(response, RuntimeResponse::Spawned(_)));
         latencies.push(started.elapsed());
     }
 

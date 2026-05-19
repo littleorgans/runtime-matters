@@ -43,6 +43,7 @@ pub struct PaneSnapshot {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum CaptureError {
     NotATmuxTarget,
@@ -53,6 +54,7 @@ pub enum CaptureError {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(tag = "status", content = "payload", rename_all = "snake_case")]
 pub enum CaptureResponse {
     Captured(PaneSnapshot),

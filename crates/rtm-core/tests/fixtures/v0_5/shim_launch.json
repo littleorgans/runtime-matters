@@ -1,0 +1,1 @@
+{"type":"shim_launch","payload":{"launch":{"argv":["claude","--resume"],"env":[{"key":"RTM","value":"1"}],"cwd":"/tmp/rtm"}}}

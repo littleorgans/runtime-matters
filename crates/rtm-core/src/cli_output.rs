@@ -186,23 +186,18 @@ impl CliOutput for PaneSnapshot {
 impl CliOutput for RuntimeResponse {
     fn render_human(&self, f: &mut impl Write) -> fmt::Result {
         match self {
-            Self::Spawned {
-                lifecycle,
-                event,
-                log_dir,
-                stdout_path,
-                stderr_path,
-            } => writeln!(
+            Self::Spawned(payload) => writeln!(
                 f,
                 "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={} stdout_path={} stderr_path={}",
-                lifecycle.state,
-                event_name(event),
-                lifecycle
+                payload.lifecycle.state,
+                event_name(&payload.event),
+                payload
+                    .lifecycle
                     .runtime_pid
                     .expect("running lifecycle runtime pid"),
-                display_optional_path(log_dir.as_deref()),
-                display_optional_path(stdout_path.as_deref()),
-                display_optional_path(stderr_path.as_deref())
+                display_optional_path(payload.log_dir.as_deref()),
+                display_optional_path(payload.stdout_path.as_deref()),
+                display_optional_path(payload.stderr_path.as_deref())
             ),
             other => write!(f, "unexpected runtime response: {other:?}"),
         }

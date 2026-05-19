@@ -5,10 +5,10 @@ use std::os::unix::net::UnixStream;
 
 use common::{RtmHarness, output_stderr, output_stdout, spawn_ok, wait_for_log};
 use lilo_rm_core::{
-    ErrorCode, HeadlessSpawnTarget, LaunchEnv, NudgeFailureReason, NudgeOutcome, NudgeRequest,
-    NudgeResponse, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget,
-    ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse, read_json_line_blocking,
-    write_json_line_blocking,
+    ErrorCode, HeadlessSpawnTarget, LaunchEnv, NudgeFailureReason, NudgeOutcome, NudgePayload,
+    NudgeRequest, NudgeResponse, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest,
+    SpawnTarget, ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetRequest,
+    ValidateTargetResponse, read_json_line_blocking, write_json_line_blocking,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -35,12 +35,12 @@ fn explicit_headless_spawn_records_no_tmux_pane_and_rejects_nudge() {
     );
     assert_eq!(
         response,
-        RuntimeResponse::Nudge {
+        RuntimeResponse::Nudge(NudgePayload {
             response: NudgeResponse {
                 delivered: false,
                 outcome: NudgeOutcome::Unsupported(NudgeFailureReason::HeadlessLifecycle),
             },
-        }
+        })
     );
 
     let nudge = harness.nudge(&session_id, "headless");
@@ -68,11 +68,15 @@ fn missing_session_nudge_uses_structured_error_code() {
             },
         },
     );
-    let RuntimeResponse::Error { code, message } = response else {
+    let RuntimeResponse::Error(payload) = response else {
         panic!("unexpected missing-session response: {response:?}");
     };
-    assert_eq!(code, ErrorCode::SessionNotFound);
-    assert!(message.contains(&format!("session {session_id} not found")));
+    assert_eq!(payload.code, ErrorCode::SessionNotFound);
+    assert!(
+        payload
+            .message
+            .contains(&format!("session {session_id} not found"))
+    );
 }
 
 #[test]
@@ -95,20 +99,13 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
         ))
         .expect("headless spawn");
 
-    let RuntimeResponse::Spawned {
-        lifecycle,
-        log_dir,
-        stdout_path,
-        stderr_path,
-        ..
-    } = response
-    else {
+    let RuntimeResponse::Spawned(payload) = response else {
         panic!("unexpected spawn response: {response:?}");
     };
-    let log_dir = log_dir.expect("headless log dir");
-    let stdout_path = stdout_path.expect("headless stdout path");
-    let stderr_path = stderr_path.expect("headless stderr path");
-    assert_eq!(lifecycle.tmux_pane, None);
+    let log_dir = payload.log_dir.expect("headless log dir");
+    let stdout_path = payload.stdout_path.expect("headless stdout path");
+    let stderr_path = payload.stderr_path.expect("headless stderr path");
+    assert_eq!(payload.lifecycle.tmux_pane, None);
     assert_eq!(
         log_dir,
         harness.rtm_home().join("logs").join(session_id.to_string())
@@ -125,15 +122,16 @@ fn validate_target_rpc_reports_headless_and_parse_outcomes() {
 
     assert_eq!(
         validate_target(&harness, "headless"),
-        RuntimeResponse::ValidateTarget {
+        RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::valid(),
-        }
+        })
     );
 
-    let RuntimeResponse::ValidateTarget { response } = validate_target(&harness, "tmux:not-a-pane")
+    let RuntimeResponse::ValidateTarget(payload) = validate_target(&harness, "tmux:not-a-pane")
     else {
         panic!("expected validate target response");
     };
+    let response = payload.response;
     assert!(!response.valid);
     assert!(matches!(
         response.outcome,
@@ -142,9 +140,9 @@ fn validate_target_rpc_reports_headless_and_parse_outcomes() {
 
     assert_eq!(
         validate_target(&harness, "ssh:remote"),
-        RuntimeResponse::ValidateTarget {
+        RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::unsupported_target("ssh:remote"),
-        }
+        })
     );
 }
 
@@ -159,9 +157,9 @@ fn validate_target_rpc_checks_tmux_liveness_when_available() {
 
     assert_eq!(
         validate_target(&harness, &target),
-        RuntimeResponse::ValidateTarget {
+        RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::valid(),
-        }
+        })
     );
 
     let address = tmux_session.pane();
@@ -169,11 +167,11 @@ fn validate_target_rpc_checks_tmux_liveness_when_available() {
 
     assert_eq!(
         validate_target(&harness, &target),
-        RuntimeResponse::ValidateTarget {
+        RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::tmux_pane_dead(
                 address.parse().expect("tmux address"),
             ),
-        }
+        })
     );
 }
 

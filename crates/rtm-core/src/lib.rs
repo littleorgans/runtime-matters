@@ -7,13 +7,13 @@
 //! ## Events contract
 //!
 //! v0.4 events use [`RuntimeRpc::Events`] and
-//! [`RuntimeResponse::Events { events, cursor }`](RuntimeResponse::Events).
+//! [`RuntimeResponse::Events`](RuntimeResponse::Events).
 //! The daemon appends lifecycle observations to a durable JSONL log in global
 //! order. Clients pass the returned cursor as `since` to resume without
 //! duplicate delivery after client or daemon restarts.
 //!
 //! If a cursor is older than the retained log floor, rtmd returns
-//! [`RuntimeResponse::CursorExpired { oldest }`](RuntimeResponse::CursorExpired).
+//! [`RuntimeResponse::CursorExpired`](RuntimeResponse::CursorExpired).
 
 pub mod admin;
 pub mod capture;
@@ -44,9 +44,12 @@ pub use mcp::{
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,
 };
 pub use proto::{
-    EVENT_LOG_RETENTION_MIN_AGE_SECS, EVENT_LOG_RETENTION_MIN_EVENTS, EVENT_WAIT_MAX_MS,
-    EventCursor, EventsRequest, RuntimeResponse, RuntimeRpc, StatusRequest, clamped_event_wait_ms,
-    read_json_line, read_json_line_blocking, write_json_line, write_json_line_blocking,
+    CursorExpiredPayload, DoctorPayload, EVENT_LOG_RETENTION_MIN_AGE_SECS,
+    EVENT_LOG_RETENTION_MIN_EVENTS, EVENT_WAIT_MAX_MS, ErrorPayload, EventBatch, EventCursor,
+    EventsPayload, EventsRequest, McpBridgePayload, NudgePayload, RuntimeResponse, RuntimeRpc,
+    ShimLaunchPayload, SpawnedPayload, StatusPayload, StatusRequest, ValidateTargetPayload,
+    VersionPayload, WatchersPayload, clamped_event_wait_ms, read_json_line,
+    read_json_line_blocking, write_json_line, write_json_line_blocking,
 };
 pub use spawn_context::{
     CALLER_ENV_DENYLIST, CALLER_ENV_DENYLIST_PREFIXES, capture_caller_cwd, capture_caller_env,

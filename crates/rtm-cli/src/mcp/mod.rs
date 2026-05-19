@@ -40,7 +40,7 @@ async fn bridge_line(socket_path: &std::path::Path, line: &str) -> Result<Option
     .await?;
 
     match response {
-        RuntimeResponse::McpBridge { response } => Ok(response.line),
+        RuntimeResponse::McpBridge(payload) => Ok(payload.response.line),
         other => bail!("unexpected MCP bridge response: {other:?}"),
     }
 }

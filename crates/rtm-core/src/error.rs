@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     RuntimeUnavailable,

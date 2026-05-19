@@ -83,7 +83,7 @@ fn spawn_one(
         ))
         .expect("spawn rpc");
     match response {
-        RuntimeResponse::Spawned { lifecycle, .. } => lifecycle,
+        RuntimeResponse::Spawned(payload) => payload.lifecycle,
         other => panic!("unexpected spawn response: {other:?}"),
     }
 }

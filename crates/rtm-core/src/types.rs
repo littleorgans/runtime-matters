@@ -67,6 +67,7 @@ impl<'de> Deserialize<'de> for RuntimeKind {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleState {
     Forking,
@@ -474,6 +475,7 @@ impl Display for RuntimeExit {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum LostEvidence {
     ShimDiedBeforeReport,
@@ -492,6 +494,7 @@ impl Display for LostEvidence {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum TerminationEvidence {
     ShimExit,

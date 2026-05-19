@@ -85,10 +85,10 @@ fn doctor_json_response_is_stable() {
         ))
         .expect("doctor rpc");
 
-    let RuntimeResponse::Doctor { doctor } = response else {
+    let RuntimeResponse::Doctor(payload) = response else {
         panic!("unexpected doctor response: {response:?}");
     };
-    let mut doctor = serde_json::to_value(doctor).expect("doctor json");
+    let mut doctor = serde_json::to_value(payload.doctor).expect("doctor json");
     redact_cli_json_snapshot(&mut doctor);
 
     insta::assert_json_snapshot!(doctor);

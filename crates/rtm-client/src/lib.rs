@@ -84,7 +84,9 @@ async fn request_on_stream(
 
     let mut reader = BufReader::new(read_half);
     match read_json_line(&mut reader).await? {
-        RuntimeResponse::Error { code, message } => {
+        RuntimeResponse::Error(payload) => {
+            let code = payload.code;
+            let message = payload.message;
             Err(ClientError::ErrorResponse { code, message })
         }
         response => Ok(response),
