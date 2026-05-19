@@ -28,7 +28,7 @@ pub enum LogsUnavailableReason {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CaptureRequest {
-    pub target_id: Uuid,
+    pub session_id: Uuid,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scrollback_lines: Option<u32>,
 }

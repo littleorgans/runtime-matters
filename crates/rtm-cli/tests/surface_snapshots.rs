@@ -36,7 +36,7 @@ fn session_facing_cli_json_outputs_are_stable() {
     ]);
     assert!(spawn.status.success(), "spawn failed: {spawn:?}");
 
-    let nudge = harness.cli(&["nudge", "--session-id", &session_id, "--content", "hello"]);
+    let nudge = harness.cli(&["nudge", &session_id, "--content", "hello"]);
     assert!(!nudge.status.success(), "nudge unexpectedly succeeded");
 
     let kill = harness.kill(&session_id, "TERM", 2);

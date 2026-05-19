@@ -56,7 +56,7 @@ fn runtime_rpc_json_shapes_are_stable() {
         },
         RuntimeRpc::Capture {
             request: CaptureRequest {
-                target_id: session_id,
+                session_id,
                 scrollback_lines: Some(500),
             },
         },
