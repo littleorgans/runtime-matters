@@ -3,7 +3,10 @@ mod common;
 use std::io::BufReader;
 use std::os::unix::net::UnixStream;
 
-use common::{RtmHarness, output_stderr, output_stdout, spawn_ok, wait_for_log};
+use common::{
+    FAKE_RUNTIME_READY, RtmHarness, output_stderr, output_stdout, spawn_ok, spawn_output_ok,
+    wait_for_log,
+};
 use lilo_rm_core::{
     ErrorCode, HeadlessSpawnTarget, LaunchEnv, NudgeFailureReason, NudgeOutcome, NudgePayload,
     NudgeRequest, NudgeResponse, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest,
@@ -114,6 +117,31 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
     assert_eq!(stderr_path, log_dir.join("stderr.log"));
     wait_for_log(stdout_path, "HELLO\n");
     wait_for_log(stderr_path, "WORLD\n");
+}
+
+#[test]
+fn headless_spawn_cwd_flag_overrides_caller_cwd() {
+    let harness = RtmHarness::start_outside_tmux();
+    let session_id = Uuid::now_v7().to_string();
+    let caller_cwd = harness.rtm_home();
+    let runtime_cwd = caller_cwd.join("runtime-cwd");
+    std::fs::create_dir_all(&runtime_cwd).expect("runtime cwd");
+    std::fs::write(runtime_cwd.join(".rtm-print-cwd"), "").expect("cwd marker");
+    let runtime_cwd = std::fs::canonicalize(runtime_cwd).expect("canonical runtime cwd");
+
+    let output = harness
+        .spawn_command(&session_id, "claude", "headless", true)
+        .arg("--cwd")
+        .arg(&runtime_cwd)
+        .current_dir(caller_cwd)
+        .output()
+        .expect("spawn client");
+    spawn_output_ok(output, "claude");
+
+    wait_for_log(
+        caller_cwd.join("logs").join(&session_id).join("stdout.log"),
+        &format!("{FAKE_RUNTIME_READY} {}\n", runtime_cwd.display()),
+    );
 }
 
 #[test]

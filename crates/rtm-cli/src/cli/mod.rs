@@ -8,6 +8,7 @@ use lilo_rm_core::{
     SpawnRequest, SpawnTarget, StatusFilter, ValidateTargetOutcome, ValidateTargetResponse,
 };
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::cli::daemon::DaemonCommand;
@@ -72,6 +73,8 @@ pub struct SpawnArgs {
     session_id: Uuid,
     #[arg(long, value_name = "headless|tmux:SESSION:WINDOW.PANE")]
     target: SpawnTarget,
+    #[arg(long, value_name = "PATH")]
+    cwd: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -177,18 +180,25 @@ impl Cli {
 }
 
 async fn spawn(args: SpawnArgs) -> Result<()> {
+    let SpawnArgs {
+        output,
+        runtime,
+        session_id,
+        target,
+        cwd,
+    } = args;
+    let cwd = spawn_cwd(cwd)?;
     let socket_path = crate::shared::socket_path()?;
-    let cwd = lilo_rm_core::capture_caller_cwd().context("failed to capture caller cwd")?;
     let env = lilo_rm_core::capture_caller_env();
     let response = crate::shared::request(
         &socket_path,
         RuntimeRpc::Spawn {
             request: SpawnRequest {
-                session_id: args.session_id,
-                runtime: args.runtime,
+                session_id,
+                runtime,
                 env,
                 cwd,
-                target: args.target,
+                target,
             },
         },
     )
@@ -196,11 +206,33 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
 
     match response {
         RuntimeResponse::Spawned(payload) => {
-            output::emit(&args.output, &RuntimeResponse::Spawned(payload))?
+            output::emit(&output, &RuntimeResponse::Spawned(payload))?
         }
         other => anyhow::bail!("unexpected spawn response: {other:?}"),
     }
     Ok(())
+}
+
+fn spawn_cwd(cwd: Option<PathBuf>) -> Result<PathBuf> {
+    let Some(path) = cwd else {
+        return lilo_rm_core::capture_caller_cwd().context("failed to capture caller cwd");
+    };
+    let caller_cwd = lilo_rm_core::capture_caller_cwd().context("failed to capture caller cwd")?;
+    let resolved = resolve_caller_path(&caller_cwd, &path);
+    let canonical = std::fs::canonicalize(&resolved)
+        .with_context(|| format!("spawn cwd does not exist: {}", resolved.display()))?;
+    if !canonical.is_dir() {
+        bail!("spawn cwd is not a directory: {}", canonical.display());
+    }
+    Ok(canonical)
+}
+
+fn resolve_caller_path(caller_cwd: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        caller_cwd.join(path)
+    }
 }
 
 async fn kill(args: KillArgs) -> Result<()> {

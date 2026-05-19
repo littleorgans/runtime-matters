@@ -38,6 +38,35 @@ fn pass5_spawn_inside_tmux_captures_pane_and_nudges_it() {
 }
 
 #[test]
+fn tmux_spawn_cwd_flag_overrides_caller_cwd() {
+    let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-tmux-cwd") else {
+        eprintln!("skipping tmux cwd test because tmux is unavailable");
+        return;
+    };
+
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+    let caller_cwd = harness.rtm_home();
+    std::fs::create_dir_all(caller_cwd).expect("caller cwd");
+    let runtime_cwd = std::path::PathBuf::from(format!("/tmp/rtm-cwd-{}", Uuid::now_v7().simple()));
+    std::fs::create_dir_all(&runtime_cwd).expect("runtime cwd");
+    std::fs::write(runtime_cwd.join(".rtm-print-cwd"), "").expect("cwd marker");
+    let runtime_cwd = std::fs::canonicalize(runtime_cwd).expect("canonical runtime cwd");
+    let target = format!("tmux:{}", tmux_session.pane());
+
+    let output = harness
+        .spawn_command(&session_id, "claude", &target, true)
+        .arg("--cwd")
+        .arg(&runtime_cwd)
+        .current_dir(caller_cwd)
+        .output()
+        .expect("spawn client");
+    spawn_output_ok(output, "claude");
+
+    tmux_session.wait_for_capture(&format!("{FAKE_RUNTIME_READY} {}", runtime_cwd.display()));
+}
+
+#[test]
 fn capture_tmux_pane_returns_snapshot_json() {
     let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-capture") else {
         eprintln!("skipping tmux integration test because tmux is unavailable");
