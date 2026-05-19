@@ -1,12 +1,12 @@
-# runtime-matters agents
+# runtime-matters
 
-Follow the selected Linear issue. Validate assumptions before acting.
+Stuart owns what and why. Claude owns how.
 
-Quality gate before commit:
+## Invariants
 
-```bash
-just check && just build && just test
-```
-
-Keep files under 700 lines and functions around 150 lines or less.
-
+- Validate assumptions before acting.
+- Keep files under 700 lines.
+- Keep functions around 150 lines or less.
+- Keep shared behavior DRY.
+- For CLI shape, think `kubectl`: stable verbs, positional targets, and flags for modifiers.
+- Prove changes with `just check && just build && just test` before commit.
