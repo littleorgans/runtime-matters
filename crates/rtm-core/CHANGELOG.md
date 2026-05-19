@@ -2,6 +2,12 @@
 
 All notable changes documented here.
 
+## [0.6.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.5.0...lilo-rm-core-v0.6.0) - 2026-05-19
+
+### Features
+
+- runtime-matters v0.6 client ergonomics ([#33](https://github.com/littleorgans/runtime-matters/pull/33))
+
 ## [0.5.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.4.0...lilo-rm-core-v0.5.0) - 2026-05-19
 
 ### Features
