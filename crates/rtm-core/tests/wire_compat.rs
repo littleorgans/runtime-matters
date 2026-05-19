@@ -4,17 +4,17 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use lilo_rm_core::{
-    CaptureResponse, CursorExpiredPayload, DoctorPayload, ErrorCode, ErrorPayload, EventsPayload,
-    KillByPidResponse, McpBridgePayload, McpBridgeResponse, NudgeOutcome, NudgePayload,
-    NudgeResponse, RuntimeEvent, RuntimeResponse, ShimLaunchPayload, SpawnedPayload, StatusPayload,
-    ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetResponse, VersionPayload,
-    WatchersPayload,
+    CaptureError, CaptureResponse, CursorExpiredPayload, DoctorPayload, ErrorCode, ErrorPayload,
+    EventsPayload, KillByPidResponse, LaunchEnv, LaunchSpec, LauncherStatus, Lifecycle,
+    LifecycleCounts, LifecycleLogAvailability, LogAvailability, McpBridgePayload,
+    McpBridgeResponse, MigrationState, NudgeFailureReason, NudgeOutcome, NudgePayload,
+    NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, ShimLaunchPayload, SpawnedPayload,
+    StatusPayload, TmuxStatus, ValidateTargetOutcome, ValidateTargetPayload,
+    ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts, WatchersPayload,
 };
-use support::{
-    doctor_response, headless_lifecycle, launch_spec, pane_snapshot, session_id, test_version_info,
-    timestamp, watcher_counts,
-};
+use support::{other_session_id, session_id, timestamp};
 
 const FIXTURES: [&str; 16] = [
     "ack.json",
@@ -80,7 +80,7 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
         ("ack.json", RuntimeResponse::Ack),
         (
             "capture.json",
-            RuntimeResponse::Capture(CaptureResponse::Captured(pane_snapshot())),
+            RuntimeResponse::Capture(CaptureResponse::Failed(CaptureError::NotATmuxTarget)),
         ),
         (
             "cursor_expired.json",
@@ -89,21 +89,21 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
         (
             "doctor.json",
             RuntimeResponse::Doctor(DoctorPayload {
-                doctor: doctor_response(),
+                doctor: v05_doctor_response(),
             }),
         ),
         (
             "error.json",
             RuntimeResponse::Error(ErrorPayload {
-                code: ErrorCode::LaunchFailed,
-                message: "failed".to_owned(),
+                code: ErrorCode::RuntimeUnavailable,
+                message: "no launcher registered for runtime kind: missing-runtime".to_owned(),
             }),
         ),
         (
             "events.json",
             RuntimeResponse::Events(EventsPayload {
                 events: vec![RuntimeEvent::Lost {
-                    session_id,
+                    session_id: other_session_id(),
                     evidence: lilo_rm_core::LostEvidence::PidNotAlive,
                 }],
                 cursor: 8,
@@ -112,7 +112,7 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
         (
             "kill_by_pid.json",
             RuntimeResponse::KillByPid(KillByPidResponse {
-                pid: 4242,
+                pid: 77689,
                 signal: 15,
                 killed_after_grace: false,
             }),
@@ -122,7 +122,7 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
             RuntimeResponse::McpBridge(McpBridgePayload {
                 response: McpBridgeResponse {
                     line: Some(
-                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}".to_owned(),
+                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}".to_owned(),
                     ),
                 },
             }),
@@ -131,39 +131,35 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
             "nudge.json",
             RuntimeResponse::Nudge(NudgePayload {
                 response: NudgeResponse {
-                    delivered: true,
-                    outcome: NudgeOutcome::Delivered,
+                    delivered: false,
+                    outcome: NudgeOutcome::Unsupported(NudgeFailureReason::HeadlessLifecycle),
                 },
             }),
         ),
         (
             "shim_launch.json",
             RuntimeResponse::ShimLaunch(ShimLaunchPayload {
-                launch: launch_spec(),
+                launch: v05_launch_spec(),
             }),
         ),
         (
             "spawned.json",
             RuntimeResponse::Spawned(SpawnedPayload {
-                lifecycle: headless_lifecycle(session_id),
+                lifecycle: v05_headless_lifecycle(session_id),
                 event: RuntimeEvent::Running {
                     session_id,
-                    runtime_pid: 4242,
+                    runtime_pid: 1,
                     start_time: timestamp(),
                 },
-                log_dir: Some("/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001".into()),
-                stdout_path: Some(
-                    "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stdout.log".into(),
-                ),
-                stderr_path: Some(
-                    "/tmp/rtm/logs/018f6e28-0000-7000-8000-000000000001/stderr.log".into(),
-                ),
+                log_dir: Some(v05_session_log_dir()),
+                stdout_path: Some(v05_stdout_path()),
+                stderr_path: Some(v05_stderr_path()),
             }),
         ),
         (
             "status.json",
             RuntimeResponse::Status(StatusPayload {
-                lifecycles: vec![headless_lifecycle(session_id)],
+                lifecycles: vec![v05_headless_lifecycle(session_id)],
             }),
         ),
         ("stopping.json", RuntimeResponse::Stopping),
@@ -182,13 +178,13 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
         (
             "version.json",
             RuntimeResponse::Version(VersionPayload {
-                version: test_version_info(),
+                version: v05_version_info(),
             }),
         ),
         (
             "watchers.json",
             RuntimeResponse::Watchers(WatchersPayload {
-                watchers: watcher_counts(),
+                watchers: v05_watcher_counts(),
             }),
         ),
     ]
@@ -196,4 +192,115 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/v0_5")
+}
+
+fn v05_headless_lifecycle(session_id: uuid::Uuid) -> Lifecycle {
+    let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
+    assert!(lifecycle.mark_running(lilo_rm_core::ShimReady {
+        session_id,
+        shim_pid: 1,
+        runtime_pid: 1,
+        start_time: timestamp(),
+        tmux_pane: None,
+    }));
+    lifecycle.log_availability = Some(LogAvailability::Headless {
+        stdout_path: v05_stdout_path(),
+        stderr_path: v05_stderr_path(),
+    });
+    lifecycle
+}
+
+fn v05_session_log_dir() -> PathBuf {
+    PathBuf::from(
+        "/tmp/runtime-matters-v0.5-fixture-home/logs/018f6e28-0000-7000-8000-000000000001",
+    )
+}
+
+fn v05_stdout_path() -> PathBuf {
+    v05_session_log_dir().join("stdout.log")
+}
+
+fn v05_stderr_path() -> PathBuf {
+    v05_session_log_dir().join("stderr.log")
+}
+
+fn v05_launch_spec() -> LaunchSpec {
+    LaunchSpec {
+        argv: vec!["/Users/alphab/.local/bin/claude".to_owned()],
+        env: vec![
+            LaunchEnv::new("RTM", "1"),
+            LaunchEnv::new("HELIOY_SESSION_ID", session_id().to_string()),
+            LaunchEnv::new("HELIOY_RUNTIME", "claude"),
+            LaunchEnv::new("RTM_SESSION_ID", session_id().to_string()),
+            LaunchEnv::new("RTM_RUNTIME_KIND", "claude"),
+        ],
+        cwd: "/tmp/rtm".into(),
+    }
+}
+
+fn v05_doctor_response() -> lilo_rm_core::DoctorResponse {
+    lilo_rm_core::DoctorResponse {
+        version: v05_version_info(),
+        socket_path: "/tmp/runtime-matters-v0.5-fixture-home/rtmd.sock".to_owned(),
+        uptime_secs: 0,
+        sqlite: MigrationState {
+            applied: 2,
+            total: 2,
+            applied_descriptions: vec!["lifecycle".to_owned(), "probe state".to_owned()],
+            pending_descriptions: Vec::new(),
+        },
+        lifecycles: LifecycleCounts {
+            forking: 0,
+            running: 1,
+            exited: 0,
+            lost: 0,
+        },
+        watchers: v05_watcher_counts(),
+        launchers: vec![
+            LauncherStatus {
+                runtime: "claude".to_owned(),
+                command: Some("/Users/alphab/.local/bin/claude".to_owned()),
+                error: None,
+            },
+            LauncherStatus {
+                runtime: "codex".to_owned(),
+                command: Some(
+                    "/Users/alphab/.local/share/mise/installs/node/25/bin/codex".to_owned(),
+                ),
+                error: None,
+            },
+        ],
+        tmux: TmuxStatus {
+            available: true,
+            version: Some("tmux 3.6a".to_owned()),
+            error: None,
+        },
+        log_availability: vec![LifecycleLogAvailability {
+            session_id: session_id(),
+            log_availability: LogAvailability::Headless {
+                stdout_path: v05_stdout_path(),
+                stderr_path: v05_stderr_path(),
+            },
+        }],
+        last_probe_sweep: Some(v05_probe_sweep()),
+        recent_lost: Vec::new(),
+    }
+}
+
+fn v05_version_info() -> VersionInfo {
+    VersionInfo::new("0.2.0", "782b3e5e19c5")
+}
+
+fn v05_watcher_counts() -> WatcherCounts {
+    WatcherCounts {
+        process_exit_watchers: 1,
+        shim_sockets: 0,
+        event_waiters: 0,
+    }
+}
+
+fn v05_probe_sweep() -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339("2026-05-19T11:49:32.054125Z")
+        .expect("v0.5 probe sweep")
+        .with_timezone(&Utc)
 }

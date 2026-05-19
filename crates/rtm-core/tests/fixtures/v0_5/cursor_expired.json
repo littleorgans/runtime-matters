@@ -1,1 +1,1 @@
-{"type":"cursor_expired","payload":{"oldest":7}}
+{"payload":{"oldest":7},"type":"cursor_expired"}

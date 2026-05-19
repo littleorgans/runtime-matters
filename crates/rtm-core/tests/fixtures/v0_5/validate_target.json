@@ -1,1 +1,1 @@
-{"type":"validate_target","payload":{"response":{"valid":false,"outcome":{"kind":"invalid_target","message":"invalid spawn target tmux:not-a-pane; expected headless or tmux:<session>:<window>.<pane>"}}}}
+{"payload":{"response":{"outcome":{"kind":"invalid_target","message":"invalid spawn target tmux:not-a-pane; expected headless or tmux:<session>:<window>.<pane>"},"valid":false}},"type":"validate_target"}

@@ -1,1 +1,1 @@
-{"type":"nudge","payload":{"response":{"delivered":true,"outcome":{"kind":"delivered"}}}}
+{"payload":{"response":{"delivered":false,"outcome":{"kind":"unsupported","reason":"headless_lifecycle"}}},"type":"nudge"}

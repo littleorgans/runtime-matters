@@ -1,1 +1,1 @@
-{"type":"capture","payload":{"response":{"status":"captured","payload":{"content":"\u001b[32mhello\u001b[0m","captured_at_ms":1700000001000,"scrollback_lines_requested":1000,"scrollback_lines_included":1,"pane_history_lines":2000}}}}
+{"payload":{"response":{"payload":{"type":"not_a_tmux_target"},"status":"failed"}},"type":"capture"}
