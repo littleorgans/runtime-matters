@@ -10,11 +10,13 @@ release_always = false
 [[package]]
 name = "lilo-rm-core"
 release = true
+publish = true
 version_group = "rm-contract"
 
 [[package]]
 name = "lilo-rm-client"
 release = true
+publish = true
 version_group = "rm-contract"
 
 [changelog]
