@@ -82,7 +82,7 @@ where
             }
         }
     }
-    unreachable!("reconnect loop returns on success or final failure")
+    bail!("{label} failed: reconnect loop exhausted without success or final failure")
 }
 
 fn runtime_command(launch: &LaunchSpec) -> Result<Command> {

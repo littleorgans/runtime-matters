@@ -148,7 +148,7 @@ fn cli_events_json_surfaces_cursor_expiration() {
 
     let output = harness.cli(&["events", "--since", "0", "--format", "json"]);
 
-    assert!(output.status.success(), "events json failed: {output:?}");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
     let body: serde_json::Value =
         serde_json::from_str(&output_stdout(output)).expect("cursor expired json");
     assert_eq!(body, json!({ "cursor_expired": true, "latest_cursor": 2 }));

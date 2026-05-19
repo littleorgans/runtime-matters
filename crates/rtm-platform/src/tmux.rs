@@ -77,7 +77,7 @@ impl TmuxGateway {
             });
         }
         let content = stdout(content_output);
-        let pane_history_lines = stdout(history_output).trim().parse().unwrap_or_default();
+        let pane_history_lines = parse_history_lines(&stdout(history_output))?;
         let scrollback_lines_included = content.lines().count().try_into().unwrap_or(u32::MAX);
         Ok(PaneSnapshot {
             content,
@@ -163,6 +163,15 @@ fn stdout(output: std::process::Output) -> String {
 
 fn stderr(output: std::process::Output) -> String {
     String::from_utf8_lossy(&output.stderr).trim().to_owned()
+}
+
+fn parse_history_lines(stdout: &str) -> std::result::Result<u32, CaptureError> {
+    stdout
+        .trim()
+        .parse()
+        .map_err(|error| CaptureError::CapturePaneFailed {
+            stderr: format!("invalid tmux history_size output: {error}"),
+        })
 }
 
 fn unix_epoch_ms() -> u64 {
@@ -305,6 +314,15 @@ mod tests {
                 "-t".to_owned(),
                 "rtm:0.1".to_owned()
             ]
+        );
+    }
+
+    #[test]
+    fn parse_history_lines_rejects_invalid_tmux_output() {
+        let err = parse_history_lines("not-a-number\n").expect_err("invalid history should fail");
+        assert!(
+            matches!(err, CaptureError::CapturePaneFailed { .. }),
+            "unexpected error: {err:?}"
         );
     }
 }

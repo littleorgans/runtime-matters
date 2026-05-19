@@ -363,9 +363,11 @@ struct EncodedLifecycle {
     now: String,
 }
 
+type EncodedState = (&'static str, Option<i32>, Option<i32>, Option<&'static str>);
+
 impl EncodedLifecycle {
     fn from_lifecycle(lifecycle: &Lifecycle) -> Result<Self> {
-        let (state, exit_code, exit_signal, lost_evidence) = encode_state(&lifecycle.state);
+        let (state, exit_code, exit_signal, lost_evidence) = encode_state(&lifecycle.state)?;
         Ok(Self {
             session_id: lifecycle.session_id.to_string(),
             runtime: lifecycle.runtime.to_string(),
@@ -427,15 +429,13 @@ fn decode_tmux_pane(tmux_pane: Option<String>) -> Result<Option<TmuxAddress>> {
         .context("invalid stored tmux pane")
 }
 
-fn encode_state(
-    state: &LifecycleState,
-) -> (&'static str, Option<i32>, Option<i32>, Option<&'static str>) {
+fn encode_state(state: &LifecycleState) -> Result<EncodedState> {
     match state {
-        LifecycleState::Forking => ("Forking", None, None, None),
-        LifecycleState::Running => ("Running", None, None, None),
-        LifecycleState::Exited(exit) => ("Exited", exit.code, exit.signal, None),
-        LifecycleState::Lost(evidence) => ("Lost", None, None, Some(encode_lost(*evidence))),
-        _ => unreachable!("unsupported lifecycle state variant"),
+        LifecycleState::Forking => Ok(("Forking", None, None, None)),
+        LifecycleState::Running => Ok(("Running", None, None, None)),
+        LifecycleState::Exited(exit) => Ok(("Exited", exit.code, exit.signal, None)),
+        LifecycleState::Lost(evidence) => Ok(("Lost", None, None, Some(encode_lost(*evidence)?))),
+        _ => Err(anyhow!("unsupported lifecycle state variant: {state:?}")),
     }
 }
 
@@ -454,12 +454,12 @@ fn decode_state(row: &LifecycleRow) -> Result<LifecycleState> {
     }
 }
 
-fn encode_lost(evidence: LostEvidence) -> &'static str {
+fn encode_lost(evidence: LostEvidence) -> Result<&'static str> {
     match evidence {
-        LostEvidence::ShimDiedBeforeReport => "ShimDiedBeforeReport",
-        LostEvidence::PidNotAlive => "PidNotAlive",
-        LostEvidence::PidReuseDetected => "PidReuseDetected",
-        _ => unreachable!("unsupported lost evidence variant"),
+        LostEvidence::ShimDiedBeforeReport => Ok("ShimDiedBeforeReport"),
+        LostEvidence::PidNotAlive => Ok("PidNotAlive"),
+        LostEvidence::PidReuseDetected => Ok("PidReuseDetected"),
+        _ => Err(anyhow!("unsupported lost evidence variant: {evidence:?}")),
     }
 }
 

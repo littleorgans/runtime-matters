@@ -386,10 +386,9 @@ fn emit_cursor_expired(
         }
         output::OutputFormat::Human => {
             eprintln!("cursor expired (latest_cursor: {latest_cursor})");
-            std::process::exit(CURSOR_EXPIRED_EXIT_CODE);
         }
     }
-    Ok(())
+    std::process::exit(CURSOR_EXPIRED_EXIT_CODE);
 }
 
 #[derive(Serialize)]

@@ -199,10 +199,7 @@ impl CliOutput for RuntimeResponse {
                 "spawn OK; lifecycle state={}; runtime event={}; runtime_pid={} log_dir={} stdout_path={} stderr_path={}",
                 payload.lifecycle.state,
                 event_name(&payload.event),
-                payload
-                    .lifecycle
-                    .runtime_pid
-                    .expect("running lifecycle runtime pid"),
+                display_optional_u32(payload.lifecycle.runtime_pid),
                 display_optional_path(payload.log_dir.as_deref()),
                 display_optional_path(payload.stdout_path.as_deref()),
                 display_optional_path(payload.stderr_path.as_deref())
