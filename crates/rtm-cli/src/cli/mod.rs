@@ -33,10 +33,13 @@ enum Command {
         #[command(subcommand)]
         command: DaemonCommand,
     },
+    #[command(about = "Spawn a runtime process for a session.")]
     Spawn(SpawnArgs),
-    #[command(about = cli_help::KILL_ABOUT)]
+    #[command(about = "Signal a runtime session by id, or a process by pid.")]
     Kill(KillArgs),
+    #[command(about = "Deliver a nudge message to a running runtime session.")]
     Nudge(NudgeArgs),
+    #[command(about = "Capture the pane snapshot for a runtime session.")]
     Capture(CaptureArgs),
     #[command(about = cli_help::STATUS_ABOUT)]
     Status(StatusArgs),
@@ -82,7 +85,11 @@ pub struct StatusArgs {
 pub struct KillArgs {
     #[command(flatten)]
     output: output::OutputArgs,
-    #[arg(long, conflicts_with = "pid", required_unless_present = "pid")]
+    #[arg(
+        value_name = "SESSION_ID",
+        conflicts_with = "pid",
+        required_unless_present = "pid"
+    )]
     session_id: Option<Uuid>,
     #[arg(long, conflicts_with = "session_id")]
     pid: Option<u32>,
@@ -96,7 +103,7 @@ pub struct KillArgs {
 pub struct NudgeArgs {
     #[command(flatten)]
     output: output::OutputArgs,
-    #[arg(long)]
+    #[arg(value_name = "SESSION_ID")]
     session_id: Uuid,
     #[arg(long)]
     content: String,
@@ -106,8 +113,8 @@ pub struct NudgeArgs {
 pub struct CaptureArgs {
     #[command(flatten)]
     output: output::OutputArgs,
-    #[arg(value_name = "TARGET_ID")]
-    target_id: Uuid,
+    #[arg(value_name = "SESSION_ID")]
+    session_id: Uuid,
     #[arg(long)]
     scrollback_lines: Option<u32>,
 }
@@ -199,7 +206,7 @@ async fn kill(args: KillArgs) -> Result<()> {
     }
     let session_id = args
         .session_id
-        .ok_or_else(|| anyhow::anyhow!("--session-id or --pid is required"))?;
+        .ok_or_else(|| anyhow::anyhow!("session id or --pid is required"))?;
     let socket_path = crate::shared::socket_path()?;
     let response = crate::shared::request(
         &socket_path,
@@ -286,7 +293,7 @@ async fn capture(args: CaptureArgs) -> Result<()> {
         &socket_path,
         RuntimeRpc::Capture {
             request: CaptureRequest {
-                target_id: args.target_id,
+                session_id: args.session_id,
                 scrollback_lines: args.scrollback_lines,
             },
         },
@@ -297,8 +304,8 @@ async fn capture(args: CaptureArgs) -> Result<()> {
         RuntimeResponse::Capture { response } => match response.into_result() {
             Ok(snapshot) => output::emit(&args.output, &snapshot)?,
             Err(error) => bail!(
-                "capture failed; error={error:?} target_id={}",
-                args.target_id
+                "capture failed; error={error:?} session_id={}",
+                args.session_id
             ),
         },
         other => bail!("unexpected capture response: {other:?}"),

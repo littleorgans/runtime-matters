@@ -211,7 +211,7 @@ mod tests {
             },
             "nested_object_is_preserved": {
                 "version": "redacted inside",
-                "protocol_version": "0.3"
+                "protocol_version": "0.4"
             }
         });
 
@@ -239,7 +239,7 @@ mod tests {
         assert_eq!(value["nested_object_is_preserved"]["version"], "[version]");
         assert_eq!(
             value["nested_object_is_preserved"]["protocol_version"],
-            "0.3"
+            "0.4"
         );
     }
 }

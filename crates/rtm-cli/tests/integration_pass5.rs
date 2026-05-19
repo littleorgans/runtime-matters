@@ -139,7 +139,7 @@ fn wait_for_json_status(harness: &RtmHarness, session_id: &str, needle: &str) ->
 
 fn capture_rpc(
     harness: &RtmHarness,
-    target_id: Uuid,
+    session_id: Uuid,
     scrollback_lines: Option<u32>,
 ) -> RuntimeResponse {
     tokio::runtime::Runtime::new()
@@ -148,7 +148,7 @@ fn capture_rpc(
             harness.socket_path(),
             RuntimeRpc::Capture {
                 request: CaptureRequest {
-                    target_id,
+                    session_id,
                     scrollback_lines,
                 },
             },

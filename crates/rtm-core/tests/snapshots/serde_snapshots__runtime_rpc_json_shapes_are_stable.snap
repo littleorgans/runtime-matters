@@ -61,7 +61,7 @@ expression: rpcs
     "type": "capture",
     "payload": {
       "request": {
-        "target_id": "018f6e28-0000-7000-8000-000000000001",
+        "session_id": "018f6e28-0000-7000-8000-000000000001",
         "scrollback_lines": 500
       }
     }

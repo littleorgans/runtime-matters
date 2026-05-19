@@ -388,7 +388,7 @@ impl ServerState {
     }
 
     pub(crate) async fn capture_pane(&self, request: CaptureRequest) -> Result<CaptureResponse> {
-        let Some(lifecycle) = self.store.get(request.target_id).await? else {
+        let Some(lifecycle) = self.store.get(request.session_id).await? else {
             return Ok(CaptureResponse::Failed(CaptureError::SessionMissing));
         };
         let Some(tmux_pane) = lifecycle.tmux_pane.as_ref() else {

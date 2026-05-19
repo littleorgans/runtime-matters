@@ -8,7 +8,7 @@ Core protocol types for the Runtime Matters daemon.
 - runtime lifecycle and event types
 - transport helpers for newline delimited JSON
 
-The current runtime protocol version is `0.3`. `VersionInfo` advertises this
+The current runtime protocol version is `0.4`. `VersionInfo` advertises this
 protocol version and these stable capability names:
 
 | Capability | Contract |
@@ -37,7 +37,7 @@ detected.
 
 ## Doctor JSON Contract
 
-`RuntimeResponse::Doctor` returns `DoctorResponse`. In protocol version `0.3`,
+`RuntimeResponse::Doctor` returns `DoctorResponse`. In protocol version `0.4`,
 session-matters may treat these JSON field names and value kinds as stable:
 
 - `version.version`, `version.git_sha`, `version.protocol_version`, and `version.capabilities`

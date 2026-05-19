@@ -198,7 +198,7 @@ expression: responses
       "version": {
         "version": "0.1.6",
         "git_sha": "0123456",
-        "protocol_version": "0.3",
+        "protocol_version": "0.4",
         "capabilities": [
           "structured_protocol_errors",
           "headless_stdio_log_paths",
@@ -220,7 +220,7 @@ expression: responses
         "version": {
           "version": "0.1.6",
           "git_sha": "0123456",
-          "protocol_version": "0.3",
+          "protocol_version": "0.4",
           "capabilities": [
             "structured_protocol_errors",
             "headless_stdio_log_paths",

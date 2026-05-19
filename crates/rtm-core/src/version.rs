@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub const RUNTIME_PROTOCOL_VERSION: &str = "0.3";
+pub const RUNTIME_PROTOCOL_VERSION: &str = "0.4";
 
 pub const RUNTIME_PROTOCOL_CAPABILITIES: &[RuntimeCapability] = &[
     RuntimeCapability::StructuredProtocolErrors,
@@ -120,5 +120,16 @@ impl<'de> Deserialize<'de> for RuntimeCapability {
         String::deserialize(deserializer)?
             .parse()
             .map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RUNTIME_PROTOCOL_VERSION, VersionInfo};
+
+    #[test]
+    fn protocol_version_advertises_v04_breaking_capture_contract() {
+        assert_eq!(RUNTIME_PROTOCOL_VERSION, "0.4");
+        assert_eq!(VersionInfo::new("rtm", "git").protocol_version, "0.4");
     }
 }

@@ -113,7 +113,7 @@ pub struct LifecycleLogAvailability {
     pub log_availability: LogAvailability,
 }
 
-/// Stable v0.3 daemon diagnostics JSON.
+/// Stable v0.4 daemon diagnostics JSON.
 ///
 /// Clients may rely on the field names and JSON value kinds in this response.
 /// The concrete diagnostic values are host and process specific.

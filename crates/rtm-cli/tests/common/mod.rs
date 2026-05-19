@@ -105,7 +105,6 @@ impl RtmHarness {
     pub fn kill(&self, session_id: &str, signal: &str, grace_secs: u64) -> Output {
         self.rtm_command()
             .arg("kill")
-            .arg("--session-id")
             .arg(session_id)
             .arg("--signal")
             .arg(signal)
@@ -140,7 +139,6 @@ impl RtmHarness {
     pub fn nudge(&self, session_id: &str, content: &str) -> Output {
         self.rtm_command()
             .arg("nudge")
-            .arg("--session-id")
             .arg(session_id)
             .arg("--content")
             .arg(content)
