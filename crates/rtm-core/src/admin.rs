@@ -5,6 +5,17 @@ use chrono::{DateTime, Utc};
 
 use crate::{Lifecycle, LogAvailability, LostEvidence, VersionInfo};
 
+/// Result of a kill request.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
+#[serde(rename_all = "snake_case")]
+pub enum KillOutcome {
+    /// A signal was delivered to the target process.
+    Signalled,
+    /// The target process had already exited before the signal landed.
+    AlreadyExited,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct KillByPidRequest {
     pub pid: u32,
@@ -17,6 +28,7 @@ pub struct KillByPidResponse {
     pub pid: u32,
     pub signal: i32,
     pub killed_after_grace: bool,
+    pub outcome: KillOutcome,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

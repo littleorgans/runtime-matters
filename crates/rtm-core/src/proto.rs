@@ -148,6 +148,16 @@ pub struct KillByPidPayload {
     pub response: KillByPidResponse,
 }
 
+/// Session kill result.
+///
+/// `Signalled` means rtmd delivered the requested signal to the runtime
+/// process. `AlreadyExited` means the process naturally exited before the
+/// signal landed, so the kill request was a successful no-op.
+#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct KilledPayload {
+    pub outcome: crate::KillOutcome,
+}
+
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 pub struct NudgePayload {
     pub response: NudgeResponse,
@@ -218,6 +228,7 @@ pub enum RuntimeResponse {
     Spawned(SpawnedPayload),
     ValidateTarget(ValidateTargetPayload),
     Status(StatusPayload),
+    Killed(KilledPayload),
     KillByPid(KillByPidPayload),
     Nudge(NudgePayload),
     Capture(CapturePayload),

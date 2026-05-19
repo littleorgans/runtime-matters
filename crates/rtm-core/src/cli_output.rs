@@ -5,8 +5,9 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    DoctorResponse, EventsPayload, KillByPidResponse, Lifecycle, LifecycleCounts, NudgeOutcome,
-    NudgeResponse, PaneSnapshot, RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
+    DoctorResponse, EventsPayload, KillByPidResponse, KillOutcome, KilledPayload, Lifecycle,
+    LifecycleCounts, NudgeOutcome, NudgeResponse, PaneSnapshot, RuntimeCapability, RuntimeEvent,
+    RuntimeResponse, VersionInfo,
 };
 
 pub trait CliOutput: Serialize {
@@ -218,6 +219,21 @@ impl CliOutput for KillByPidResponse {
             "kill OK; pid={} signal={} killed_after_grace={}",
             self.pid, self.signal, self.killed_after_grace
         )
+    }
+}
+
+impl CliOutput for KillOutcome {
+    fn render_human(&self, f: &mut impl Write) -> fmt::Result {
+        match self {
+            Self::Signalled => writeln!(f, "signalled"),
+            Self::AlreadyExited => writeln!(f, "already exited"),
+        }
+    }
+}
+
+impl CliOutput for KilledPayload {
+    fn render_human(&self, f: &mut impl Write) -> fmt::Result {
+        self.outcome.render_human(f)
     }
 }
 

@@ -198,7 +198,7 @@ expression: responses
       "version": {
         "version": "0.1.6",
         "git_sha": "0123456",
-        "protocol_version": "0.4",
+        "protocol_version": "0.5",
         "capabilities": [
           "structured_protocol_errors",
           "headless_stdio_log_paths",
@@ -208,7 +208,8 @@ expression: responses
           "validate_target_preflight",
           "events_cursor",
           "events_long_poll",
-          "tmux_pane_snapshot"
+          "tmux_pane_snapshot",
+          "kill_outcomes"
         ]
       }
     }
@@ -220,7 +221,7 @@ expression: responses
         "version": {
           "version": "0.1.6",
           "git_sha": "0123456",
-          "protocol_version": "0.4",
+          "protocol_version": "0.5",
           "capabilities": [
             "structured_protocol_errors",
             "headless_stdio_log_paths",
@@ -230,7 +231,8 @@ expression: responses
             "validate_target_preflight",
             "events_cursor",
             "events_long_poll",
-            "tmux_pane_snapshot"
+            "tmux_pane_snapshot",
+            "kill_outcomes"
           ]
         },
         "socket_path": "/tmp/rtmd.sock",

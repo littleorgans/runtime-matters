@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use lilo_rm_core::{
     CapturePayload, CursorExpiredPayload, DoctorPayload, EventsPayload, EventsRequest,
-    KillByPidPayload, McpBridgePayload, NudgePayload, RuntimeResponse, RuntimeRpc,
+    KillByPidPayload, KilledPayload, McpBridgePayload, NudgePayload, RuntimeResponse, RuntimeRpc,
     ShimLaunchPayload, SpawnedPayload, StatusPayload, ValidateTargetPayload, VersionPayload,
     WatchersPayload, clamped_event_wait_ms, read_json_line, write_json_line,
 };
@@ -136,10 +136,9 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
                 response: state.validate_target_request(request).await?,
             }))
         }
-        RuntimeRpc::Kill { request } => {
-            state.kill_runtime(request).await?;
-            Ok(RuntimeResponse::Ack)
-        }
+        RuntimeRpc::Kill { request } => Ok(RuntimeResponse::Killed(KilledPayload {
+            outcome: state.kill_runtime(request).await?,
+        })),
         RuntimeRpc::KillByPid { request } => Ok(RuntimeResponse::KillByPid(KillByPidPayload {
             response: state.kill_pid(request).await?,
         })),

@@ -62,10 +62,11 @@ expression: snapshot
         "validate_target_preflight",
         "events_cursor",
         "events_long_poll",
-        "tmux_pane_snapshot"
+        "tmux_pane_snapshot",
+        "kill_outcomes"
       ],
       "git_sha": "[git_sha]",
-      "protocol_version": "0.4",
+      "protocol_version": "0.5",
       "version": "[version]"
     },
     "watchers": {
@@ -97,7 +98,7 @@ expression: snapshot
     ]
   },
   "kill": {
-    "session_id": "[uuid]"
+    "outcome": "signalled"
   },
   "nudge_error": {
     "code": "runtime_error",
@@ -168,10 +169,11 @@ expression: snapshot
       "validate_target_preflight",
       "events_cursor",
       "events_long_poll",
-      "tmux_pane_snapshot"
+      "tmux_pane_snapshot",
+      "kill_outcomes"
     ],
     "git_sha": "[git_sha]",
-    "protocol_version": "0.4",
+    "protocol_version": "0.5",
     "version": "[version]"
   }
 }

@@ -28,9 +28,9 @@ pub mod types;
 mod version;
 
 pub use admin::{
-    DoctorResponse, KillByPidRequest, KillByPidResponse, LauncherStatus, LifecycleCounts,
-    LifecycleLogAvailability, MigrationState, RecentLostEvent, StatusFilter, StatusResponse,
-    TmuxStatus, WatcherCounts,
+    DoctorResponse, KillByPidRequest, KillByPidResponse, KillOutcome, LauncherStatus,
+    LifecycleCounts, LifecycleLogAvailability, MigrationState, RecentLostEvent, StatusFilter,
+    StatusResponse, TmuxStatus, WatcherCounts,
 };
 pub use capture::{
     CaptureError, CaptureRequest, CaptureResponse, LogAvailability, LogsUnavailableReason,
@@ -46,7 +46,7 @@ pub use mcp::{
 pub use proto::{
     CapturePayload, CursorExpiredPayload, DoctorPayload, EVENT_LOG_RETENTION_MIN_AGE_SECS,
     EVENT_LOG_RETENTION_MIN_EVENTS, EVENT_WAIT_MAX_MS, ErrorPayload, EventBatch, EventCursor,
-    EventsPayload, EventsRequest, KillByPidPayload, McpBridgePayload, NudgePayload,
+    EventsPayload, EventsRequest, KillByPidPayload, KilledPayload, McpBridgePayload, NudgePayload,
     RuntimeResponse, RuntimeRpc, ShimLaunchPayload, SpawnedPayload, StatusPayload, StatusRequest,
     ValidateTargetPayload, VersionPayload, WatchersPayload, clamped_event_wait_ms, read_json_line,
     read_json_line_blocking, write_json_line, write_json_line_blocking,

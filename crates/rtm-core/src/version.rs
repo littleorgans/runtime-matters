@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub const RUNTIME_PROTOCOL_VERSION: &str = "0.4";
+pub const RUNTIME_PROTOCOL_VERSION: &str = "0.5";
 
 pub const RUNTIME_PROTOCOL_CAPABILITIES: &[RuntimeCapability] = &[
     RuntimeCapability::StructuredProtocolErrors,
@@ -15,6 +15,7 @@ pub const RUNTIME_PROTOCOL_CAPABILITIES: &[RuntimeCapability] = &[
     RuntimeCapability::EventsCursor,
     RuntimeCapability::EventsLongPoll,
     RuntimeCapability::TmuxPaneSnapshot,
+    RuntimeCapability::KillOutcomes,
 ];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -60,6 +61,8 @@ pub enum RuntimeCapability {
     EventsLongPoll,
     /// Tmux targets support on demand pane snapshot capture.
     TmuxPaneSnapshot,
+    /// Kill responses include typed Signalled or AlreadyExited outcomes.
+    KillOutcomes,
 }
 
 impl RuntimeCapability {
@@ -74,6 +77,7 @@ impl RuntimeCapability {
             Self::EventsCursor => "events_cursor",
             Self::EventsLongPoll => "events_long_poll",
             Self::TmuxPaneSnapshot => "tmux_pane_snapshot",
+            Self::KillOutcomes => "kill_outcomes",
         }
     }
 }
@@ -98,6 +102,7 @@ impl FromStr for RuntimeCapability {
             "events_cursor" => Ok(Self::EventsCursor),
             "events_long_poll" => Ok(Self::EventsLongPoll),
             "tmux_pane_snapshot" => Ok(Self::TmuxPaneSnapshot),
+            "kill_outcomes" => Ok(Self::KillOutcomes),
             other => Err(format!("unknown runtime capability {other}")),
         }
     }
@@ -128,8 +133,8 @@ mod tests {
     use super::{RUNTIME_PROTOCOL_VERSION, VersionInfo};
 
     #[test]
-    fn protocol_version_advertises_v04_breaking_capture_contract() {
-        assert_eq!(RUNTIME_PROTOCOL_VERSION, "0.4");
-        assert_eq!(VersionInfo::new("rtm", "git").protocol_version, "0.4");
+    fn protocol_version_advertises_v05_kill_outcome_contract() {
+        assert_eq!(RUNTIME_PROTOCOL_VERSION, "0.5");
+        assert_eq!(VersionInfo::new("rtm", "git").protocol_version, "0.5");
     }
 }

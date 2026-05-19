@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use lilo_rm_core::{
     CaptureRequest, CaptureResponse, DoctorPayload, ErrorCode, EventBatch, EventsRequest,
-    KillByPidRequest, KillByPidResponse, KillRequest, ProtocolError, RUNTIME_PROTOCOL_VERSION,
+    KillByPidRequest, KillOutcome, KillRequest, ProtocolError, RUNTIME_PROTOCOL_VERSION,
     RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnedPayload, StatusFilter, StatusPayload,
     ValidateTargetRequest, ValidateTargetResponse, VersionPayload, read_json_line, write_json_line,
 };
@@ -53,17 +53,17 @@ impl RuntimeClient {
     }
 
     /// Kill a runtime session by session id.
-    pub async fn kill(&self, request: KillRequest) -> Result<(), ClientError> {
-        expect_ack("Ack", self.request(RuntimeRpc::Kill { request }).await?)
+    pub async fn kill(&self, request: KillRequest) -> Result<KillOutcome, ClientError> {
+        match self.request(RuntimeRpc::Kill { request }).await? {
+            RuntimeResponse::Killed(payload) => Ok(payload.outcome),
+            response => unexpected_response("Killed", &response),
+        }
     }
 
     /// Kill an arbitrary process id through the daemon admin path.
-    pub async fn kill_by_pid(
-        &self,
-        request: KillByPidRequest,
-    ) -> Result<KillByPidResponse, ClientError> {
+    pub async fn kill_by_pid(&self, request: KillByPidRequest) -> Result<KillOutcome, ClientError> {
         match self.request(RuntimeRpc::KillByPid { request }).await? {
-            RuntimeResponse::KillByPid(payload) => Ok(payload.response),
+            RuntimeResponse::KillByPid(payload) => Ok(payload.response.outcome),
             response => unexpected_response("KillByPid", &response),
         }
     }
@@ -224,13 +224,6 @@ pub async fn request(
     request_on_stream(stream, rpc).await
 }
 
-fn expect_ack(expected: &'static str, response: RuntimeResponse) -> Result<(), ClientError> {
-    match response {
-        RuntimeResponse::Ack => Ok(()),
-        response => unexpected_response(expected, &response),
-    }
-}
-
 fn unexpected_response<T>(
     expected: &'static str,
     response: &RuntimeResponse,
@@ -246,6 +239,7 @@ fn response_name(response: &RuntimeResponse) -> &'static str {
         RuntimeResponse::Spawned(_) => "Spawned",
         RuntimeResponse::ValidateTarget(_) => "ValidateTarget",
         RuntimeResponse::Status(_) => "Status",
+        RuntimeResponse::Killed(_) => "Killed",
         RuntimeResponse::KillByPid(_) => "KillByPid",
         RuntimeResponse::Nudge(_) => "Nudge",
         RuntimeResponse::Capture(_) => "Capture",

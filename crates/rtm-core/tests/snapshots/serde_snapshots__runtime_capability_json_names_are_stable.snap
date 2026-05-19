@@ -11,5 +11,6 @@ expression: "lilo_rm_core::RUNTIME_PROTOCOL_CAPABILITIES"
   "validate_target_preflight",
   "events_cursor",
   "events_long_poll",
-  "tmux_pane_snapshot"
+  "tmux_pane_snapshot",
+  "kill_outcomes"
 ]

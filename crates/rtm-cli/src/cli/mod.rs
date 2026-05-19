@@ -3,9 +3,9 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use lilo_rm_client::RuntimeClient;
 use lilo_rm_core::{
-    Ack, CaptureRequest, EventBatch, EventsPayload, KillByPidRequest, KillRequest, NudgeOutcome,
-    NudgeRequest, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest,
-    SpawnTarget, StatusFilter, ValidateTargetOutcome, ValidateTargetResponse,
+    CaptureRequest, EventBatch, EventsPayload, KillByPidRequest, KillRequest, KilledPayload,
+    NudgeOutcome, NudgeRequest, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal,
+    SpawnRequest, SpawnTarget, StatusFilter, ValidateTargetOutcome, ValidateTargetResponse,
 };
 use serde::Serialize;
 use uuid::Uuid;
@@ -210,48 +210,28 @@ async fn kill(args: KillArgs) -> Result<()> {
     let session_id = args
         .session_id
         .ok_or_else(|| anyhow::anyhow!("session id or --pid is required"))?;
-    let socket_path = crate::shared::socket_path()?;
-    let response = crate::shared::request(
-        &socket_path,
-        RuntimeRpc::Kill {
-            request: KillRequest {
-                session_id,
-                signal: args.signal,
-                grace_secs: args.grace_secs,
-            },
-        },
-    )
-    .await?;
-
-    match response {
-        RuntimeResponse::Ack => {
-            output::emit(&args.output, &Ack { session_id })?;
-        }
-        other => bail!("unexpected kill response: {other:?}"),
-    }
+    let client = RuntimeClient::new(crate::shared::socket_path()?);
+    let outcome = client
+        .kill(KillRequest {
+            session_id,
+            signal: args.signal,
+            grace_secs: args.grace_secs,
+        })
+        .await?;
+    output::emit(&args.output, &KilledPayload { outcome })?;
     Ok(())
 }
 
 async fn kill_pid(args: KillArgs, pid: u32) -> Result<()> {
-    let socket_path = crate::shared::socket_path()?;
-    let response = crate::shared::request(
-        &socket_path,
-        RuntimeRpc::KillByPid {
-            request: KillByPidRequest {
-                pid,
-                signal: rtm_platform::signal::signal_number(args.signal),
-                grace_secs: args.grace_secs,
-            },
-        },
-    )
-    .await?;
-
-    match response {
-        RuntimeResponse::KillByPid(payload) => {
-            output::emit(&args.output, &payload.response)?;
-        }
-        other => bail!("unexpected kill-by-pid response: {other:?}"),
-    }
+    let client = RuntimeClient::new(crate::shared::socket_path()?);
+    let outcome = client
+        .kill_by_pid(KillByPidRequest {
+            pid,
+            signal: rtm_platform::signal::signal_number(args.signal),
+            grace_secs: args.grace_secs,
+        })
+        .await?;
+    output::emit(&args.output, &KilledPayload { outcome })?;
     Ok(())
 }
 

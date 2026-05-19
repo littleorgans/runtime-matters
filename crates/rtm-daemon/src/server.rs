@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use lilo_rm_core::{
     CaptureError, CaptureRequest, CaptureResponse, EventsRequest, KillByPidRequest,
-    KillByPidResponse, KillRequest, LaunchSpec, Lifecycle, LifecycleLogAvailability,
+    KillByPidResponse, KillOutcome, KillRequest, LaunchSpec, Lifecycle, LifecycleLogAvailability,
     LifecycleState, LogAvailability, LogsUnavailableReason, LostEvidence, NudgeFailureReason,
     NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeSignal, ShimExit,
     ShimReady, SpawnRequest, StatusFilter, TerminationEvidence, ValidateTargetOutcome,
@@ -313,16 +313,19 @@ impl ServerState {
         Ok((lifecycle, event))
     }
 
-    pub(crate) async fn kill_runtime(&self, request: KillRequest) -> Result<()> {
+    pub(crate) async fn kill_runtime(&self, request: KillRequest) -> Result<KillOutcome> {
         let runtime_pid = self.runtime_pid(request.session_id).await?;
-        rtm_platform::signal::send_signal(runtime_pid, request.signal)?;
+        let outcome = rtm_platform::signal::send_signal_for_kill(runtime_pid, request.signal)?;
+        if matches!(outcome, KillOutcome::AlreadyExited) {
+            return Ok(outcome);
+        }
         let deadline = Instant::now() + Duration::from_secs(request.grace_secs);
 
         while Instant::now() < deadline {
             if self.is_terminal(request.session_id).await
                 || !rtm_platform::process::pid_alive(runtime_pid)
             {
-                return Ok(());
+                return Ok(outcome);
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
@@ -330,11 +333,19 @@ impl ServerState {
         if rtm_platform::process::pid_alive(runtime_pid) && request.signal != RuntimeSignal::Kill {
             rtm_platform::signal::send_signal(runtime_pid, RuntimeSignal::Kill)?;
         }
-        Ok(())
+        Ok(outcome)
     }
 
     pub(crate) async fn kill_pid(&self, request: KillByPidRequest) -> Result<KillByPidResponse> {
-        rtm_platform::signal::send_raw_signal(request.pid, request.signal)?;
+        let outcome = rtm_platform::signal::send_raw_signal_for_kill(request.pid, request.signal)?;
+        if matches!(outcome, KillOutcome::AlreadyExited) {
+            return Ok(KillByPidResponse {
+                pid: request.pid,
+                signal: request.signal,
+                killed_after_grace: false,
+                outcome,
+            });
+        }
         let deadline = Instant::now() + Duration::from_secs(request.grace_secs);
 
         while Instant::now() < deadline {
@@ -343,6 +354,7 @@ impl ServerState {
                     pid: request.pid,
                     signal: request.signal,
                     killed_after_grace: false,
+                    outcome,
                 });
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
@@ -358,6 +370,7 @@ impl ServerState {
             pid: request.pid,
             signal: request.signal,
             killed_after_grace,
+            outcome,
         })
     }
 
@@ -662,36 +675,4 @@ impl ServerState {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn kill_unknown_session_returns_not_found() {
-        let temp = tempfile::TempDir::new().expect("temp dir");
-        let store_config = StoreConfig {
-            db_path: temp.path().join("rtm.sqlite"),
-        };
-        let store = LifecycleStore::open(store_config.clone())
-            .await
-            .expect("store");
-        let state = ServerState::new(
-            DaemonConfig {
-                socket_path: PathBuf::from("/tmp/rtm-test.sock"),
-                shim_path: PathBuf::from("rtm"),
-                log_root: temp.path().join("logs"),
-                store: store_config,
-                reconcile: reconcile::ReconcileConfig::default(),
-            },
-            store,
-        )
-        .expect("state");
-        let request = KillRequest {
-            session_id: Uuid::now_v7(),
-            signal: RuntimeSignal::Term,
-            grace_secs: 0,
-        };
-
-        let error = state.kill_runtime(request).await.expect_err("not found");
-        assert!(error.to_string().contains("not found"), "{error}");
-    }
-}
+mod tests;

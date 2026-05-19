@@ -46,8 +46,11 @@ async fn main() -> Result<()> {
     .await?;
 
     match response {
-        RuntimeResponse::Ack => {
-            println!("kill OK; session_id={}", args.session_id);
+        RuntimeResponse::Killed(payload) => {
+            println!(
+                "kill OK; session_id={} outcome={:?}",
+                args.session_id, payload.outcome
+            );
             Ok(())
         }
         other => bail!("unexpected kill response: {other:?}"),

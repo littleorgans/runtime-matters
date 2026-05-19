@@ -4,12 +4,13 @@ use lilo_rm_client::{ClientError, RuntimeClient, request};
 use lilo_rm_core::{
     CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
     DoctorPayload, DoctorResponse, ErrorCode, EventBatch, EventsPayload, EventsRequest,
-    HeadlessSpawnTarget, KillByPidPayload, KillByPidRequest, KillByPidResponse, KillRequest,
-    Lifecycle, LifecycleCounts, MigrationState, NudgeFailureReason, NudgeOutcome, NudgePayload,
-    NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, RuntimeRpc,
-    RuntimeSignal, SpawnRequest, SpawnTarget, SpawnedPayload, StatusFilter, StatusPayload,
-    ValidateTargetPayload, ValidateTargetRequest, ValidateTargetResponse, VersionInfo,
-    VersionPayload, WatcherCounts, read_json_line, write_json_line,
+    HeadlessSpawnTarget, KillByPidPayload, KillByPidRequest, KillByPidResponse, KillOutcome,
+    KillRequest, KilledPayload, Lifecycle, LifecycleCounts, MigrationState, NudgeFailureReason,
+    NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeKind,
+    RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, SpawnedPayload,
+    StatusFilter, StatusPayload, ValidateTargetPayload, ValidateTargetRequest,
+    ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts, read_json_line,
+    write_json_line,
 };
 use tokio::io::BufReader;
 use tokio::net::UnixListener;
@@ -206,6 +207,7 @@ fn kill_by_pid_response() -> KillByPidResponse {
         pid: 4242,
         signal: 15,
         killed_after_grace: false,
+        outcome: KillOutcome::Signalled,
     }
 }
 
@@ -299,9 +301,11 @@ typed_helper_tests!(
     RuntimeRpc::Kill {
         request: kill_request()
     },
-    RuntimeResponse::Ack,
-    (),
-    "Ack"
+    RuntimeResponse::Killed(KilledPayload {
+        outcome: KillOutcome::Signalled
+    }),
+    KillOutcome::Signalled,
+    "Killed"
 );
 
 typed_helper_tests!(
@@ -313,7 +317,7 @@ typed_helper_tests!(
     RuntimeResponse::KillByPid(KillByPidPayload {
         response: kill_by_pid_response()
     }),
-    kill_by_pid_response(),
+    KillOutcome::Signalled,
     "KillByPid"
 );
 

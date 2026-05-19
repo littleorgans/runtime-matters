@@ -1,5 +1,6 @@
 mod common;
 
+use std::process::{Command, Output};
 use std::time::Duration;
 
 use common::{
@@ -21,6 +22,9 @@ fn kill_rpc_terminates_runtime_by_session_id() {
 
     let kill = harness.kill(&session_id, "TERM", 2);
     assert!(kill.status.success(), "kill failed: {kill:?}");
+    let kill_stdout = output_stdout(kill);
+    assert!(kill_stdout.contains("outcome"), "{kill_stdout}");
+    assert!(kill_stdout.contains("signalled"), "{kill_stdout}");
     let status = wait_for_status_timeout(
         &harness,
         &session_id,
@@ -33,6 +37,39 @@ fn kill_rpc_terminates_runtime_by_session_id() {
     assert!(events.contains("runtime event=Running"), "{events}");
     assert!(events.contains("runtime event=Terminated"), "{events}");
     assert!(events.contains("evidence=ShimExit"), "{events}");
+
+    let already_exited = kill_with_format(&harness, &session_id, "human");
+    assert!(
+        already_exited.status.success(),
+        "already exited kill failed: {already_exited:?}"
+    );
+    let already_exited_stdout = output_stdout(already_exited);
+    assert!(
+        already_exited_stdout.contains("already exited"),
+        "{already_exited_stdout}"
+    );
+}
+
+#[test]
+fn kill_rpc_reports_already_exited_as_json_success() {
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+    spawn_runtime(&harness, &session_id);
+    let runtime_pid = status_pid(&harness, &session_id, "pid");
+
+    terminate_process(runtime_pid, "KILL");
+    wait_for_status_timeout(
+        &harness,
+        &session_id,
+        "state=Exited",
+        Duration::from_secs(1),
+    );
+
+    let kill = kill_with_format(&harness, &session_id, "json");
+    assert!(kill.status.success(), "kill failed: {kill:?}");
+    let stdout = output_stdout(kill);
+    assert!(stdout.contains("\"outcome\""), "{stdout}");
+    assert!(stdout.contains("\"already_exited\""), "{stdout}");
 }
 
 #[test]
@@ -79,4 +116,16 @@ fn spawn_runtime(harness: &RtmHarness, session_id: &str) -> String {
     let spawn = harness.spawn(session_id);
     assert!(spawn.status.success(), "spawn failed: {spawn:?}");
     output_stdout(spawn)
+}
+
+fn kill_with_format(harness: &RtmHarness, session_id: &str, format: &str) -> Output {
+    Command::new(harness.rtm_path())
+        .env("RTM_SOCKET_PATH", harness.socket_path())
+        .env("RTM_DB_PATH", harness.db_path())
+        .arg("kill")
+        .arg(session_id)
+        .arg("--format")
+        .arg(format)
+        .output()
+        .expect("kill client")
 }

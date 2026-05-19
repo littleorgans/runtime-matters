@@ -7,22 +7,24 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use lilo_rm_core::{
     CaptureError, CapturePayload, CaptureResponse, CursorExpiredPayload, DoctorPayload, ErrorCode,
-    ErrorPayload, EventsPayload, KillByPidPayload, KillByPidResponse, LaunchEnv, LaunchSpec,
-    LauncherStatus, Lifecycle, LifecycleCounts, LifecycleLogAvailability, LogAvailability,
-    McpBridgePayload, McpBridgeResponse, MigrationState, NudgeFailureReason, NudgeOutcome,
-    NudgePayload, NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, ShimLaunchPayload,
-    SpawnedPayload, StatusPayload, TmuxStatus, ValidateTargetOutcome, ValidateTargetPayload,
-    ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts, WatchersPayload,
+    ErrorPayload, EventsPayload, KillByPidPayload, KillByPidResponse, KillOutcome, KilledPayload,
+    LaunchEnv, LaunchSpec, LauncherStatus, Lifecycle, LifecycleCounts, LifecycleLogAvailability,
+    LogAvailability, McpBridgePayload, McpBridgeResponse, MigrationState, NudgeFailureReason,
+    NudgeOutcome, NudgePayload, NudgeResponse, RuntimeCapability, RuntimeEvent, RuntimeKind,
+    RuntimeResponse, ShimLaunchPayload, SpawnedPayload, StatusPayload, TmuxStatus,
+    ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetResponse, VersionInfo,
+    VersionPayload, WatcherCounts, WatchersPayload,
 };
 use support::{other_session_id, session_id, timestamp};
 
-const FIXTURES: [&str; 16] = [
+const FIXTURES: [&str; 17] = [
     "ack.json",
     "capture.json",
     "cursor_expired.json",
     "doctor.json",
     "error.json",
     "events.json",
+    "killed.json",
     "kill_by_pid.json",
     "mcp_bridge.json",
     "nudge.json",
@@ -74,7 +76,7 @@ fn assert_fixture_set() {
     assert_eq!(actual, expected);
 }
 
-fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
+fn expected_responses() -> [(&'static str, RuntimeResponse); 17] {
     let session_id = session_id();
     [
         ("ack.json", RuntimeResponse::Ack),
@@ -112,12 +114,19 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 16] {
             }),
         ),
         (
+            "killed.json",
+            RuntimeResponse::Killed(KilledPayload {
+                outcome: KillOutcome::AlreadyExited,
+            }),
+        ),
+        (
             "kill_by_pid.json",
             RuntimeResponse::KillByPid(KillByPidPayload {
                 response: KillByPidResponse {
                     pid: 77689,
                     signal: 15,
                     killed_after_grace: false,
+                    outcome: KillOutcome::Signalled,
                 },
             }),
         ),
@@ -292,7 +301,22 @@ fn v05_doctor_response() -> lilo_rm_core::DoctorResponse {
 }
 
 fn v05_version_info() -> VersionInfo {
-    VersionInfo::new("0.2.0", "782b3e5e19c5")
+    VersionInfo {
+        version: "0.2.0".to_owned(),
+        git_sha: "782b3e5e19c5".to_owned(),
+        protocol_version: "0.4".to_owned(),
+        capabilities: vec![
+            RuntimeCapability::StructuredProtocolErrors,
+            RuntimeCapability::HeadlessStdioLogPaths,
+            RuntimeCapability::StatusSessionSetFilter,
+            RuntimeCapability::StatusUpdatedSinceFilter,
+            RuntimeCapability::TypedNudgeOutcomes,
+            RuntimeCapability::ValidateTargetPreflight,
+            RuntimeCapability::EventsCursor,
+            RuntimeCapability::EventsLongPoll,
+            RuntimeCapability::TmuxPaneSnapshot,
+        ],
+    }
 }
 
 fn v05_watcher_counts() -> WatcherCounts {
