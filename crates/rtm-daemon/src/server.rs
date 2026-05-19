@@ -428,7 +428,9 @@ impl ServerState {
                     .await?;
             }
             TerminationEvidence::ShimExit => {}
-            _ => unreachable!("unsupported termination evidence variant"),
+            _ => bail!(
+                "process exit watcher for session {session_id} received unsupported termination evidence variant: {evidence:?}"
+            ),
         }
         Ok(())
     }
@@ -612,7 +614,9 @@ impl ServerState {
             TerminationEvidence::ShimExit | TerminationEvidence::ProcessExit => {
                 event_channel::terminated_event(lifecycle, evidence)
             }
-            _ => unreachable!("unsupported termination evidence variant"),
+            _ => bail!(
+                "recording terminal event for session {session_id} received unsupported termination evidence variant: {evidence:?}"
+            ),
         };
         Ok(Some(self.append_event(event).await?))
     }
@@ -644,7 +648,11 @@ impl ServerState {
             LifecycleState::Exited(_) | LifecycleState::Lost(_) => {
                 bail!("session {} is already terminal", lifecycle.session_id)
             }
-            _ => unreachable!("unsupported lifecycle state variant"),
+            _ => bail!(
+                "reconnecting ShimReady for session {} saw unsupported lifecycle state variant: {:?}",
+                lifecycle.session_id,
+                lifecycle.state
+            ),
         }
     }
 
