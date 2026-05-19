@@ -109,8 +109,8 @@ fn read_start_time_probe_for_pid(pid: u32) -> Result<ProcessStartTime> {
 #[cfg(target_os = "linux")]
 fn proc_stat_start_ticks(stat: &str) -> Option<u64> {
     let close = stat.rfind(')')?;
-    let fields = stat.get(close + 2..)?.split_whitespace();
-    fields.skip(19).next()?.parse().ok()
+    let mut fields = stat.get(close + 2..)?.split_whitespace();
+    fields.nth(19)?.parse().ok()
 }
 
 #[cfg(target_os = "linux")]
