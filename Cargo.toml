@@ -26,8 +26,8 @@ chrono = { version = "0.4.42", features = ["clock", "serde"] }
 clap = { version = "4.5.51", features = ["derive"] }
 insta = { version = "1.43.2", features = ["json", "redactions"] }
 libc = "0.2.186"
-lilo-rm-core = { path = "crates/rtm-core", version = "0.5.0" }
-lilo-rm-client = { path = "crates/rtm-client", version = "0.5.0" }
+lilo-rm-core = { path = "crates/rtm-core", version = "0.6.0" }
+lilo-rm-client = { path = "crates/rtm-client", version = "0.6.0" }
 rtm-daemon = { path = "crates/rtm-daemon" }
 rtm-launchers = { path = "crates/rtm-launchers" }
 rtm-paths = { path = "crates/rtm-paths" }
