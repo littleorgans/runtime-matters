@@ -48,21 +48,12 @@ impl TmuxGateway {
             return Ok(false);
         }
 
-        let panes = tmux_output([
-            "list-panes",
-            "-s",
-            "-t",
-            &tmux_pane.session,
-            "-F",
-            "#S:#I.#P",
-        ])
-        .await?
-        .context("tmux is not installed")?;
-        ensure_success(panes, "tmux list-panes").map(|stdout| {
-            stdout
-                .lines()
-                .any(|line| line.trim() == tmux_pane.to_string())
-        })
+        let target = tmux_pane.to_string();
+        let panes = tmux_output(["list-panes", "-t", &target, "-F", "#S:#I.#P"])
+            .await?
+            .context("tmux is not installed")?;
+        ensure_success(panes, "tmux list-panes")
+            .map(|stdout| stdout.lines().any(|line| line.trim() == target))
     }
 
     pub async fn capture_pane(
