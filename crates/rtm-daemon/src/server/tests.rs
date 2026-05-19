@@ -114,7 +114,7 @@ impl TestState {
             .expect("store");
         let server = ServerState::new(
             DaemonConfig {
-                socket_path: PathBuf::from("/tmp/rtm-test.sock"),
+                endpoint: rtm_paths::RuntimeEndpoint::unix_socket("/tmp/rtm-test.sock"),
                 shim_path: PathBuf::from("rtm"),
                 log_root: temp.path().join("logs"),
                 store: store_config,

@@ -126,7 +126,7 @@ mod tests {
         Arc::new(
             ServerState::new(
                 DaemonConfig {
-                    socket_path: temp.join("rtm.sock"),
+                    endpoint: rtm_paths::RuntimeEndpoint::unix_socket(temp.join("rtm.sock")),
                     shim_path: temp.join("rtm"),
                     log_root: temp.join("logs"),
                     store: StoreConfig {

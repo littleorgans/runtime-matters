@@ -13,6 +13,7 @@ publish = false
 anyhow.workspace = true
 chrono.workspace = true
 lilo-rm-core.workspace = true
+rtm-paths.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true

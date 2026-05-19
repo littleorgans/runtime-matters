@@ -843,6 +843,7 @@ version = "0.5.0"
 dependencies = [
  "lilo-rm-core",
  "rtm-daemon",
+ "rtm-paths",
  "rtm-store",
  "serde_json",
  "tempfile",
@@ -1289,6 +1290,7 @@ dependencies = [
  "chrono",
  "lilo-rm-core",
  "rtm-launchers",
+ "rtm-paths",
  "rtm-platform",
  "rtm-store",
  "serde",
@@ -1308,6 +1310,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtm-paths"
+version = "0.2.0"
+
+[[package]]
 name = "rtm-platform"
 version = "0.2.0"
 dependencies = [
@@ -1325,6 +1331,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "lilo-rm-core",
+ "rtm-paths",
  "serde_json",
  "sqlx",
  "tempfile",

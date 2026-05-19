@@ -120,9 +120,12 @@ fn shim_argv(config: &DaemonConfig, request: &SpawnRequest) -> Vec<String> {
 /// Adding entries here is a deliberate widening of the bootstrap surface and
 /// must be paired with a documented justification.
 fn shim_env(config: &DaemonConfig) -> Vec<LaunchEnv> {
+    let socket_path = config
+        .socket_path()
+        .expect("headless shim transport requires a Unix socket endpoint");
     vec![LaunchEnv {
         key: "RTM_SOCKET_PATH".to_owned(),
-        value: config.socket_path.to_string_lossy().into_owned(),
+        value: socket_path.to_string_lossy().into_owned(),
     }]
 }
 
@@ -221,7 +224,7 @@ mod tests {
 
     fn test_config() -> DaemonConfig {
         DaemonConfig {
-            socket_path: PathBuf::from("/tmp/rtm.sock"),
+            endpoint: rtm_paths::RuntimeEndpoint::unix_socket("/tmp/rtm.sock"),
             shim_path: PathBuf::from("/tmp/rtm-shim"),
             log_root: PathBuf::from("/tmp/rtm/logs"),
             store: StoreConfig {

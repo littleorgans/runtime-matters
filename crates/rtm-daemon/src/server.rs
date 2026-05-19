@@ -12,6 +12,7 @@ use lilo_rm_core::{
     ShimReady, SpawnRequest, StatusFilter, TerminationEvidence, ValidateTargetOutcome,
     ValidateTargetRequest, ValidateTargetResponse, WatcherCounts,
 };
+use rtm_paths::{RuntimeEndpoint, RuntimePathEnv};
 use rtm_platform::process_exit::{ProcessExitWatcher, watch_process_exit};
 use rtm_store::{LifecycleStore, StoreConfig};
 use tokio::net::UnixListener;
@@ -27,7 +28,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct DaemonConfig {
-    pub socket_path: PathBuf,
+    pub endpoint: RuntimeEndpoint,
     pub shim_path: PathBuf,
     pub log_root: PathBuf,
     pub store: StoreConfig,
@@ -36,18 +37,17 @@ pub struct DaemonConfig {
 
 impl DaemonConfig {
     pub fn from_env() -> Result<Self> {
-        let socket_path = socket::socket_path_from_env()?;
-        let shim_path = match std::env::var_os("RTM_SHIM_PATH") {
-            Some(path) => PathBuf::from(path),
-            None => std::env::current_exe().context("failed to resolve current executable")?,
-        };
         Ok(Self {
-            socket_path,
-            shim_path,
-            log_root: default_log_root()?,
+            endpoint: socket::runtime_endpoint_from_env()?,
+            shim_path: rtm_paths::shim_path_from_env()?,
+            log_root: rtm_paths::log_root_from_env()?,
             store: StoreConfig::from_env()?,
             reconcile: reconcile::ReconcileConfig::from_env()?,
         })
+    }
+
+    pub fn socket_path(&self) -> Result<&std::path::Path> {
+        Ok(self.endpoint.unix_socket_path()?)
     }
 
     pub fn session_log_dir(&self, session_id: Uuid) -> PathBuf {
@@ -72,30 +72,18 @@ impl DaemonConfig {
     }
 }
 
-fn default_log_root() -> Result<PathBuf> {
-    Ok(default_rtm_home()?.join("logs"))
-}
-
-fn default_rtm_home() -> Result<PathBuf> {
-    if let Some(path) = std::env::var_os("RTM_HOME")
-        && !path.as_os_str().is_empty()
-    {
-        return Ok(PathBuf::from(path));
-    }
-
-    let home = std::env::var_os("HOME").context("HOME is required for default rtm log path")?;
-    Ok(PathBuf::from(home).join(".rtm"))
-}
-
 pub async fn run_daemon(config: DaemonConfig) -> Result<()> {
     rtm_launchers::warm_registry().context("failed to initialize launcher registry")?;
     let store = LifecycleStore::open(config.store.clone()).await?;
-    socket::prepare_socket(&config.socket_path)?;
-    let listener = UnixListener::bind(&config.socket_path)
-        .with_context(|| format!("failed to bind {}", config.socket_path.display()))?;
+    let socket_path = config.socket_path()?;
+    socket::prepare_socket(socket_path)?;
+    let listener = UnixListener::bind(socket_path)
+        .with_context(|| format!("failed to bind {}", socket_path.display()))?;
     println!(
         "rtmd listening on {}",
-        socket::display_socket_path(&config.socket_path)
+        config
+            .endpoint
+            .display_label(&RuntimePathEnv::from_process())
     );
 
     let state = Arc::new(ServerState::new(config.clone(), store)?);
@@ -127,7 +115,7 @@ pub async fn run_daemon(config: DaemonConfig) -> Result<()> {
         }
     }
 
-    socket::remove_socket_file(&config.socket_path)?;
+    socket::remove_socket_file(config.socket_path()?)?;
     let _ = shutdown_tx.send(());
     if let Err(error) = reconcile_task.await {
         tracing::warn!(%error, "periodic reconciliation task failed");

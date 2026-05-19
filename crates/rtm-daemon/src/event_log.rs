@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{Mutex, Notify};
 
-const EVENT_LOG_FILE: &str = "events.jsonl";
 const EVENT_LOG_SYNC_BATCH: usize = 32;
 const EVENT_LOG_SYNC_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -61,7 +60,7 @@ struct EventLogRecord {
 
 impl EventLog {
     pub(crate) fn open(data_dir: impl AsRef<Path>) -> Result<Self> {
-        let path = data_dir.as_ref().join(EVENT_LOG_FILE);
+        let path = rtm_paths::event_log_path(data_dir.as_ref());
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
@@ -372,7 +371,7 @@ mod tests {
         let log = EventLog::open(temp.path()).expect("open");
         log.append(running_event()).await.expect("append");
         drop(log);
-        let path = temp.path().join(EVENT_LOG_FILE);
+        let path = rtm_paths::event_log_path(temp.path());
         let mut file = OpenOptions::new().append(true).open(&path).expect("append");
         file.write_all(br#"{"seq":2"#).expect("corrupt");
         drop(file);

@@ -53,9 +53,16 @@ target="$(tmux split-window -P -F '#S:#I.#P' -d)"
 cargo run -p rtm-cli --example test_spawn -- --target "tmux:${target}" --runtime claude --session-id "$(uuidgen)"
 ```
 
+Runtime filesystem locations are modeled as paths, while daemon connection
+targets are modeled as endpoints. The current functional endpoint is a Unix
+socket. The `rtm-paths` crate owns this policy so callers do not treat future
+transport targets as filesystem paths.
+
 `RTM_SOCKET_PATH` is authoritative when set. Without it, Linux defaults to
 `$XDG_RUNTIME_DIR/rtm/sock` when `XDG_RUNTIME_DIR` is available, then falls back
-to `~/.rtm/sock`. macOS defaults to `~/.rtm/sock`.
+to `~/.rtm/sock`. macOS defaults to `~/.rtm/sock`. `RTM_DB_PATH`,
+`RTM_HOME`, and `RTM_SHIM_PATH` keep their existing behavior for database,
+runtime home, logs, event log placement, and shim bootstrap.
 
 ## Events Contract
 

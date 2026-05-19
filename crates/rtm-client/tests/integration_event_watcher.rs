@@ -28,7 +28,7 @@ impl TestDaemon {
         let socket_path = tempdir.path().join("rtmd.sock");
         write_event_log(tempdir.path(), records);
         let config = DaemonConfig {
-            socket_path: socket_path.clone(),
+            endpoint: rtm_paths::RuntimeEndpoint::unix_socket(socket_path.clone()),
             shim_path: std::env::current_exe().expect("current test executable"),
             log_root: tempdir.path().join("logs"),
             store: StoreConfig {

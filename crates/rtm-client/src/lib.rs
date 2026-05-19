@@ -12,6 +12,7 @@ use lilo_rm_core::{
     RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnedPayload, StatusFilter, StatusPayload,
     ValidateTargetRequest, ValidateTargetResponse, VersionPayload, read_json_line, write_json_line,
 };
+use rtm_paths::RuntimeEndpoint;
 use thiserror::Error;
 use tokio::io::BufReader;
 use tokio::net::UnixStream;
@@ -23,25 +24,32 @@ pub use event_watcher::{EventWatcher, EventWatcherBuilder};
 /// Async client for the rtmd Unix socket JSON line protocol.
 #[derive(Clone, Debug)]
 pub struct RuntimeClient {
-    socket_path: PathBuf,
+    endpoint: RuntimeEndpoint,
 }
 
 impl RuntimeClient {
     /// Create a client connected to `socket_path`.
     pub fn new(socket_path: impl Into<PathBuf>) -> Self {
         Self {
-            socket_path: socket_path.into(),
+            endpoint: RuntimeEndpoint::unix_socket(socket_path),
         }
     }
 
     /// Return the Unix socket path this client connects to.
     pub fn socket_path(&self) -> &Path {
-        &self.socket_path
+        self.endpoint
+            .unix_socket_path()
+            .expect("RuntimeClient::new always stores a Unix socket endpoint")
+    }
+
+    /// Return the daemon endpoint this client connects to.
+    pub fn endpoint(&self) -> &RuntimeEndpoint {
+        &self.endpoint
     }
 
     /// Send a raw protocol request and return the raw protocol response.
     pub async fn request(&self, rpc: RuntimeRpc) -> Result<RuntimeResponse, ClientError> {
-        request(&self.socket_path, rpc).await
+        request_endpoint(&self.endpoint, rpc).await
     }
 
     /// Spawn a runtime session and return the created lifecycle payload.
@@ -193,6 +201,13 @@ pub enum ClientError {
     /// The daemon refused a spawn because the requested identity or pane is already occupied.
     #[error("rtmd spawn conflict: {0:?}")]
     SpawnConflict(Box<lilo_rm_core::SpawnConflictPayload>),
+    /// The configured endpoint is not supported by this transport implementation.
+    #[error("unsupported rtmd endpoint: {source}")]
+    UnsupportedEndpoint {
+        #[from]
+        /// Underlying endpoint policy error.
+        source: rtm_paths::RuntimePathError,
+    },
     /// A typed helper received a different response variant than expected.
     #[error("expected {expected} response, got {got}")]
     UnexpectedResponse {
@@ -211,6 +226,7 @@ impl ClientError {
             Self::Protocol { .. } => ErrorCode::ProtocolMismatch,
             Self::ErrorResponse { code, .. } => *code,
             Self::SpawnConflict(_) => ErrorCode::SpawnConflict,
+            Self::UnsupportedEndpoint { .. } => ErrorCode::RuntimeUnavailable,
             Self::UnexpectedResponse { .. } => ErrorCode::ProtocolMismatch,
         }
     }
@@ -221,7 +237,14 @@ pub async fn request(
     socket_path: impl AsRef<Path>,
     rpc: RuntimeRpc,
 ) -> Result<RuntimeResponse, ClientError> {
-    let socket_path = socket_path.as_ref();
+    request_endpoint(&RuntimeEndpoint::unix_socket(socket_path.as_ref()), rpc).await
+}
+
+async fn request_endpoint(
+    endpoint: &RuntimeEndpoint,
+    rpc: RuntimeRpc,
+) -> Result<RuntimeResponse, ClientError> {
+    let socket_path = endpoint.unix_socket_path()?;
     let stream = UnixStream::connect(socket_path).await.map_err(|source| {
         ClientError::DaemonUnavailable {
             socket_path: socket_path.to_path_buf(),
