@@ -33,6 +33,7 @@ jobs:
       - run: just check
       - run: just build
       - run: just test
+      - run: just linux-target-check
 
   semver-checks:
     runs-on: ubuntu-latest

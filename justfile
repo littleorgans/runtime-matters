@@ -40,6 +40,10 @@ _install-bin src:
 test:
     cargo test --workspace
 
+linux-target-check:
+    cargo check -p rtm-platform --target x86_64-unknown-linux-gnu
+    cargo check -p lilo-rm-client --target x86_64-unknown-linux-gnu
+
 publish-dry-run:
     cargo publish -p lilo-rm-core -p lilo-rm-client --dry-run --allow-dirty
 
