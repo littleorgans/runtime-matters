@@ -1,5 +1,9 @@
-use anyhow::{Context, Result};
-use chrono::{DateTime, TimeZone, Utc};
+#[cfg(target_os = "macos")]
+use anyhow::Context;
+use anyhow::Result;
+#[cfg(target_os = "macos")]
+use chrono::TimeZone;
+use chrono::{DateTime, Utc};
 
 #[cfg(target_os = "macos")]
 const START_TIME_READ_ATTEMPTS: usize = 5;

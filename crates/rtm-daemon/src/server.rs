@@ -12,6 +12,7 @@ use lilo_rm_core::{
     ShimReady, SpawnRequest, StatusFilter, TerminationEvidence, ValidateTargetOutcome,
     ValidateTargetRequest, ValidateTargetResponse, WatcherCounts,
 };
+use rtm_platform::process_exit::{ProcessExitWatcher, watch_process_exit};
 use rtm_store::{LifecycleStore, StoreConfig};
 use tokio::net::UnixListener;
 use tokio::sync::{Mutex, broadcast, oneshot};
@@ -139,7 +140,7 @@ pub(crate) struct ServerState {
     store: LifecycleStore,
     started_instant: Instant,
     event_log: EventLog,
-    exit_watchers: Mutex<HashMap<Uuid, rtm_platform::kqueue::ProcessExitWatcher>>,
+    exit_watchers: Mutex<HashMap<Uuid, ProcessExitWatcher>>,
     pending_launches: Mutex<HashMap<Uuid, LaunchSpec>>,
     pending_ready: Mutex<HashMap<Uuid, oneshot::Sender<ShimReady>>>,
     terminated_events: Mutex<HashSet<Uuid>>,
@@ -508,7 +509,7 @@ impl ServerState {
         if self.exit_watchers.lock().await.contains_key(&session_id) {
             return Ok(());
         }
-        let (watcher, exit_rx) = rtm_platform::kqueue::watch_process_exit(runtime_pid)?;
+        let (watcher, exit_rx) = watch_process_exit(runtime_pid)?;
         self.exit_watchers.lock().await.insert(session_id, watcher);
         let state = Arc::clone(self);
         tokio::spawn(async move {
