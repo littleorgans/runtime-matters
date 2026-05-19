@@ -48,6 +48,13 @@ impl RtmHarness {
         )
     }
 
+    pub fn start_with_fast_periodic_probe() -> Self {
+        Self::start_with_options(
+            vec![("RTM_PROBE_SWEEP_INTERVAL_MS", "25".to_owned())],
+            false,
+        )
+    }
+
     fn start_with_options(
         reconcile_env: Vec<(&'static str, String)>,
         start_outside_tmux: bool,

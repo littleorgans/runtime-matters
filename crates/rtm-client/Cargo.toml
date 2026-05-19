@@ -22,4 +22,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+rtm-daemon.workspace = true
+rtm-store.workspace = true
 tempfile.workspace = true
+uuid.workspace = true

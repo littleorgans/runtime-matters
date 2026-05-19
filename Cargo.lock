@@ -842,9 +842,12 @@ name = "lilo-rm-client"
 version = "0.5.0"
 dependencies = [
  "lilo-rm-core",
+ "rtm-daemon",
+ "rtm-store",
  "tempfile",
  "thiserror",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

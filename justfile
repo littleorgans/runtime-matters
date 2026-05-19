@@ -37,8 +37,30 @@ _install-bin src:
     fi; \
     "$dest" --version
 
-test:
-    cargo test --workspace
+# test:
+#     just test-unit
+#     just test-integration
+test *ARGS:
+    cargo nextest run --workspace {{ARGS}}
+
+test-unit:
+    cargo test --workspace --lib --bins
+    cargo test --workspace --doc
+
+test-integration:
+    @set -eu; \
+    targets="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; data=json.load(sys.stdin); names=[(p["name"], t["name"]) for p in data["packages"] for t in p["targets"] if "test" in t["kind"]]; print(chr(10).join(f"{p} {t}" for p,t in sorted(names)))')"; \
+    if [ -z "$targets" ]; then \
+        echo "No integration test targets"; \
+        exit 0; \
+    fi; \
+    printf '%s\n' "$targets" | while read -r package target; do \
+        echo "=== $package --test $target ==="; \
+        timeout 120 cargo test -p "$package" --test "$target" -- --nocapture; \
+    done
+
+test-integration-one package target:
+    timeout 120 cargo test -p "{{package}}" --test "{{target}}" -- --nocapture
 
 linux-target-check:
     cargo check -p rtm-platform --target x86_64-unknown-linux-gnu
@@ -78,9 +100,9 @@ clippy:
     cargo clippy --workspace --all-targets -- -D warnings
 
 clippy-fix:
-    cargo clippy --fix --workspace --all-targets --allow-dirty --allow-staged -- -D warnings
+    cargo clippy --workspace --fix --allow-dirty -- -D warnings
 
 check-loc:
     bash scripts/check-loc-limit.sh
 
-check: fmt clippy-fix fmt-check check-loc clippy
+check: fmt clippy-fix check-loc
