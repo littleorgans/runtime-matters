@@ -495,7 +495,7 @@ impl Display for LostEvidence {
 #[serde(rename_all = "snake_case")]
 pub enum TerminationEvidence {
     ShimExit,
-    KqueueExit,
+    ProcessExit,
     Lost(LostEvidence),
 }
 
@@ -503,7 +503,7 @@ impl Display for TerminationEvidence {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ShimExit => formatter.write_str("ShimExit"),
-            Self::KqueueExit => formatter.write_str("KqueueExit"),
+            Self::ProcessExit => formatter.write_str("ProcessExit"),
             Self::Lost(evidence) => write!(formatter, "Lost({evidence})"),
         }
     }

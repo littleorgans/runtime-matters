@@ -15,7 +15,7 @@ lifecycles
   running             0
   exited              0
   lost                0
-kqueue watchers       0
+process exit watchers 0
 shim sockets          0
 event waiters         0
 launchers

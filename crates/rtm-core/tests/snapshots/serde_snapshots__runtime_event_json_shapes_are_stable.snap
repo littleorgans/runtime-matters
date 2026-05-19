@@ -17,7 +17,7 @@ expression: events
       "session_id": "018f6e28-0000-7000-8000-000000000001",
       "exit_code": null,
       "signal": 9,
-      "evidence": "kqueue_exit"
+      "evidence": "process_exit"
     }
   },
   {

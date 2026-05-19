@@ -112,7 +112,7 @@ fn runtime_event_json_shapes_are_stable() {
             session_id,
             exit_code: None,
             signal: Some(9),
-            evidence: TerminationEvidence::KqueueExit,
+            evidence: TerminationEvidence::ProcessExit,
         },
         RuntimeEvent::Lost {
             session_id,
@@ -365,7 +365,7 @@ fn doctor_response() -> DoctorResponse {
             lost: 4,
         },
         watchers: WatcherCounts {
-            kqueue_watchers: 5,
+            process_exit_watchers: 5,
             shim_sockets: 6,
             event_waiters: 3,
         },

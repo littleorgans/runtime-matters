@@ -118,7 +118,7 @@ const CLI_JSON_SNAPSHOT_REDACTIONS: &[(&str, &str)] = &[
     ("running", "[count]"),
     ("exited", "[count]"),
     ("lost", "[count]"),
-    ("kqueue_watchers", "[count]"),
+    ("process_exit_watchers", "[count]"),
     ("shim_sockets", "[count]"),
     ("command", "[command]"),
     ("error", "[launcher_error]"),

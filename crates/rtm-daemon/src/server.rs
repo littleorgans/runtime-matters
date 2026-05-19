@@ -422,7 +422,7 @@ impl ServerState {
             TerminationEvidence::Lost(lost) => {
                 let _ = self.record_lost(session_id, lost).await?;
             }
-            TerminationEvidence::KqueueExit => {
+            TerminationEvidence::ProcessExit => {
                 let _ = self
                     .record_exited(session_id, RuntimeExit::new(None, None), evidence)
                     .await?;
@@ -495,7 +495,7 @@ impl ServerState {
 
     pub(crate) async fn watcher_counts(&self) -> WatcherCounts {
         WatcherCounts {
-            kqueue_watchers: self.exit_watchers.lock().await.len(),
+            process_exit_watchers: self.exit_watchers.lock().await.len(),
             shim_sockets: self.pending_ready.lock().await.len(),
             event_waiters: self.event_log.waiter_count().await,
         }
@@ -552,7 +552,7 @@ impl ServerState {
             .and_then(|lifecycle| lifecycle.shim_pid)
             .ok_or_else(|| anyhow!("session {session_id} missing shim pid"))?;
         if rtm_platform::process::pid_alive(shim_pid) {
-            Ok(TerminationEvidence::KqueueExit)
+            Ok(TerminationEvidence::ProcessExit)
         } else {
             Ok(TerminationEvidence::Lost(
                 LostEvidence::ShimDiedBeforeReport,
@@ -608,7 +608,7 @@ impl ServerState {
         }
         let event = match evidence {
             TerminationEvidence::Lost(lost) => event_channel::lost_event(lifecycle, lost),
-            TerminationEvidence::ShimExit | TerminationEvidence::KqueueExit => {
+            TerminationEvidence::ShimExit | TerminationEvidence::ProcessExit => {
                 event_channel::terminated_event(lifecycle, evidence)
             }
         };
