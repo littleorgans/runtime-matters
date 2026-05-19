@@ -1,6 +1,7 @@
 set shell := ["bash", "-cu"]
 
-RTM_LOCAL_BIN := env_var_or_default("RTM_LOCAL_BIN", "/Users/alphab/.cargo/bin/rtm")
+# Fall back to $HOME/.cargo/bin/rtm if RTM_LOCAL_BIN is not set in the host environment
+RTM_LOCAL_BIN := env("RTM_LOCAL_BIN", env("HOME") / ".cargo/bin/rtm")
 
 install: install-release
 
