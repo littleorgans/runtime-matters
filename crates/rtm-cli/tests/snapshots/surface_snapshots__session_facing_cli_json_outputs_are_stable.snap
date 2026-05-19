@@ -74,25 +74,28 @@ expression: snapshot
       "shim_sockets": "[count]"
     }
   },
-  "events": [
-    {
-      "payload": {
-        "runtime_pid": "[pid]",
-        "session_id": "[uuid]",
-        "start_time": "[timestamp]"
+  "events": {
+    "cursor": 2,
+    "events": [
+      {
+        "payload": {
+          "runtime_pid": "[pid]",
+          "session_id": "[uuid]",
+          "start_time": "[timestamp]"
+        },
+        "type": "running"
       },
-      "type": "running"
-    },
-    {
-      "payload": {
-        "evidence": "shim_exit",
-        "exit_code": null,
-        "session_id": "[uuid]",
-        "signal": 15
-      },
-      "type": "terminated"
-    }
-  ],
+      {
+        "payload": {
+          "evidence": "shim_exit",
+          "exit_code": null,
+          "session_id": "[uuid]",
+          "signal": 15
+        },
+        "type": "terminated"
+      }
+    ]
+  },
   "kill": {
     "session_id": "[uuid]"
   },

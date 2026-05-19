@@ -71,6 +71,9 @@ after the last returned cursor without duplicate delivery across daemon restarts
 If a cursor falls behind the retained log floor, rtmd returns
 `RuntimeResponse::CursorExpired { oldest }`. Use `Status` with `session_ids` and
 `updated_since` as the authoritative lifecycle view when reconciliation matters.
+For the CLI, `rtm events --format json` emits `{ "cursor_expired": true,
+"latest_cursor": N }`. `rtm events --format human` writes
+`cursor expired (latest_cursor: N)` to stderr and exits with code 2.
 
 ## Release
 

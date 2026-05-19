@@ -5,8 +5,8 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    DoctorResponse, KillByPidResponse, Lifecycle, LifecycleCounts, NudgeOutcome, NudgeResponse,
-    PaneSnapshot, RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
+    DoctorResponse, EventsPayload, KillByPidResponse, Lifecycle, LifecycleCounts, NudgeOutcome,
+    NudgeResponse, PaneSnapshot, RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
 };
 
 pub trait CliOutput: Serialize {
@@ -166,6 +166,13 @@ impl CliOutput for Vec<RuntimeEvent> {
             }
         }
         Ok(())
+    }
+}
+
+impl CliOutput for EventsPayload {
+    fn render_human(&self, f: &mut impl Write) -> fmt::Result {
+        self.events.render_human(f)?;
+        writeln!(f, "cursor: {}", self.cursor)
     }
 }
 

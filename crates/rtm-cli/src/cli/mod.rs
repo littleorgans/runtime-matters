@@ -3,10 +3,11 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use lilo_rm_client::RuntimeClient;
 use lilo_rm_core::{
-    Ack, CaptureRequest, KillByPidRequest, KillRequest, NudgeOutcome, NudgeRequest, RuntimeKind,
-    RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
-    ValidateTargetOutcome, ValidateTargetResponse,
+    Ack, CaptureRequest, EventBatch, EventsPayload, KillByPidRequest, KillRequest, NudgeOutcome,
+    NudgeRequest, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest,
+    SpawnTarget, StatusFilter, ValidateTargetOutcome, ValidateTargetResponse,
 };
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::cli::daemon::DaemonCommand;
@@ -19,6 +20,8 @@ pub mod mcp;
 pub mod output;
 pub mod shim;
 pub mod version;
+
+const CURSOR_EXPIRED_EXIT_CODE: i32 = 2;
 
 #[derive(Debug, Parser)]
 #[command(name = "rtm")]
@@ -376,9 +379,43 @@ async fn status(args: StatusArgs) -> Result<()> {
 
 async fn events(args: EventsArgs) -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
-    let events = crate::shared::events(&socket_path, args.since, args.wait_ms).await?;
-    output::emit(&args.output, &events)?;
+    let batch = crate::shared::events(&socket_path, args.since, args.wait_ms).await?;
+    match batch {
+        EventBatch::Events { events, cursor } => {
+            output::emit(&args.output, &EventsPayload { events, cursor })?;
+        }
+        EventBatch::CursorExpired { oldest } => emit_cursor_expired(args.output, oldest)?,
+        _ => bail!("unexpected events batch"),
+    }
     Ok(())
+}
+
+fn emit_cursor_expired(
+    args: output::OutputArgs,
+    latest_cursor: lilo_rm_core::EventCursor,
+) -> Result<()> {
+    match args.format {
+        output::OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&CursorExpiredOutput {
+                    cursor_expired: true,
+                    latest_cursor,
+                })?
+            );
+        }
+        output::OutputFormat::Human => {
+            eprintln!("cursor expired (latest_cursor: {latest_cursor})");
+            std::process::exit(CURSOR_EXPIRED_EXIT_CODE);
+        }
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct CursorExpiredOutput {
+    cursor_expired: bool,
+    latest_cursor: lilo_rm_core::EventCursor,
 }
 
 fn parse_updated_since(value: &str) -> std::result::Result<DateTime<Utc>, chrono::ParseError> {

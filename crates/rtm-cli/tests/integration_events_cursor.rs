@@ -6,7 +6,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use common::{RtmHarness, output_stdout, spawn_ok, status_pid, terminate_process, wait_until};
+use common::{
+    RtmHarness, output_stderr, output_stdout, runtime_event_line_count, spawn_ok, status_pid,
+    terminate_process, wait_until,
+};
 use lilo_rm_core::{
     CursorExpiredPayload, EventsRequest, RuntimeEvent, RuntimeResponse, RuntimeRpc, WatcherCounts,
     write_json_line,
@@ -58,9 +61,39 @@ fn cli_events_since_matches_rpc_cursor_filter() {
         panic!("expected events response");
     };
     let events = payload.events;
-    assert_eq!(events.len(), stdout.lines().count());
+    assert_eq!(events.len(), runtime_event_line_count(&stdout));
     assert!(stdout.contains(SECOND_SESSION), "{stdout}");
     assert!(!stdout.contains(FIRST_SESSION), "{stdout}");
+    harness.stop();
+}
+
+#[test]
+fn cli_events_json_includes_resume_cursor() {
+    let harness = RtmHarness::start();
+    spawn_ok(&harness, FIRST_SESSION, "claude");
+    let cursor = wait_for_rpc_events(&harness, None, 1).cursor();
+
+    let output = harness.cli(&["events", "--format", "json"]);
+
+    assert!(output.status.success(), "events json failed: {output:?}");
+    let body: serde_json::Value =
+        serde_json::from_str(&output_stdout(output)).expect("events json");
+    assert_eq!(body["cursor"], cursor);
+    assert_eq!(body["events"].as_array().expect("events array").len(), 1);
+    harness.stop();
+}
+
+#[test]
+fn cli_events_human_appends_resume_cursor() {
+    let harness = RtmHarness::start();
+    spawn_ok(&harness, FIRST_SESSION, "claude");
+
+    let output = harness.events_since(0);
+
+    assert!(output.status.success(), "events human failed: {output:?}");
+    let stdout = output_stdout(output);
+    assert!(stdout.contains(FIRST_SESSION), "{stdout}");
+    assert_eq!(stdout.lines().last(), Some("cursor: 1"));
     harness.stop();
 }
 
@@ -102,6 +135,39 @@ fn expired_cursor_returns_cursor_expired_frame() {
     assert_eq!(
         response,
         RuntimeResponse::CursorExpired(CursorExpiredPayload { oldest: 2 })
+    );
+    harness.stop();
+}
+
+#[test]
+fn cli_events_json_surfaces_cursor_expiration() {
+    let mut harness = RtmHarness::start();
+    harness.stop_rtmd();
+    write_event_log(&harness, &[event_record(3, FIRST_SESSION)], "");
+    harness.start_rtmd();
+
+    let output = harness.cli(&["events", "--since", "0", "--format", "json"]);
+
+    assert!(output.status.success(), "events json failed: {output:?}");
+    let body: serde_json::Value =
+        serde_json::from_str(&output_stdout(output)).expect("cursor expired json");
+    assert_eq!(body, json!({ "cursor_expired": true, "latest_cursor": 2 }));
+    harness.stop();
+}
+
+#[test]
+fn cli_events_human_surfaces_cursor_expiration_with_distinct_exit() {
+    let mut harness = RtmHarness::start();
+    harness.stop_rtmd();
+    write_event_log(&harness, &[event_record(3, FIRST_SESSION)], "");
+    harness.start_rtmd();
+
+    let output = harness.events_since(0);
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert_eq!(
+        output_stderr(output).trim(),
+        "cursor expired (latest_cursor: 2)"
     );
     harness.stop();
 }
@@ -217,7 +283,9 @@ fn cli_events_wait_ms_round_trips_through_json_scaffold() {
         output.status.success(),
         "events --wait-ms failed: {output:?}"
     );
-    assert_eq!(output_stdout(output).trim(), "[]");
+    let body: serde_json::Value =
+        serde_json::from_str(&output_stdout(output)).expect("events json");
+    assert_eq!(body, json!({ "events": [], "cursor": 0 }));
     assert!(start.elapsed() >= Duration::from_millis(450));
     harness.stop();
 }

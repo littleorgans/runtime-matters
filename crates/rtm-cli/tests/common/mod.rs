@@ -427,9 +427,16 @@ pub fn wait_for_events(harness: &RtmHarness, expected: usize) -> String {
     wait_until(Duration::from_secs(5), || {
         let output = harness.events();
         let stdout = output_stdout(output);
-        (stdout.lines().count() == expected).then_some(stdout)
+        (runtime_event_line_count(&stdout) == expected).then_some(stdout)
     })
     .unwrap_or_else(|| panic!("events never reached {expected}"))
+}
+
+pub fn runtime_event_line_count(stdout: &str) -> usize {
+    stdout
+        .lines()
+        .filter(|line| line.starts_with("runtime event="))
+        .count()
 }
 
 pub fn wait_until<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) -> Option<T> {
