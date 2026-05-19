@@ -8,6 +8,13 @@
 * document macOS and Linux host support, including the Linux runtime socket path
 * start the v0.4 release notes with the public process exit observation rename
 
+## [0.1.11](https://github.com/littleorgans/runtime-matters/compare/v0.1.10...v0.1.11) (2026-05-19)
+
+
+### Features
+
+* Linux runtime v0.4 support ([#27](https://github.com/littleorgans/runtime-matters/issues/27)) ([76e0027](https://github.com/littleorgans/runtime-matters/commit/76e00278e84e11e887841356c700c14631bc5f4d))
+
 ## [0.1.10](https://github.com/littleorgans/runtime-matters/compare/v0.1.9...v0.1.10) (2026-05-18)
 
 
