@@ -103,7 +103,9 @@ fn launcher_error_code(error: &LauncherError) -> ErrorCode {
         LauncherError::NoLauncher { .. } | LauncherError::BinaryLookupFailed { .. } => {
             ErrorCode::RuntimeUnavailable
         }
-        LauncherError::EmptyArgv | LauncherError::EmptyEnv { .. } => ErrorCode::LaunchFailed,
+        LauncherError::EmptyArgv
+        | LauncherError::EmptyEnv { .. }
+        | LauncherError::EmptyShellArgv => ErrorCode::LaunchFailed,
     }
 }
 

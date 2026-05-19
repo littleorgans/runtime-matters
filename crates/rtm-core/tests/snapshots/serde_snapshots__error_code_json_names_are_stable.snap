@@ -9,5 +9,6 @@ expression: codes
   "headless_nudge_unsupported",
   "launch_failed",
   "invalid_target",
+  "spawn_conflict",
   "protocol_mismatch"
 ]

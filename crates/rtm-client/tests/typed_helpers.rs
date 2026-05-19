@@ -7,10 +7,10 @@ use lilo_rm_core::{
     HeadlessSpawnTarget, KillByPidPayload, KillByPidRequest, KillByPidResponse, KillOutcome,
     KillRequest, KilledPayload, Lifecycle, LifecycleCounts, MigrationState, NudgeFailureReason,
     NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeKind,
-    RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, SpawnedPayload,
-    StatusFilter, StatusPayload, ValidateTargetPayload, ValidateTargetRequest,
-    ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts, read_json_line,
-    write_json_line,
+    RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnConflictKind, SpawnConflictPayload,
+    SpawnRequest, SpawnTarget, SpawnedPayload, StatusFilter, StatusPayload, ValidateTargetPayload,
+    ValidateTargetRequest, ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts,
+    read_json_line, write_json_line,
 };
 use tokio::io::BufReader;
 use tokio::net::UnixListener;
@@ -75,6 +75,32 @@ async fn daemon_error_response_preserves_code() {
         .expect_err("daemon error response should fail");
 
     assert_error_response(error);
+    server.await.expect("server task");
+}
+
+#[tokio::test]
+async fn spawn_conflict_maps_to_typed_client_error() {
+    let payload = SpawnConflictPayload {
+        kind: SpawnConflictKind::SessionId,
+        lifecycle: Lifecycle::forking(session_id(), RuntimeKind::Claude),
+    };
+    let (client, server) = mock_response(
+        RuntimeRpc::Spawn {
+            request: spawn_request(),
+        },
+        RuntimeResponse::SpawnConflict(payload.clone()),
+    )
+    .await;
+
+    let error = client
+        .spawn(spawn_request())
+        .await
+        .expect_err("spawn conflict should fail");
+
+    match error {
+        ClientError::SpawnConflict(actual) => assert_eq!(*actual, payload),
+        other => panic!("unexpected client error: {other:?}"),
+    }
     server.await.expect("server task");
 }
 
@@ -170,6 +196,8 @@ fn spawn_request() -> SpawnRequest {
         env: Vec::new(),
         cwd: "/tmp/rtm".into(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
+        force: false,
+        shell_resume: None,
     }
 }
 

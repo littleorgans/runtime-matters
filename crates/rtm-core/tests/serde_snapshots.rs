@@ -6,9 +6,10 @@ use lilo_rm_core::{
     KillRequest, LogAvailability, LogsUnavailableReason, LostEvidence, McpBridgeRequest,
     NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent,
     RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit,
-    ShimLaunchPayload, ShimLaunchRequest, SpawnRequest, SpawnTarget, SpawnedPayload, StatusRequest,
-    TerminationEvidence, TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetPayload,
-    ValidateTargetRequest, ValidateTargetResponse, VersionPayload,
+    ShimLaunchPayload, ShimLaunchRequest, SpawnConflictKind, SpawnConflictPayload, SpawnRequest,
+    SpawnTarget, SpawnedPayload, StatusRequest, TerminationEvidence, TmuxSpawnTarget,
+    ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetRequest, ValidateTargetResponse,
+    VersionPayload,
 };
 use serde_json::json;
 use support::{
@@ -30,6 +31,8 @@ fn runtime_rpc_json_shapes_are_stable() {
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {
                     address: "rtm:0.1".parse().expect("address"),
                 }),
+                force: true,
+                shell_resume: None,
             },
         },
         RuntimeRpc::ValidateTarget {
@@ -148,7 +151,7 @@ fn runtime_response_json_shapes_are_stable() {
             ),
         }),
         RuntimeResponse::Spawned(SpawnedPayload {
-            lifecycle: tmux_lifecycle,
+            lifecycle: tmux_lifecycle.clone(),
             event: RuntimeEvent::Running {
                 session_id,
                 runtime_pid: 4243,
@@ -157,6 +160,10 @@ fn runtime_response_json_shapes_are_stable() {
             log_dir: None,
             stdout_path: None,
             stderr_path: None,
+        }),
+        RuntimeResponse::SpawnConflict(SpawnConflictPayload {
+            kind: SpawnConflictKind::TmuxPaneOccupancy,
+            lifecycle: tmux_lifecycle,
         }),
         RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::valid(),
@@ -280,6 +287,7 @@ fn error_code_json_names_are_stable() {
         ErrorCode::HeadlessNudgeUnsupported,
         ErrorCode::LaunchFailed,
         ErrorCode::InvalidTarget,
+        ErrorCode::SpawnConflict,
         ErrorCode::ProtocolMismatch,
     ];
 

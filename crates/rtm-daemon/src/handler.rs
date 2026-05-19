@@ -17,7 +17,7 @@ use crate::{
     error::{RpcErrorContext, protocol_error_response, rpc_error_response},
     mcp_bridge,
     server::ServerState,
-    shim_socket,
+    shim_socket, spawn_preflight,
 };
 
 pub(crate) async fn handle_connection(
@@ -100,6 +100,9 @@ fn error_context(rpc: &RuntimeRpc) -> RpcErrorContext {
 async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<RuntimeResponse> {
     match rpc {
         RuntimeRpc::Spawn { request } => {
+            if let Some(conflict) = spawn_preflight::check(&state, &request).await? {
+                return Ok(conflict);
+            }
             let launch = rtm_launchers::dispatch(&request.runtime)?.launch_spec(&request)?;
             let ready_rx = state.begin_spawn(&request, launch).await?;
             let log_paths = match shim_socket::launch_shim(state.config(), &request).await {

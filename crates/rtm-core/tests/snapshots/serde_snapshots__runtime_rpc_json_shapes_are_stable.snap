@@ -16,7 +16,8 @@ expression: rpcs
           "payload": {
             "address": "rtm:0.1"
           }
-        }
+        },
+        "force": true
       }
     }
   },

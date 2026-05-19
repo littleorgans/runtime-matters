@@ -248,6 +248,7 @@ fn v05_launch_spec() -> LaunchSpec {
             LaunchEnv::new("RTM_RUNTIME_KIND", "claude"),
         ],
         cwd: "/tmp/rtm".into(),
+        shell_resume: None,
     }
 }
 

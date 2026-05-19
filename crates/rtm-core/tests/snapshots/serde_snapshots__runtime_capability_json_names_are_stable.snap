@@ -12,5 +12,6 @@ expression: "lilo_rm_core::RUNTIME_PROTOCOL_CAPABILITIES"
   "events_cursor",
   "events_long_poll",
   "tmux_pane_snapshot",
-  "kill_outcomes"
+  "kill_outcomes",
+  "spawn_conflicts"
 ]

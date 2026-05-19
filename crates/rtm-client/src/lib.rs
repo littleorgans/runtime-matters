@@ -48,6 +48,9 @@ impl RuntimeClient {
     pub async fn spawn(&self, request: SpawnRequest) -> Result<SpawnedPayload, ClientError> {
         match self.request(RuntimeRpc::Spawn { request }).await? {
             RuntimeResponse::Spawned(payload) => Ok(payload),
+            RuntimeResponse::SpawnConflict(payload) => {
+                Err(ClientError::SpawnConflict(Box::new(payload)))
+            }
             response => unexpected_response("Spawned", &response),
         }
     }
@@ -187,6 +190,9 @@ pub enum ClientError {
     /// The daemon returned an explicit error response.
     #[error("rtmd returned {code}: {message}")]
     ErrorResponse { code: ErrorCode, message: String },
+    /// The daemon refused a spawn because the requested identity or pane is already occupied.
+    #[error("rtmd spawn conflict: {0:?}")]
+    SpawnConflict(Box<lilo_rm_core::SpawnConflictPayload>),
     /// A typed helper received a different response variant than expected.
     #[error("expected {expected} response, got {got}")]
     UnexpectedResponse {
@@ -204,6 +210,7 @@ impl ClientError {
             Self::DaemonUnavailable { .. } => ErrorCode::RuntimeUnavailable,
             Self::Protocol { .. } => ErrorCode::ProtocolMismatch,
             Self::ErrorResponse { code, .. } => *code,
+            Self::SpawnConflict(_) => ErrorCode::SpawnConflict,
             Self::UnexpectedResponse { .. } => ErrorCode::ProtocolMismatch,
         }
     }
@@ -237,6 +244,7 @@ fn unexpected_response<T>(
 fn response_name(response: &RuntimeResponse) -> &'static str {
     match response {
         RuntimeResponse::Spawned(_) => "Spawned",
+        RuntimeResponse::SpawnConflict(_) => "SpawnConflict",
         RuntimeResponse::ValidateTarget(_) => "ValidateTarget",
         RuntimeResponse::Status(_) => "Status",
         RuntimeResponse::Killed(_) => "Killed",

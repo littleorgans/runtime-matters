@@ -75,6 +75,11 @@ pub struct SpawnArgs {
     target: SpawnTarget,
     #[arg(long, value_name = "PATH")]
     cwd: Option<PathBuf>,
+    /// Pre-empt a live runtime that already occupies the requested tmux pane.
+    ///
+    /// Does not override session id reuse conflicts.
+    #[arg(long)]
+    force: bool,
 }
 
 #[derive(Debug, Args)]
@@ -186,30 +191,27 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
         session_id,
         target,
         cwd,
+        force,
     } = args;
     let cwd = spawn_cwd(cwd)?;
     let socket_path = crate::shared::socket_path()?;
     let env = lilo_rm_core::capture_caller_env();
-    let response = crate::shared::request(
-        &socket_path,
-        RuntimeRpc::Spawn {
-            request: SpawnRequest {
-                session_id,
-                runtime,
-                env,
-                cwd,
-                target,
-            },
-        },
-    )
-    .await?;
+    let shell_resume = target
+        .tmux_address()
+        .map(|_| lilo_rm_core::capture_shell_resume(cwd.clone()));
+    let payload = RuntimeClient::new(socket_path)
+        .spawn(SpawnRequest {
+            session_id,
+            runtime,
+            env,
+            cwd,
+            target,
+            force,
+            shell_resume,
+        })
+        .await?;
 
-    match response {
-        RuntimeResponse::Spawned(payload) => {
-            output::emit(&output, &RuntimeResponse::Spawned(payload))?
-        }
-        other => anyhow::bail!("unexpected spawn response: {other:?}"),
-    }
+    output::emit(&output, &RuntimeResponse::Spawned(payload))?;
     Ok(())
 }
 

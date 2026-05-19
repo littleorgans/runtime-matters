@@ -13,6 +13,7 @@ pub enum ErrorCode {
     HeadlessNudgeUnsupported,
     LaunchFailed,
     InvalidTarget,
+    SpawnConflict,
     ProtocolMismatch,
 }
 
@@ -25,6 +26,7 @@ impl ErrorCode {
             Self::HeadlessNudgeUnsupported => "headless_nudge_unsupported",
             Self::LaunchFailed => "launch_failed",
             Self::InvalidTarget => "invalid_target",
+            Self::SpawnConflict => "spawn_conflict",
             Self::ProtocolMismatch => "protocol_mismatch",
         }
     }

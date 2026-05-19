@@ -45,6 +45,8 @@ fn launcher_status(launcher: &'static dyn lilo_rm_core::RuntimeLauncher) -> Laun
         env: Vec::new(),
         cwd: lilo_rm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
+        force: false,
+        shell_resume: None,
     };
     match launcher.argv(&request) {
         Ok(argv) => LauncherStatus {

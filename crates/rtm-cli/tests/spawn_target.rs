@@ -5,7 +5,7 @@ use std::os::unix::net::UnixStream;
 
 use common::{
     FAKE_RUNTIME_READY, RtmHarness, output_stderr, output_stdout, spawn_ok, spawn_output_ok,
-    wait_for_log,
+    wait_for_log, wait_for_status,
 };
 use lilo_rm_core::{
     ErrorCode, HeadlessSpawnTarget, LaunchEnv, NudgeFailureReason, NudgeOutcome, NudgePayload,
@@ -97,6 +97,8 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
                     env: vec![LaunchEnv::new("RTM_TEST_STDIO_SENTINELS", "1")],
                     cwd: harness.rtm_home().to_path_buf(),
                     target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
+                    force: false,
+                    shell_resume: None,
                 },
             },
         ))
@@ -142,6 +144,30 @@ fn headless_spawn_cwd_flag_overrides_caller_cwd() {
         caller_cwd.join("logs").join(&session_id).join("stdout.log"),
         &format!("{FAKE_RUNTIME_READY} {}\n", runtime_cwd.display()),
     );
+}
+
+#[test]
+fn spawn_rejects_live_and_terminal_session_id_reuse() {
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+    spawn_ok(&harness, &session_id, "claude");
+
+    let live_conflict = harness.spawn_runtime(&session_id, "claude");
+    assert_spawn_conflict(live_conflict, "SessionId", &session_id, "Running");
+
+    let forced_live_conflict = harness
+        .spawn_command(&session_id, "claude", "headless", true)
+        .arg("--force")
+        .output()
+        .expect("forced spawn client");
+    assert_spawn_conflict(forced_live_conflict, "SessionId", &session_id, "Running");
+
+    let kill = harness.kill(&session_id, "kill", 0);
+    assert!(kill.status.success(), "kill failed: {kill:?}");
+    wait_for_status(&harness, &session_id, "state=Exited");
+
+    let terminal_conflict = harness.spawn_runtime(&session_id, "claude");
+    assert_spawn_conflict(terminal_conflict, "SessionId", &session_id, "Exited");
 }
 
 #[test]
@@ -242,6 +268,20 @@ fn validate_target(harness: &RtmHarness, target: &str) -> RuntimeResponse {
             },
         },
     )
+}
+
+fn assert_spawn_conflict(
+    output: std::process::Output,
+    kind: &str,
+    session_id: &str,
+    identity: &str,
+) {
+    assert!(!output.status.success(), "spawn unexpectedly succeeded");
+    let stderr = output_stderr(output);
+    assert!(stderr.contains("spawn conflict"), "{stderr}");
+    assert!(stderr.contains(kind), "{stderr}");
+    assert!(stderr.contains(session_id), "{stderr}");
+    assert!(stderr.contains(identity), "{stderr}");
 }
 
 fn request_raw(harness: &RtmHarness, rpc: RuntimeRpc) -> RuntimeResponse {

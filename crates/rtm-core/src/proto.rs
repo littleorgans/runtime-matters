@@ -133,6 +133,19 @@ pub struct SpawnedPayload {
     pub stderr_path: Option<PathBuf>,
 }
 
+#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpawnConflictKind {
+    SessionId,
+    TmuxPaneOccupancy,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct SpawnConflictPayload {
+    pub kind: SpawnConflictKind,
+    pub lifecycle: Lifecycle,
+}
+
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 pub struct ValidateTargetPayload {
     pub response: ValidateTargetResponse,
@@ -226,6 +239,7 @@ pub enum EventBatch {
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum RuntimeResponse {
     Spawned(SpawnedPayload),
+    SpawnConflict(SpawnConflictPayload),
     ValidateTarget(ValidateTargetPayload),
     Status(StatusPayload),
     Killed(KilledPayload),

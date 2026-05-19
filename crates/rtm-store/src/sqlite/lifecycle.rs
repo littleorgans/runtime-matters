@@ -201,6 +201,27 @@ impl LifecycleStore {
         rows.into_iter().map(TryInto::try_into).collect()
     }
 
+    pub async fn running_tmux_occupant(
+        &self,
+        tmux_pane: &lilo_rm_core::TmuxAddress,
+    ) -> Result<Option<Lifecycle>> {
+        let row = sqlx::query_as::<_, LifecycleRow>(
+            r#"
+            SELECT session_id, runtime, state, shim_pid, runtime_pid, start_time,
+                   tmux_pane, exit_code, exit_signal, lost_evidence
+            FROM lifecycle
+            WHERE state = 'Running' AND tmux_pane = ?
+            ORDER BY spawned_at
+            LIMIT 1
+            "#,
+        )
+        .bind(encode_tmux_pane(Some(tmux_pane))?)
+        .fetch_optional(&self.pool)
+        .await
+        .context("failed to fetch running tmux pane occupant")?;
+        row.map(TryInto::try_into).transpose()
+    }
+
     pub async fn lifecycle_counts(&self) -> Result<LifecycleCounts> {
         let rows = sqlx::query_as::<_, StateCountRow>(
             r#"

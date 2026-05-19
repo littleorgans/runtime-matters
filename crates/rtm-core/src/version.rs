@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub const RUNTIME_PROTOCOL_VERSION: &str = "0.5";
+pub const RUNTIME_PROTOCOL_VERSION: &str = "0.6";
 
 pub const RUNTIME_PROTOCOL_CAPABILITIES: &[RuntimeCapability] = &[
     RuntimeCapability::StructuredProtocolErrors,
@@ -16,6 +16,7 @@ pub const RUNTIME_PROTOCOL_CAPABILITIES: &[RuntimeCapability] = &[
     RuntimeCapability::EventsLongPoll,
     RuntimeCapability::TmuxPaneSnapshot,
     RuntimeCapability::KillOutcomes,
+    RuntimeCapability::SpawnConflicts,
 ];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -63,6 +64,8 @@ pub enum RuntimeCapability {
     TmuxPaneSnapshot,
     /// Kill responses include typed Signalled or AlreadyExited outcomes.
     KillOutcomes,
+    /// Spawn rejects session reuse and occupied tmux panes with typed conflicts.
+    SpawnConflicts,
 }
 
 impl RuntimeCapability {
@@ -78,6 +81,7 @@ impl RuntimeCapability {
             Self::EventsLongPoll => "events_long_poll",
             Self::TmuxPaneSnapshot => "tmux_pane_snapshot",
             Self::KillOutcomes => "kill_outcomes",
+            Self::SpawnConflicts => "spawn_conflicts",
         }
     }
 }
@@ -103,6 +107,7 @@ impl FromStr for RuntimeCapability {
             "events_long_poll" => Ok(Self::EventsLongPoll),
             "tmux_pane_snapshot" => Ok(Self::TmuxPaneSnapshot),
             "kill_outcomes" => Ok(Self::KillOutcomes),
+            "spawn_conflicts" => Ok(Self::SpawnConflicts),
             other => Err(format!("unknown runtime capability {other}")),
         }
     }
@@ -133,8 +138,8 @@ mod tests {
     use super::{RUNTIME_PROTOCOL_VERSION, VersionInfo};
 
     #[test]
-    fn protocol_version_advertises_v05_kill_outcome_contract() {
-        assert_eq!(RUNTIME_PROTOCOL_VERSION, "0.5");
-        assert_eq!(VersionInfo::new("rtm", "git").protocol_version, "0.5");
+    fn protocol_version_advertises_v06_spawn_conflict_contract() {
+        assert_eq!(RUNTIME_PROTOCOL_VERSION, "0.6");
+        assert_eq!(VersionInfo::new("rtm", "git").protocol_version, "0.6");
     }
 }

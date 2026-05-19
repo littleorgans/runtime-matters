@@ -30,6 +30,8 @@ fn main() {
                         env: Vec::new(),
                         cwd: harness.rtm_home().to_path_buf(),
                         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
+                        force: false,
+                        shell_resume: None,
                     },
                 },
             ))

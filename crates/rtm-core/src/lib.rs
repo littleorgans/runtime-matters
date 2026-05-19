@@ -38,7 +38,7 @@ pub use capture::{
 };
 pub use cli_output::{Ack, CliOutput};
 pub use error::{ErrorCode, ProtocolError, RuntimeKindParseError};
-pub use launcher::{LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher};
+pub use launcher::{LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher, ShellResume};
 pub use mcp::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION, McpBridgeRequest,
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,
@@ -47,13 +47,15 @@ pub use proto::{
     CapturePayload, CursorExpiredPayload, DoctorPayload, EVENT_LOG_RETENTION_MIN_AGE_SECS,
     EVENT_LOG_RETENTION_MIN_EVENTS, EVENT_WAIT_MAX_MS, ErrorPayload, EventBatch, EventCursor,
     EventsPayload, EventsRequest, KillByPidPayload, KilledPayload, McpBridgePayload, NudgePayload,
-    RuntimeResponse, RuntimeRpc, ShimLaunchPayload, SpawnedPayload, StatusPayload, StatusRequest,
-    ValidateTargetPayload, VersionPayload, WatchersPayload, clamped_event_wait_ms, read_json_line,
-    read_json_line_blocking, write_json_line, write_json_line_blocking,
+    RuntimeResponse, RuntimeRpc, ShimLaunchPayload, SpawnConflictKind, SpawnConflictPayload,
+    SpawnedPayload, StatusPayload, StatusRequest, ValidateTargetPayload, VersionPayload,
+    WatchersPayload, clamped_event_wait_ms, read_json_line, read_json_line_blocking,
+    write_json_line, write_json_line_blocking,
 };
 pub use spawn_context::{
     CALLER_ENV_DENYLIST, CALLER_ENV_DENYLIST_PREFIXES, capture_caller_cwd, capture_caller_env,
-    capture_env_from, capture_env_from_os, launcher_probe_cwd,
+    capture_env_from, capture_env_from_os, capture_shell_resume, capture_shell_resume_env,
+    launcher_probe_cwd,
 };
 pub use types::{
     HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, NudgeFailureReason,

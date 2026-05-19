@@ -63,10 +63,11 @@ expression: snapshot
         "events_cursor",
         "events_long_poll",
         "tmux_pane_snapshot",
-        "kill_outcomes"
+        "kill_outcomes",
+        "spawn_conflicts"
       ],
       "git_sha": "[git_sha]",
-      "protocol_version": "0.5",
+      "protocol_version": "0.6",
       "version": "[version]"
     },
     "watchers": {
@@ -170,10 +171,11 @@ expression: snapshot
       "events_cursor",
       "events_long_poll",
       "tmux_pane_snapshot",
-      "kill_outcomes"
+      "kill_outcomes",
+      "spawn_conflicts"
     ],
     "git_sha": "[git_sha]",
-    "protocol_version": "0.5",
+    "protocol_version": "0.6",
     "version": "[version]"
   }
 }

@@ -40,6 +40,7 @@ pub fn launch_spec() -> LaunchSpec {
         argv: vec!["claude".to_owned(), "--resume".to_owned()],
         env: vec![LaunchEnv::new("RTM", "1")],
         cwd: "/tmp/rtm".into(),
+        shell_resume: None,
     }
 }
 

@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
-use crate::{LaunchEnv, RuntimeKindParseError};
+use crate::{LaunchEnv, RuntimeKindParseError, ShellResume};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeKind {
@@ -278,6 +278,14 @@ pub struct SpawnRequest {
     pub env: Vec<LaunchEnv>,
     pub cwd: std::path::PathBuf,
     pub target: SpawnTarget,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub force: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell_resume: Option<ShellResume>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
