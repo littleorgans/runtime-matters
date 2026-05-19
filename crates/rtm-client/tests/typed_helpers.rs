@@ -423,6 +423,30 @@ async fn nudge_helper_preserves_tmux_pane_dead_outcome() {
     server.await.expect("server task");
 }
 
+#[tokio::test]
+async fn nudge_helper_preserves_terminal_session_outcome() {
+    let (client, server) = mock_response(
+        RuntimeRpc::Nudge {
+            request: nudge_request(),
+        },
+        RuntimeResponse::Nudge(NudgePayload {
+            response: nudge_response(NudgeOutcome::Failed(NudgeFailureReason::SessionEnded)),
+        }),
+    )
+    .await;
+
+    let actual = client
+        .nudge(nudge_request())
+        .await
+        .expect("terminal nudge response is caller visible");
+
+    assert_eq!(
+        actual,
+        nudge_response(NudgeOutcome::Failed(NudgeFailureReason::SessionEnded))
+    );
+    server.await.expect("server task");
+}
+
 typed_helper_tests!(
     capture_helper,
     capture(capture_request()),

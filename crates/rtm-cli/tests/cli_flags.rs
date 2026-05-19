@@ -35,6 +35,25 @@ fn spawn_help_documents_cwd_flag() {
 }
 
 #[test]
+fn nudge_help_documents_typed_failure_reasons() {
+    let output = Command::new(env!("CARGO_BIN_EXE_rtm"))
+        .args(["nudge", "--help"])
+        .output()
+        .expect("rtm nudge --help");
+
+    assert!(
+        output.status.success(),
+        "rtm nudge --help failed: {output:?}"
+    );
+    assert!(output.stderr.is_empty(), "stderr was not empty: {output:?}");
+
+    let stdout = String::from_utf8(output.stdout).expect("help output utf8");
+    assert!(stdout.contains("headless_lifecycle"), "{stdout}");
+    assert!(stdout.contains("session_ended"), "{stdout}");
+    assert!(stdout.contains("tmux_pane_dead"), "{stdout}");
+}
+
+#[test]
 fn spawn_cwd_flag_rejects_missing_path_before_daemon_request() {
     let temp = tempfile::TempDir::new().expect("temp dir");
     let missing = temp.path().join("missing");

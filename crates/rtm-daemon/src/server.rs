@@ -386,6 +386,12 @@ impl ServerState {
                 outcome: NudgeOutcome::Unsupported(NudgeFailureReason::HeadlessLifecycle),
             });
         };
+        if self.is_terminal(request.session_id).await {
+            return Ok(NudgeResponse {
+                delivered: false,
+                outcome: NudgeOutcome::Failed(NudgeFailureReason::SessionEnded),
+            });
+        }
 
         if !rtm_platform::tmux::TmuxGateway::nudge(tmux_pane, &request.content).await? {
             return Ok(NudgeResponse {

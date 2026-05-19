@@ -4,8 +4,9 @@ use clap::{Args, Parser, Subcommand};
 use lilo_rm_client::RuntimeClient;
 use lilo_rm_core::{
     CaptureRequest, EventBatch, EventsPayload, KillByPidRequest, KillRequest, KilledPayload,
-    NudgeOutcome, NudgeRequest, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal,
-    SpawnRequest, SpawnTarget, StatusFilter, ValidateTargetOutcome, ValidateTargetResponse,
+    NudgeFailureReason, NudgeOutcome, NudgeRequest, RuntimeKind, RuntimeResponse, RuntimeRpc,
+    RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter, ValidateTargetOutcome,
+    ValidateTargetResponse,
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -43,7 +44,10 @@ enum Command {
     Spawn(SpawnArgs),
     #[command(about = "Signal a runtime session by id, or a process by pid.")]
     Kill(KillArgs),
-    #[command(about = "Deliver a nudge message to a running runtime session.")]
+    #[command(
+        about = "Deliver a nudge message to a running runtime session.",
+        after_help = "Failure reasons: headless_lifecycle, session_ended, tmux_pane_dead."
+    )]
     Nudge(NudgeArgs),
     #[command(about = "Capture the pane snapshot for a runtime session.")]
     Capture(CaptureArgs),
@@ -292,16 +296,29 @@ async fn nudge(args: NudgeArgs) -> Result<()> {
                 reason.as_str(),
                 args.session_id
             ),
-            NudgeOutcome::Failed(reason) => bail!(
-                "nudge failed; reason={} session_id={}",
-                reason.as_str(),
-                args.session_id
-            ),
+            NudgeOutcome::Failed(reason) => {
+                bail!("{}", nudge_failed_message(reason, args.session_id))
+            }
             NudgeOutcome::Delivered => bail!("inconsistent nudge response: {:?}", payload.response),
         },
         other => bail!("unexpected nudge response: {other:?}"),
     }
     Ok(())
+}
+
+fn nudge_failed_message(reason: NudgeFailureReason, session_id: Uuid) -> String {
+    match reason {
+        NudgeFailureReason::SessionEnded => format!(
+            "nudge failed; reason={} session_id={} detail=session is no longer running",
+            reason.as_str(),
+            session_id
+        ),
+        _ => format!(
+            "nudge failed; reason={} session_id={}",
+            reason.as_str(),
+            session_id
+        ),
+    }
 }
 
 async fn capture(args: CaptureArgs) -> Result<()> {

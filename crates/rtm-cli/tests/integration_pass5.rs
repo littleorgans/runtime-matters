@@ -1,6 +1,9 @@
 mod common;
 
-use common::{FAKE_RUNTIME_READY, RtmHarness, output_stdout, spawn_ok, spawn_output_ok};
+use common::{
+    FAKE_RUNTIME_READY, RtmHarness, output_stderr, output_stdout, spawn_ok, spawn_output_ok,
+    wait_for_status,
+};
 use lilo_rm_core::{CaptureError, CaptureRequest, CaptureResponse, RuntimeResponse, RuntimeRpc};
 use uuid::Uuid;
 
@@ -33,6 +36,42 @@ fn pass5_spawn_inside_tmux_captures_pane_and_nudges_it() {
     let nudge_stdout = output_stdout(nudge);
     assert!(nudge_stdout.contains("nudge delivered"), "{nudge_stdout}");
     tmux_session.wait_for_capture(&content);
+
+    harness.stop();
+}
+
+#[test]
+fn nudge_rejects_terminal_tmux_session() {
+    let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-terminal-nudge") else {
+        eprintln!("skipping tmux terminal nudge test because tmux is unavailable");
+        return;
+    };
+
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+    let expected_pane = tmux_session.pane();
+
+    let spawn = harness.spawn_runtime_in_tmux(&session_id, "claude", &expected_pane);
+    spawn_output_ok(spawn, "claude");
+    tmux_session.wait_for_capture(FAKE_RUNTIME_READY);
+
+    let kill = harness.kill(&session_id, "TERM", 2);
+    assert!(kill.status.success(), "kill failed: {kill:?}");
+    wait_for_status(&harness, &session_id, "state=Exited");
+
+    let nudge = harness.nudge(&session_id, "after-exit");
+    assert!(!nudge.status.success(), "nudge succeeded: {nudge:?}");
+    let stderr = output_stderr(nudge);
+    assert!(
+        stderr.contains(&format!(
+            "nudge failed; reason=session_ended session_id={session_id}"
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("detail=session is no longer running"),
+        "{stderr}"
+    );
 
     harness.stop();
 }

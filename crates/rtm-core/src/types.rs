@@ -361,6 +361,7 @@ pub enum NudgeOutcome {
 #[serde(rename_all = "snake_case")]
 pub enum NudgeFailureReason {
     HeadlessLifecycle,
+    SessionEnded,
     TmuxPaneDead,
 }
 
@@ -368,6 +369,7 @@ impl NudgeFailureReason {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::HeadlessLifecycle => "headless_lifecycle",
+            Self::SessionEnded => "session_ended",
             Self::TmuxPaneDead => "tmux_pane_dead",
         }
     }
@@ -565,6 +567,7 @@ mod tests {
             NudgeFailureReason::HeadlessLifecycle.as_str(),
             "headless_lifecycle"
         );
+        assert_eq!(NudgeFailureReason::SessionEnded.as_str(), "session_ended");
         assert_eq!(NudgeFailureReason::TmuxPaneDead.as_str(), "tmux_pane_dead");
     }
 
