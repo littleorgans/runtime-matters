@@ -8,6 +8,17 @@
 * document macOS and Linux host support, including the Linux runtime socket path
 * start the v0.4 release notes with the public process exit observation rename
 
+## [0.2.0](https://github.com/littleorgans/runtime-matters/compare/v0.1.11...v0.2.0) (2026-05-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rtm-cli:** clients on protocol 0.3 will see a version mismatch against rtmd. Pair with fec94dd, which switched operator commands to positional session id; both ship together as the v0.4 surface.
+
+### Features
+
+* **rtm-cli:** make session id positional for operator commands ([#30](https://github.com/littleorgans/runtime-matters/issues/30)) ([526314c](https://github.com/littleorgans/runtime-matters/commit/526314c90b178cc1325c25a92d7efa92d309c4d2))
+
 ## [0.1.11](https://github.com/littleorgans/runtime-matters/compare/v0.1.10...v0.1.11) (2026-05-19)
 
 
