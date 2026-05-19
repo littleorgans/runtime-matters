@@ -2,6 +2,12 @@
 
 All notable changes documented here.
 
+## [0.4.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.3.0...lilo-rm-client-v0.4.0) - 2026-05-19
+
+### Features
+
+- Linux runtime v0.4 support ([#27](https://github.com/littleorgans/runtime-matters/pull/27))
+
 ## [0.3.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.2.0...lilo-rm-client-v0.3.0) - 2026-05-19
 
 ### Miscellaneous
