@@ -10,7 +10,7 @@ use lilo_rm_core::{
     SpawnTarget, ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetRequest,
     ValidateTargetResponse, read_json_line_blocking, write_json_line_blocking,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 #[test]
@@ -143,6 +143,36 @@ fn validate_target_rpc_reports_headless_and_parse_outcomes() {
         RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::unsupported_target("ssh:remote"),
         })
+    );
+}
+
+#[test]
+fn validate_target_cli_reports_json_and_human_outcomes() {
+    let harness = RtmHarness::start();
+
+    let json_output = harness.cli(&["validate-target", "headless"]);
+    assert!(
+        json_output.status.success(),
+        "validate-target json failed: {json_output:?}"
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&output_stdout(json_output)).expect("validate target json"),
+        json!({
+            "valid": true,
+            "outcome": {
+                "kind": "valid",
+            },
+        })
+    );
+
+    let human_output = harness.cli(&["validate-target", "garbage", "--format", "human"]);
+    assert!(
+        !human_output.status.success(),
+        "invalid validate-target succeeded: {human_output:?}"
+    );
+    assert_eq!(
+        output_stdout(human_output),
+        "garbage: invalid (InvalidTarget)\n"
     );
 }
 

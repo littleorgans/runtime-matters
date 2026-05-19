@@ -1,9 +1,11 @@
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
+use lilo_rm_client::RuntimeClient;
 use lilo_rm_core::{
     Ack, CaptureRequest, KillByPidRequest, KillRequest, NudgeOutcome, NudgeRequest, RuntimeKind,
     RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter,
+    ValidateTargetOutcome, ValidateTargetResponse,
 };
 use uuid::Uuid;
 
@@ -41,6 +43,8 @@ enum Command {
     Nudge(NudgeArgs),
     #[command(about = "Capture the pane snapshot for a runtime session.")]
     Capture(CaptureArgs),
+    #[command(about = "Validate a spawn target without starting a runtime.")]
+    ValidateTarget(ValidateTargetArgs),
     #[command(about = cli_help::STATUS_ABOUT)]
     Status(StatusArgs),
     #[command(about = cli_help::MCP_ABOUT)]
@@ -120,6 +124,14 @@ pub struct CaptureArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct ValidateTargetArgs {
+    #[command(flatten)]
+    output: output::OutputArgs,
+    #[arg(value_name = "TARGET")]
+    target: String,
+}
+
+#[derive(Debug, Args)]
 pub struct EventsArgs {
     #[command(flatten)]
     output: output::OutputArgs,
@@ -149,6 +161,7 @@ impl Cli {
             Command::Kill(args) => kill(args).await,
             Command::Nudge(args) => nudge(args).await,
             Command::Capture(args) => capture(args).await,
+            Command::ValidateTarget(args) => validate_target(args).await,
             Command::Status(args) => status(args).await,
             Command::Mcp => mcp::run().await,
             Command::Version(args) => version::run(args.output).await,
@@ -298,6 +311,47 @@ async fn capture(args: CaptureArgs) -> Result<()> {
         other => bail!("unexpected capture response: {other:?}"),
     }
     Ok(())
+}
+
+async fn validate_target(args: ValidateTargetArgs) -> Result<()> {
+    let socket_path = crate::shared::socket_path()?;
+    let response = RuntimeClient::new(socket_path)
+        .validate_target(&args.target)
+        .await?;
+    emit_validate_target(&args.output, &args.target, &response)?;
+    if !response.valid {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn emit_validate_target(
+    args: &output::OutputArgs,
+    target: &str,
+    response: &ValidateTargetResponse,
+) -> Result<()> {
+    match args.format {
+        output::OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(response)?);
+        }
+        output::OutputFormat::Human => {
+            let validity = if response.valid { "valid" } else { "invalid" };
+            println!(
+                "{target}: {validity} ({})",
+                validate_target_outcome_name(&response.outcome)
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_target_outcome_name(outcome: &ValidateTargetOutcome) -> &'static str {
+    match outcome {
+        ValidateTargetOutcome::Valid => "Valid",
+        ValidateTargetOutcome::InvalidTarget { .. } => "InvalidTarget",
+        ValidateTargetOutcome::TmuxPaneDead { .. } => "TmuxPaneDead",
+        ValidateTargetOutcome::UnsupportedTarget { .. } => "UnsupportedTarget",
+    }
 }
 
 async fn status(args: StatusArgs) -> Result<()> {
