@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::{
     DoctorResponse, EventsPayload, KillByPidResponse, KillOutcome, KilledPayload, Lifecycle,
-    LifecycleCounts, NudgeOutcome, NudgeResponse, PaneSnapshot, RuntimeCapability, RuntimeEvent,
-    RuntimeResponse, VersionInfo,
+    LifecycleCounts, LogAvailability, LogsUnavailableReason, NudgeOutcome, NudgeResponse,
+    PaneSnapshot, RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
 };
 
 pub trait CliOutput: Serialize {
@@ -107,7 +107,7 @@ impl CliOutput for Vec<Lifecycle> {
         for lifecycle in self {
             writeln!(
                 f,
-                "session_id={} state={} runtime={} shim_pid={} runtime_pid={} start_time={} tmux_pane={}",
+                "session_id={} state={} runtime={} shim_pid={} runtime_pid={} start_time={} tmux_pane={} log_availability={}",
                 lifecycle.session_id,
                 lifecycle.state,
                 lifecycle.runtime,
@@ -121,7 +121,8 @@ impl CliOutput for Vec<Lifecycle> {
                     .tmux_pane
                     .as_ref()
                     .map(ToString::to_string)
-                    .unwrap_or_else(|| "-".to_owned())
+                    .unwrap_or_else(|| "-".to_owned()),
+                format_log_availability(lifecycle.log_availability.as_ref())
             )?;
         }
         Ok(())
@@ -299,6 +300,27 @@ fn format_tmux(doctor: &DoctorResponse) -> String {
     match doctor.tmux.error.as_deref() {
         Some(error) => format!("unavailable ({error})"),
         None => "unavailable".to_owned(),
+    }
+}
+
+fn format_log_availability(value: Option<&LogAvailability>) -> String {
+    match value {
+        Some(LogAvailability::Headless { .. }) => "headless".to_owned(),
+        Some(LogAvailability::TmuxPaneSnapshot) => "tmux_pane_snapshot".to_owned(),
+        Some(LogAvailability::Unavailable { reason }) => {
+            format!("unavailable:{}", format_logs_unavailable_reason(*reason))
+        }
+        None => "-".to_owned(),
+    }
+}
+
+fn format_logs_unavailable_reason(reason: LogsUnavailableReason) -> &'static str {
+    match reason {
+        LogsUnavailableReason::TmuxTarget => "tmux_target",
+        LogsUnavailableReason::CaptureDisabled => "capture_disabled",
+        LogsUnavailableReason::PaneUnavailable => "pane_unavailable",
+        LogsUnavailableReason::PipeInUse => "pipe_in_use",
+        LogsUnavailableReason::RecorderFailed => "recorder_failed",
     }
 }
 

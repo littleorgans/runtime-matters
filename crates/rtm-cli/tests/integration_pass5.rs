@@ -237,6 +237,19 @@ fn ctrl_c_interrupts_runtime_without_losing_tmux_pane(runtime: &str) {
         "{status}"
     );
 
+    let next_session_id = Uuid::now_v7().to_string();
+    let respawn = harness
+        .spawn_command(
+            &next_session_id,
+            runtime,
+            &format!("tmux:{expected_pane}"),
+            true,
+        )
+        .output()
+        .expect("respawn client");
+    spawn_output_ok(respawn, runtime);
+    tmux_session.wait_for_capture(FAKE_RUNTIME_READY);
+
     harness.stop();
 }
 
