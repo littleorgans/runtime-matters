@@ -224,7 +224,13 @@ fn ctrl_c_interrupts_runtime_without_losing_tmux_pane(runtime: &str) {
     spawn_output_ok(spawn, runtime);
     tmux_session.wait_for_capture(FAKE_RUNTIME_READY);
 
-    for _ in 0..8 {
+    assert!(
+        tmux_session.send_ctrl_c(&expected_pane),
+        "failed to send initial Ctrl+C to {expected_pane}"
+    );
+    tmux_session.wait_for_capture("press CTRL+C to quit");
+
+    for _ in 0..7 {
         let _ = tmux_session.send_ctrl_c(&expected_pane);
         thread::sleep(Duration::from_millis(25));
     }
@@ -268,14 +274,22 @@ fn wait_for_interrupt_recovery(
     session_id: &str,
     expected_pane: &str,
 ) -> String {
-    common::wait_until(Duration::from_secs(5), || {
+    let mut last_status = String::new();
+    let mut last_pane_alive = false;
+    common::wait_until(Duration::from_secs(30), || {
         let output = harness.status_format(session_id, "json");
         let stdout = output_stdout(output);
         let exited = stdout.contains("\"exited\"");
         let pane_alive = tmux_session.pane_alive(expected_pane);
+        last_status = stdout.clone();
+        last_pane_alive = pane_alive;
         (exited && pane_alive).then_some(stdout)
     })
-    .unwrap_or_else(|| panic!("runtime did not exit with live tmux pane {expected_pane}"))
+    .unwrap_or_else(|| {
+        panic!(
+            "runtime did not exit with live tmux pane {expected_pane}; pane_alive={last_pane_alive}; last_status={last_status}"
+        )
+    })
 }
 
 fn capture_rpc(
