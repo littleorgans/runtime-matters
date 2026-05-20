@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::{
     DoctorResponse, EventsPayload, KillByPidResponse, KillOutcome, KilledPayload, Lifecycle,
-    LifecycleCounts, LogAvailability, LogsUnavailableReason, NudgeOutcome, NudgeResponse,
-    PaneSnapshot, RuntimeCapability, RuntimeEvent, RuntimeResponse, VersionInfo,
+    LifecycleCounts, LogAvailability, NudgeOutcome, NudgeResponse, PaneSnapshot, RuntimeCapability,
+    RuntimeEvent, RuntimeResponse, VersionInfo,
 };
 
 pub trait CliOutput: Serialize {
@@ -307,20 +307,8 @@ fn format_log_availability(value: Option<&LogAvailability>) -> String {
     match value {
         Some(LogAvailability::Headless { .. }) => "headless".to_owned(),
         Some(LogAvailability::TmuxPaneSnapshot) => "tmux_pane_snapshot".to_owned(),
-        Some(LogAvailability::Unavailable { reason }) => {
-            format!("unavailable:{}", format_logs_unavailable_reason(*reason))
-        }
+        Some(LogAvailability::Unavailable { reason }) => format!("unavailable:{}", reason.as_str()),
         None => "-".to_owned(),
-    }
-}
-
-fn format_logs_unavailable_reason(reason: LogsUnavailableReason) -> &'static str {
-    match reason {
-        LogsUnavailableReason::TmuxTarget => "tmux_target",
-        LogsUnavailableReason::CaptureDisabled => "capture_disabled",
-        LogsUnavailableReason::PaneUnavailable => "pane_unavailable",
-        LogsUnavailableReason::PipeInUse => "pipe_in_use",
-        LogsUnavailableReason::RecorderFailed => "recorder_failed",
     }
 }
 

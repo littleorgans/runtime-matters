@@ -26,6 +26,18 @@ pub enum LogsUnavailableReason {
     RecorderFailed,
 }
 
+impl LogsUnavailableReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TmuxTarget => "tmux_target",
+            Self::CaptureDisabled => "capture_disabled",
+            Self::PaneUnavailable => "pane_unavailable",
+            Self::PipeInUse => "pipe_in_use",
+            Self::RecorderFailed => "recorder_failed",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CaptureRequest {
     pub session_id: Uuid,
@@ -67,5 +79,28 @@ impl CaptureResponse {
             Self::Captured(snapshot) => Ok(snapshot),
             Self::Failed(error) => Err(error),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LogsUnavailableReason;
+
+    #[test]
+    fn logs_unavailable_reason_as_str_matches_serde_snake_case() {
+        assert_eq!(LogsUnavailableReason::TmuxTarget.as_str(), "tmux_target");
+        assert_eq!(
+            LogsUnavailableReason::CaptureDisabled.as_str(),
+            "capture_disabled"
+        );
+        assert_eq!(
+            LogsUnavailableReason::PaneUnavailable.as_str(),
+            "pane_unavailable"
+        );
+        assert_eq!(LogsUnavailableReason::PipeInUse.as_str(), "pipe_in_use");
+        assert_eq!(
+            LogsUnavailableReason::RecorderFailed.as_str(),
+            "recorder_failed"
+        );
     }
 }
