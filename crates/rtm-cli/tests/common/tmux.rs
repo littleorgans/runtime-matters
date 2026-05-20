@@ -36,6 +36,11 @@ impl TmuxSession {
         assert!(panes.lines().any(|line| line == pane), "{panes}");
     }
 
+    pub fn pane_alive(&self, pane: &str) -> bool {
+        let output = tmux_output(["list-panes", "-s", "-t", &self.name, "-F", "#S:#I.#P"]);
+        output.status.success() && output_stdout(output).lines().any(|line| line == pane)
+    }
+
     pub fn wait_for_capture(&self, needle: &str) {
         wait_until(Duration::from_secs(5), || {
             let capture = self.capture();
@@ -54,6 +59,12 @@ impl TmuxSession {
 
     pub fn resize_height(&self, rows: u32) {
         tmux(["resize-pane", "-t", &self.name, "-y", &rows.to_string()]);
+    }
+
+    pub fn send_ctrl_c(&self, pane: &str) -> bool {
+        tmux_output(["send-keys", "-t", pane, "C-c"])
+            .status
+            .success()
     }
 }
 
