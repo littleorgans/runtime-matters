@@ -238,9 +238,9 @@ mod tests {
     use crate::error::{RpcErrorContext, rpc_error_response};
     use crate::reconcile::ReconcileConfig;
     use lilo_rm_core::{ErrorCode, RuntimeKind, RuntimeResponse};
+    use rtm_platform::test_support::TmuxSession;
     use rtm_store::StoreConfig;
     use std::path::PathBuf;
-    use std::process::{Command, Output};
 
     fn test_config() -> DaemonConfig {
         DaemonConfig {
@@ -313,53 +313,5 @@ mod tests {
             panic!("expected error response");
         };
         assert_eq!(payload.code, ErrorCode::TmuxPaneDead);
-    }
-
-    struct TmuxSession {
-        name: String,
-    }
-
-    impl TmuxSession {
-        fn start(prefix: &str) -> Option<Self> {
-            if !tmux_available() {
-                return None;
-            }
-            let name = format!("{prefix}-{}", uuid::Uuid::now_v7().simple());
-            let output = tmux_output(["new-session", "-d", "-s", &name]);
-            assert!(output.status.success(), "tmux command failed: {output:?}");
-            Some(Self { name })
-        }
-
-        fn pane(&self) -> String {
-            let output = tmux_output(["list-panes", "-t", &self.name, "-F", "#S:#I.#P"]);
-            assert!(output.status.success(), "tmux command failed: {output:?}");
-            String::from_utf8(output.stdout)
-                .expect("tmux stdout")
-                .lines()
-                .next()
-                .expect("pane")
-                .to_owned()
-        }
-
-        fn kill(&self) {
-            let _ = tmux_output(["kill-session", "-t", &self.name]);
-        }
-    }
-
-    impl Drop for TmuxSession {
-        fn drop(&mut self) {
-            self.kill();
-        }
-    }
-
-    fn tmux_available() -> bool {
-        Command::new("tmux")
-            .arg("-V")
-            .output()
-            .is_ok_and(|output| output.status.success())
-    }
-
-    fn tmux_output<const N: usize>(args: [&str; N]) -> Output {
-        Command::new("tmux").args(args).output().expect("tmux")
     }
 }

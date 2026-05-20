@@ -1322,6 +1322,7 @@ dependencies = [
  "libc",
  "lilo-rm-core",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
