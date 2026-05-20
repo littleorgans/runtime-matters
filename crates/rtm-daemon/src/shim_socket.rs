@@ -1,8 +1,9 @@
+use crate::error::RuntimeFailure;
 use anyhow::{Context, Result};
 use lilo_rm_core::{
     LaunchEnv, LaunchSpec, RuntimeResponse, RuntimeRpc, ShimExit, ShimLaunchRequest, ShimReady,
-    SpawnRequest, SpawnTarget, read_json_line, read_json_line_blocking, write_json_line,
-    write_json_line_blocking,
+    SpawnRequest, SpawnTarget, TmuxAddress, TmuxSpawnTarget, read_json_line,
+    read_json_line_blocking, write_json_line, write_json_line_blocking,
 };
 use std::io::BufReader as StdBufReader;
 use std::os::unix::net::UnixStream as StdUnixStream;
@@ -27,14 +28,30 @@ pub async fn launch_shim(
 ) -> Result<Option<HeadlessLogPaths>> {
     let env = shim_env(config);
     match &request.target {
-        SpawnTarget::Tmux(target) => {
-            let argv = shim_argv(config, request);
-            rtm_platform::tmux::TmuxGateway::respawn_pane(&target.address, &argv, &env)
-                .await
-                .with_context(|| format!("failed to respawn tmux pane {}", target.address))?;
-            Ok(None)
-        }
+        SpawnTarget::Tmux(target) => launch_tmux_shim(config, request, target, &env)
+            .await
+            .map(|_| None),
         SpawnTarget::Headless(_) => launch_headless_shim(config, request, &env).await.map(Some),
+    }
+}
+
+async fn launch_tmux_shim(
+    config: &DaemonConfig,
+    request: &SpawnRequest,
+    target: &TmuxSpawnTarget,
+    env: &[LaunchEnv],
+) -> Result<()> {
+    let argv = shim_argv(config, request);
+    match rtm_platform::tmux::TmuxGateway::respawn_pane(&target.address, &argv, env).await {
+        Ok(()) => Ok(()),
+        Err(error) => Err(classify_tmux_respawn_error(&target.address, error).await),
+    }
+}
+
+async fn classify_tmux_respawn_error(address: &TmuxAddress, error: anyhow::Error) -> anyhow::Error {
+    match rtm_platform::tmux::TmuxGateway::is_alive(address).await {
+        Ok(false) => RuntimeFailure::tmux_pane_dead(address.clone()),
+        Ok(true) | Err(_) => error.context(format!("failed to respawn tmux pane {address}")),
     }
 }
 
@@ -218,7 +235,10 @@ fn ack_from_response(response: RuntimeResponse, label: &'static str) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::{RpcErrorContext, rpc_error_response};
     use crate::reconcile::ReconcileConfig;
+    use lilo_rm_core::{ErrorCode, RuntimeKind, RuntimeResponse};
+    use rtm_platform::test_support::TmuxSession;
     use rtm_store::StoreConfig;
     use std::path::PathBuf;
 
@@ -257,5 +277,41 @@ mod tests {
         assert_eq!(paths.stdout_path.parent(), Some(paths.log_dir.as_path()));
         assert_eq!(paths.stderr_path.parent(), Some(paths.log_dir.as_path()));
         assert_ne!(paths.stdout_path, paths.stderr_path);
+    }
+
+    #[tokio::test]
+    async fn launch_shim_types_dead_tmux_respawn_target() {
+        let Some(tmux_session) = TmuxSession::start("rtm-respawn-dead") else {
+            eprintln!("skipping tmux launch_shim test because tmux is unavailable");
+            return;
+        };
+        let address = tmux_session.pane();
+        tmux_session.kill();
+
+        let error = match launch_shim(
+            &test_config(),
+            &SpawnRequest {
+                session_id: uuid::Uuid::now_v7(),
+                runtime: RuntimeKind::Claude,
+                env: Vec::new(),
+                cwd: PathBuf::from("/tmp"),
+                target: SpawnTarget::Tmux(TmuxSpawnTarget {
+                    address: address.parse().expect("tmux address"),
+                }),
+                force: false,
+                shell_resume: None,
+            },
+        )
+        .await
+        {
+            Ok(_) => panic!("dead pane should fail launch"),
+            Err(error) => error,
+        };
+
+        let RuntimeResponse::Error(payload) = rpc_error_response(RpcErrorContext::Spawn, error)
+        else {
+            panic!("expected error response");
+        };
+        assert_eq!(payload.code, ErrorCode::TmuxPaneDead);
     }
 }

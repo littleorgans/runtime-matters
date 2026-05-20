@@ -5,6 +5,7 @@ use common::{
     wait_for_status,
 };
 use lilo_rm_core::{CaptureError, CaptureRequest, CaptureResponse, RuntimeResponse, RuntimeRpc};
+use std::{thread, time::Duration};
 use uuid::Uuid;
 
 #[test]
@@ -199,6 +200,65 @@ fn capture_dead_tmux_pane_returns_pane_unavailable() {
     harness.stop();
 }
 
+#[test]
+fn ctrl_c_induced_tmux_pane_loss_repro_covers_claude_and_codex() {
+    for runtime in ["claude", "codex"] {
+        ctrl_c_interrupts_runtime_without_losing_tmux_pane(runtime);
+    }
+}
+
+fn ctrl_c_interrupts_runtime_without_losing_tmux_pane(runtime: &str) {
+    let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-ctrl-c-loss") else {
+        eprintln!("skipping tmux Ctrl+C regression test because tmux is unavailable");
+        return;
+    };
+
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+    let expected_pane = tmux_session.pane();
+    let spawn = harness
+        .spawn_command(&session_id, runtime, &format!("tmux:{expected_pane}"), true)
+        .env("RTM_TEST_TUI_EXIT_WINDOW", "1")
+        .output()
+        .expect("spawn client");
+    spawn_output_ok(spawn, runtime);
+    tmux_session.wait_for_capture(FAKE_RUNTIME_READY);
+
+    assert!(
+        tmux_session.send_ctrl_c(&expected_pane),
+        "failed to send initial Ctrl+C to {expected_pane}"
+    );
+    tmux_session.wait_for_capture("press CTRL+C to quit");
+
+    for _ in 0..7 {
+        let _ = tmux_session.send_ctrl_c(&expected_pane);
+        thread::sleep(Duration::from_millis(25));
+    }
+
+    let status = wait_for_interrupt_recovery(&harness, &tmux_session, &session_id, &expected_pane);
+    eprintln!("ALP-2597 regression runtime={runtime} status={status}");
+    assert!(!status.contains("ShimDiedBeforeReport"), "{status}");
+    assert!(
+        !status.contains("\"reason\": \"pane_unavailable\""),
+        "{status}"
+    );
+
+    let next_session_id = Uuid::now_v7().to_string();
+    let respawn = harness
+        .spawn_command(
+            &next_session_id,
+            runtime,
+            &format!("tmux:{expected_pane}"),
+            true,
+        )
+        .output()
+        .expect("respawn client");
+    spawn_output_ok(respawn, runtime);
+    tmux_session.wait_for_capture(FAKE_RUNTIME_READY);
+
+    harness.stop();
+}
+
 fn wait_for_json_status(harness: &RtmHarness, session_id: &str, needle: &str) -> String {
     common::wait_until(std::time::Duration::from_secs(5), || {
         let output = harness.status_format(session_id, "json");
@@ -206,6 +266,30 @@ fn wait_for_json_status(harness: &RtmHarness, session_id: &str, needle: &str) ->
         stdout.contains(needle).then_some(stdout)
     })
     .unwrap_or_else(|| panic!("json status never contained {needle}"))
+}
+
+fn wait_for_interrupt_recovery(
+    harness: &RtmHarness,
+    tmux_session: &common::tmux::TmuxSession,
+    session_id: &str,
+    expected_pane: &str,
+) -> String {
+    let mut last_status = String::new();
+    let mut last_pane_alive = false;
+    common::wait_until(Duration::from_secs(30), || {
+        let output = harness.status_format(session_id, "json");
+        let stdout = output_stdout(output);
+        let exited = stdout.contains("\"exited\"");
+        let pane_alive = tmux_session.pane_alive(expected_pane);
+        last_status = stdout.clone();
+        last_pane_alive = pane_alive;
+        (exited && pane_alive).then_some(stdout)
+    })
+    .unwrap_or_else(|| {
+        panic!(
+            "runtime did not exit with live tmux pane {expected_pane}; pane_alive={last_pane_alive}; last_status={last_status}"
+        )
+    })
 }
 
 fn capture_rpc(

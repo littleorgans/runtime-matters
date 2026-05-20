@@ -15,3 +15,7 @@ chrono.workspace = true
 libc.workspace = true
 lilo-rm-core.workspace = true
 tokio.workspace = true
+uuid = { workspace = true, optional = true }
+
+[features]
+test-support = ["uuid"]

@@ -31,6 +31,7 @@ pub async fn run(args: ShimArgs) -> Result<()> {
 }
 
 pub fn run_for_session_blocking(session_id: Uuid) -> Result<()> {
+    ignore_user_interrupts()?;
     let socket_path = rtm_daemon::socket::socket_path_from_env()?;
     let launch_request = ShimLaunchRequest { session_id };
     let launch = reconnecting("ShimLaunch", || {
@@ -92,6 +93,7 @@ fn runtime_command(launch: &LaunchSpec) -> Result<Command> {
     let mut command = Command::new(launch.command()?);
     command.args(launch.argv.iter().skip(1));
     apply_launch_env_cwd(&mut command, launch);
+    restore_user_interrupts_before_exec(&mut command);
     Ok(command)
 }
 
@@ -109,6 +111,7 @@ fn shell_resume_command(resume: &ShellResume) -> Result<Command> {
         command.env(&env.key, &env.value);
     }
     command.current_dir(&resume.cwd);
+    restore_user_interrupts_before_exec(&mut command);
     Ok(command)
 }
 
@@ -153,6 +156,35 @@ fn install_sigterm_handler() -> Result<()> {
     };
     if previous == libc::SIG_ERR {
         return Err(std::io::Error::last_os_error()).context("failed to install SIGTERM handler");
+    }
+    Ok(())
+}
+
+fn ignore_user_interrupts() -> Result<()> {
+    set_user_interrupt_disposition(libc::SIG_IGN)
+}
+
+fn restore_user_interrupts_before_exec(command: &mut Command) {
+    // SAFETY: pre_exec runs in the child after fork and before exec. The closure
+    // only resets signal dispositions through libc::signal.
+    unsafe {
+        command.pre_exec(|| {
+            set_user_interrupt_disposition(libc::SIG_DFL).map_err(std::io::Error::other)
+        });
+    }
+}
+
+fn set_user_interrupt_disposition(handler: libc::sighandler_t) -> Result<()> {
+    set_signal_disposition(libc::SIGINT, handler)?;
+    set_signal_disposition(libc::SIGQUIT, handler)
+}
+
+fn set_signal_disposition(signal: libc::c_int, handler: libc::sighandler_t) -> Result<()> {
+    // SAFETY: installing SIG_IGN or SIG_DFL does not capture Rust state.
+    let previous = unsafe { libc::signal(signal, handler) };
+    if previous == libc::SIG_ERR {
+        return Err(std::io::Error::last_os_error())
+            .with_context(|| format!("failed to update signal disposition for {signal}"));
     }
     Ok(())
 }

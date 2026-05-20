@@ -549,7 +549,8 @@ fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
     std::fs::write(
         &path,
         format!(
-            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exec sleep 60\nfi\nif [ \"${{RTM_TEST_PRINT_CWD:-}}\" = 1 ] || [ -f .rtm-print-cwd ]; then\n  printf '{} %s\\n' \"$(pwd)\"\n  exec sleep 60\nfi\nprintf '{}\\n'\nexec sleep 60\n",
+            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exec sleep 60\nfi\nif [ \"${{RTM_TEST_TUI_EXIT_WINDOW:-}}\" = 1 ]; then\n  trap 'trap \"\" INT; printf \"press CTRL+C to quit\\n\"; sleep 1; exit 130' INT\n  printf '{}\\n'\n  while :; do sleep 60; done\nfi\nif [ \"${{RTM_TEST_PRINT_CWD:-}}\" = 1 ] || [ -f .rtm-print-cwd ]; then\n  printf '{} %s\\n' \"$(pwd)\"\n  exec sleep 60\nfi\nprintf '{}\\n'\nexec sleep 60\n",
+            FAKE_RUNTIME_READY,
             FAKE_RUNTIME_READY,
             FAKE_RUNTIME_READY
         ),

@@ -122,7 +122,9 @@ fn tmux_pane_closed_while_session_alive_rejects_nudge() {
     );
     let stderr = output_stderr(nudge);
     assert!(
-        stderr.contains("not alive") || stderr.contains("failed"),
+        stderr.contains(&format!(
+            "nudge failed; reason=tmux_pane_dead session_id={session_id}"
+        )),
         "{stderr}"
     );
     let status = wait_for_status(&harness, &session_id, "state=Running");
