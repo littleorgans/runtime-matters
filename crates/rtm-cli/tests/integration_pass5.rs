@@ -201,16 +201,15 @@ fn capture_dead_tmux_pane_returns_pane_unavailable() {
 }
 
 #[test]
-#[ignore = "ALP-2597 repro: current shim can die from repeated tmux Ctrl+C"]
 fn ctrl_c_induced_tmux_pane_loss_repro_covers_claude_and_codex() {
     for runtime in ["claude", "codex"] {
-        ctrl_c_induced_tmux_pane_loss_repro(runtime);
+        ctrl_c_interrupts_runtime_without_losing_tmux_pane(runtime);
     }
 }
 
-fn ctrl_c_induced_tmux_pane_loss_repro(runtime: &str) {
+fn ctrl_c_interrupts_runtime_without_losing_tmux_pane(runtime: &str) {
     let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-ctrl-c-loss") else {
-        eprintln!("skipping tmux Ctrl+C repro because tmux is unavailable");
+        eprintln!("skipping tmux Ctrl+C regression test because tmux is unavailable");
         return;
     };
 
@@ -230,11 +229,11 @@ fn ctrl_c_induced_tmux_pane_loss_repro(runtime: &str) {
         thread::sleep(Duration::from_millis(25));
     }
 
-    let status = wait_for_pane_loss_evidence(&harness, &tmux_session, &session_id, &expected_pane);
-    eprintln!("ALP-2597 repro runtime={runtime} status={status}");
+    let status = wait_for_interrupt_recovery(&harness, &tmux_session, &session_id, &expected_pane);
+    eprintln!("ALP-2597 regression runtime={runtime} status={status}");
+    assert!(!status.contains("ShimDiedBeforeReport"), "{status}");
     assert!(
-        status.contains("ShimDiedBeforeReport")
-            || status.contains("\"reason\": \"pane_unavailable\""),
+        !status.contains("\"reason\": \"pane_unavailable\""),
         "{status}"
     );
 
@@ -250,7 +249,7 @@ fn wait_for_json_status(harness: &RtmHarness, session_id: &str, needle: &str) ->
     .unwrap_or_else(|| panic!("json status never contained {needle}"))
 }
 
-fn wait_for_pane_loss_evidence(
+fn wait_for_interrupt_recovery(
     harness: &RtmHarness,
     tmux_session: &common::tmux::TmuxSession,
     session_id: &str,
@@ -259,12 +258,11 @@ fn wait_for_pane_loss_evidence(
     common::wait_until(Duration::from_secs(5), || {
         let output = harness.status_format(session_id, "json");
         let stdout = output_stdout(output);
-        let pane_lost = !tmux_session.pane_alive(expected_pane);
-        let status_reports_loss = stdout.contains("ShimDiedBeforeReport")
-            || stdout.contains("\"reason\": \"pane_unavailable\"");
-        (pane_lost && status_reports_loss).then_some(stdout)
+        let exited = stdout.contains("\"exited\"");
+        let pane_alive = tmux_session.pane_alive(expected_pane);
+        (exited && pane_alive).then_some(stdout)
     })
-    .unwrap_or_else(|| panic!("status never reported tmux pane loss for {expected_pane}"))
+    .unwrap_or_else(|| panic!("runtime did not exit with live tmux pane {expected_pane}"))
 }
 
 fn capture_rpc(
