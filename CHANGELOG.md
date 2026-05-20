@@ -8,6 +8,13 @@
 * document macOS and Linux host support, including the Linux runtime socket path
 * start the v0.4 release notes with the public process exit observation rename
 
+## [0.2.3](https://github.com/littleorgans/runtime-matters/compare/v0.2.2...v0.2.3) (2026-05-20)
+
+
+### Bug Fixes
+
+* **tmux:** handle pane loss after repeated manual interrupts (ALP-2597) ([#37](https://github.com/littleorgans/runtime-matters/issues/37)) ([62a9943](https://github.com/littleorgans/runtime-matters/commit/62a99436fc12b3ea32c3732ec6705597db82c534))
+
 ## [0.2.2](https://github.com/littleorgans/runtime-matters/compare/v0.2.1...v0.2.2) (2026-05-19)
 
 
