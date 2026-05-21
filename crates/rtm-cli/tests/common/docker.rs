@@ -15,8 +15,7 @@ pub fn write_fake_cli(dir: &Path) {
 
 pub fn container_pid(harness: &RtmHarness, session_id: Uuid) -> u32 {
     let path = harness
-        .temp
-        .path()
+        .temp_path()
         .join("fake-docker-state")
         .join(format!("rtm-{session_id}.pid"));
     std::fs::read_to_string(&path)
