@@ -16,6 +16,7 @@ pub(crate) enum RuntimeFailure {
     SessionAlreadyExists { session_id: Uuid },
     SessionNotFound { session_id: Uuid },
     TmuxPaneDead { address: TmuxAddress },
+    DockerUnavailable { message: String },
     UnsupportedIsolationPolicy { policy: String },
 }
 
@@ -39,6 +40,13 @@ impl RuntimeFailure {
         Self::TmuxPaneDead { address }.into()
     }
 
+    pub(crate) fn docker_unavailable(message: impl Into<String>) -> anyhow::Error {
+        Self::DockerUnavailable {
+            message: message.into(),
+        }
+        .into()
+    }
+
     pub(crate) fn unsupported_isolation_policy(policy: impl Into<String>) -> anyhow::Error {
         Self::UnsupportedIsolationPolicy {
             policy: policy.into(),
@@ -52,6 +60,7 @@ impl RuntimeFailure {
             Self::SessionAlreadyExists { .. } => ErrorCode::InvalidTarget,
             Self::SessionNotFound { .. } => ErrorCode::SessionNotFound,
             Self::TmuxPaneDead { .. } => ErrorCode::TmuxPaneDead,
+            Self::DockerUnavailable { .. } => ErrorCode::RuntimeUnavailable,
             Self::UnsupportedIsolationPolicy { .. } => ErrorCode::UnsupportedIsolationPolicy,
         }
     }
@@ -69,6 +78,9 @@ impl Display for RuntimeFailure {
             }
             Self::TmuxPaneDead { address } => {
                 write!(formatter, "tmux address {address} is not alive")
+            }
+            Self::DockerUnavailable { message } => {
+                write!(formatter, "docker daemon is unavailable: {message}")
             }
             Self::UnsupportedIsolationPolicy { policy } => {
                 write!(formatter, "isolation policy {policy} is not supported")
@@ -151,6 +163,10 @@ mod tests {
             (
                 RuntimeFailure::tmux_pane_dead(address),
                 ErrorCode::TmuxPaneDead,
+            ),
+            (
+                RuntimeFailure::docker_unavailable("docker not running"),
+                ErrorCode::RuntimeUnavailable,
             ),
             (
                 RuntimeFailure::session_already_exists(session_id),

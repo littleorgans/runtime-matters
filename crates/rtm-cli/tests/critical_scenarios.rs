@@ -175,7 +175,9 @@ fn docker_isolation_rejects_spawn_without_lifecycle_row() {
     );
     let stderr = output_stderr(spawn);
     assert!(
-        stderr.contains("isolation policy docker:locked is not supported"),
+        stderr.contains(
+            "isolation policy docker:locked (is not an accepted Docker profile) is not supported"
+        ),
         "{stderr}"
     );
 
