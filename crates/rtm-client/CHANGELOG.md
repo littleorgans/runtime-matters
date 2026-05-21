@@ -2,6 +2,12 @@
 
 All notable changes documented here.
 
+## [0.6.2](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.6.1...lilo-rm-client-v0.6.2) - 2026-05-21
+
+### Miscellaneous
+
+- *(internal)* release v0.6.1 ([#40](https://github.com/littleorgans/runtime-matters/pull/40))
+
 ## [0.6.1](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.6.0...lilo-rm-client-v0.6.1) - 2026-05-20
 
 ### Miscellaneous
