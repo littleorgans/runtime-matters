@@ -251,6 +251,7 @@ mod tests {
                 db_path: PathBuf::from("/tmp/rtm.db"),
             },
             reconcile: ReconcileConfig::default(),
+            docker_preflight: Default::default(),
         }
     }
 

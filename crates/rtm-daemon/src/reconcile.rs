@@ -573,6 +573,7 @@ mod tests {
                 db_path: root.join("rtm-test.sqlite"),
             },
             reconcile: ReconcileConfig::default(),
+            docker_preflight: Default::default(),
         }
     }
 }

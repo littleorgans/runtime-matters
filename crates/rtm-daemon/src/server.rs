@@ -20,6 +20,7 @@ use tokio::sync::{Mutex, broadcast, oneshot};
 use uuid::Uuid;
 
 use crate::{
+    docker_preflight::DockerPreflightConfig,
     error::RuntimeFailure,
     event_channel,
     event_log::{CursorExpired, EventBatch, EventLog},
@@ -33,6 +34,7 @@ pub struct DaemonConfig {
     pub log_root: PathBuf,
     pub store: StoreConfig,
     pub reconcile: reconcile::ReconcileConfig,
+    pub docker_preflight: DockerPreflightConfig,
 }
 
 impl DaemonConfig {
@@ -43,6 +45,7 @@ impl DaemonConfig {
             log_root: rtm_paths::log_root_from_env()?,
             store: StoreConfig::from_env()?,
             reconcile: reconcile::ReconcileConfig::from_env()?,
+            docker_preflight: DockerPreflightConfig::from_env(),
         })
     }
 

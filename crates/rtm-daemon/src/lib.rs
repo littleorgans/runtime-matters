@@ -1,4 +1,5 @@
 mod backend;
+pub mod docker_preflight;
 mod doctor;
 mod error;
 pub mod event_channel;

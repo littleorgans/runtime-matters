@@ -17,6 +17,8 @@ pub(crate) enum RuntimeFailure {
     SessionNotFound { session_id: Uuid },
     TmuxPaneDead { address: TmuxAddress },
     DockerUnavailable { message: String },
+    DockerImageUnavailable { message: String },
+    DockerImageMetadataUnavailable { message: String },
     UnsupportedIsolationPolicy { policy: String },
 }
 
@@ -47,6 +49,20 @@ impl RuntimeFailure {
         .into()
     }
 
+    pub(crate) fn docker_image_unavailable(message: impl Into<String>) -> anyhow::Error {
+        Self::DockerImageUnavailable {
+            message: message.into(),
+        }
+        .into()
+    }
+
+    pub(crate) fn docker_image_metadata_unavailable(message: impl Into<String>) -> anyhow::Error {
+        Self::DockerImageMetadataUnavailable {
+            message: message.into(),
+        }
+        .into()
+    }
+
     pub(crate) fn unsupported_isolation_policy(policy: impl Into<String>) -> anyhow::Error {
         Self::UnsupportedIsolationPolicy {
             policy: policy.into(),
@@ -61,6 +77,8 @@ impl RuntimeFailure {
             Self::SessionNotFound { .. } => ErrorCode::SessionNotFound,
             Self::TmuxPaneDead { .. } => ErrorCode::TmuxPaneDead,
             Self::DockerUnavailable { .. } => ErrorCode::RuntimeUnavailable,
+            Self::DockerImageUnavailable { .. } => ErrorCode::RuntimeUnavailable,
+            Self::DockerImageMetadataUnavailable { .. } => ErrorCode::RuntimeUnavailable,
             Self::UnsupportedIsolationPolicy { .. } => ErrorCode::UnsupportedIsolationPolicy,
         }
     }
@@ -81,6 +99,12 @@ impl Display for RuntimeFailure {
             }
             Self::DockerUnavailable { message } => {
                 write!(formatter, "docker daemon is unavailable: {message}")
+            }
+            Self::DockerImageUnavailable { message } => {
+                write!(formatter, "docker image is unavailable: {message}")
+            }
+            Self::DockerImageMetadataUnavailable { message } => {
+                write!(formatter, "docker image metadata is unavailable: {message}")
             }
             Self::UnsupportedIsolationPolicy { policy } => {
                 write!(formatter, "isolation policy {policy} is not supported")
