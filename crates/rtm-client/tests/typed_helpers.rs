@@ -3,14 +3,15 @@ use std::path::PathBuf;
 use lilo_rm_client::{ClientError, RuntimeClient, request};
 use lilo_rm_core::{
     CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
-    DoctorPayload, DoctorResponse, ErrorCode, EventBatch, EventsPayload, EventsRequest,
-    HeadlessSpawnTarget, KillByPidPayload, KillByPidRequest, KillByPidResponse, KillOutcome,
-    KillRequest, KilledPayload, Lifecycle, LifecycleCounts, MigrationState, NudgeFailureReason,
-    NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeKind,
-    RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnConflictKind, SpawnConflictPayload,
-    SpawnRequest, SpawnTarget, SpawnedPayload, StatusFilter, StatusPayload, ValidateTargetPayload,
-    ValidateTargetRequest, ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts,
-    read_json_line, write_json_line,
+    DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorPayload, DoctorResponse, ErrorCode,
+    EventBatch, EventsPayload, EventsRequest, HeadlessSpawnTarget, KillByPidPayload,
+    KillByPidRequest, KillByPidResponse, KillOutcome, KillRequest, KilledPayload, Lifecycle,
+    LifecycleCounts, MigrationState, NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest,
+    NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal,
+    SpawnConflictKind, SpawnConflictPayload, SpawnRequest, SpawnTarget, SpawnedPayload,
+    StatusFilter, StatusPayload, ValidateTargetPayload, ValidateTargetRequest,
+    ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts, read_json_line,
+    write_json_line,
 };
 use tokio::io::BufReader;
 use tokio::net::UnixListener;
@@ -193,6 +194,8 @@ fn spawn_request() -> SpawnRequest {
     SpawnRequest {
         session_id: session_id(),
         runtime: RuntimeKind::Claude,
+        isolation: Default::default(),
+        image: None,
         env: Vec::new(),
         cwd: "/tmp/rtm".into(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
@@ -305,6 +308,16 @@ fn doctor_payload() -> DoctorPayload {
                 version: None,
                 error: None,
             },
+            docker: Box::new(DockerStatus {
+                cli: DockerReadiness::unavailable("docker unavailable"),
+                daemon: DockerReadiness::unavailable("docker daemon unavailable"),
+                manifest_validation: DockerReadiness::unavailable("docker manifest unavailable"),
+                isolation: DockerIsolationStatus {
+                    supported: true,
+                    default_workspace: "/workspace".to_owned(),
+                    experimental: true,
+                },
+            }),
             log_availability: Vec::new(),
             last_probe_sweep: None,
             recent_lost: Vec::new(),

@@ -88,6 +88,29 @@ impl CliOutput for DoctorResponse {
             writeln!(f, "  {:<18} {}", launcher.runtime, value)?;
         }
         writeln!(f, "tmux                  {}", format_tmux(self))?;
+        writeln!(f, "docker")?;
+        writeln!(
+            f,
+            "  cli                 {}",
+            format_readiness(&self.docker.cli)
+        )?;
+        writeln!(
+            f,
+            "  daemon              {}",
+            format_readiness(&self.docker.daemon)
+        )?;
+        writeln!(
+            f,
+            "  manifest validation {}",
+            format_readiness(&self.docker.manifest_validation)
+        )?;
+        writeln!(
+            f,
+            "  isolation           supported={} workspace={} experimental={}",
+            self.docker.isolation.supported,
+            self.docker.isolation.default_workspace,
+            self.docker.isolation.experimental
+        )?;
         writeln!(
             f,
             "last probe sweep      {}",
@@ -301,6 +324,21 @@ fn format_tmux(doctor: &DoctorResponse) -> String {
         Some(error) => format!("unavailable ({error})"),
         None => "unavailable".to_owned(),
     }
+}
+
+fn format_readiness(readiness: &crate::DockerReadiness) -> String {
+    if readiness.ready {
+        return readiness
+            .detail
+            .as_deref()
+            .map(|detail| format!("ready ({detail})"))
+            .unwrap_or_else(|| "ready".to_owned());
+    }
+    readiness
+        .error
+        .as_deref()
+        .map(|error| format!("unavailable ({error})"))
+        .unwrap_or_else(|| "unavailable".to_owned())
 }
 
 fn format_log_availability(value: Option<&LogAvailability>) -> String {

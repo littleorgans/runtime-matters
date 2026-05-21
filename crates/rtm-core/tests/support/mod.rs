@@ -2,9 +2,10 @@
 
 use chrono::{TimeZone, Utc};
 use lilo_rm_core::{
-    DoctorResponse, LaunchEnv, LaunchSpec, LauncherStatus, Lifecycle, LifecycleCounts,
-    LifecycleLogAvailability, LogAvailability, LostEvidence, MigrationState, PaneSnapshot,
-    RecentLostEvent, RuntimeKind, ShimReady, TmuxStatus, VersionInfo, WatcherCounts, version_info,
+    DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorResponse, LaunchEnv, LaunchSpec,
+    LauncherStatus, Lifecycle, LifecycleCounts, LifecycleLogAvailability, LogAvailability,
+    LostEvidence, MigrationState, PaneSnapshot, RecentLostEvent, RuntimeKind, ShimReady,
+    TmuxStatus, VersionInfo, WatcherCounts, version_info,
 };
 use uuid::Uuid;
 
@@ -50,9 +51,13 @@ pub fn doctor_response() -> DoctorResponse {
         socket_path: "/tmp/rtmd.sock".to_owned(),
         uptime_secs: 12,
         sqlite: MigrationState {
-            applied: 2,
-            total: 2,
-            applied_descriptions: vec!["lifecycle".to_owned(), "probe state".to_owned()],
+            applied: 3,
+            total: 3,
+            applied_descriptions: vec![
+                "lifecycle".to_owned(),
+                "probe state".to_owned(),
+                "lifecycle isolation".to_owned(),
+            ],
             pending_descriptions: Vec::new(),
         },
         lifecycles: LifecycleCounts {
@@ -72,6 +77,7 @@ pub fn doctor_response() -> DoctorResponse {
             version: Some("tmux 3.5a".to_owned()),
             error: None,
         },
+        docker: Box::new(docker_status()),
         log_availability: vec![LifecycleLogAvailability {
             session_id: session_id(),
             log_availability: LogAvailability::TmuxPaneSnapshot,
@@ -82,6 +88,19 @@ pub fn doctor_response() -> DoctorResponse {
             evidence: LostEvidence::PidNotAlive,
             occurred_at: timestamp(),
         }],
+    }
+}
+
+pub fn docker_status() -> DockerStatus {
+    DockerStatus {
+        cli: DockerReadiness::ready("Docker version 27.0.0"),
+        daemon: DockerReadiness::ready("27.0.0"),
+        manifest_validation: DockerReadiness::ready("docker manifest inspect is available"),
+        isolation: DockerIsolationStatus {
+            supported: true,
+            default_workspace: "/workspace".to_owned(),
+            experimental: true,
+        },
     }
 }
 

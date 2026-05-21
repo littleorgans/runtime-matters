@@ -9,7 +9,7 @@ rtmd
   socket              [socket]
   uptime              [uptime]
 sqlite
-  applied migrations  2 of 2 (lifecycle, probe state)
+  applied migrations  3 of 3 (lifecycle, probe state, lifecycle isolation)
 lifecycles
   forking             0
   running             0
@@ -22,5 +22,10 @@ launchers
   claude              [command]
   codex               [command]
 tmux                  [availability]
+docker
+  cli                 ready (Docker version 27.0.0)
+  daemon              ready (fake-docker)
+  manifest validation ready ({"manifests":[{"platform":{"architecture":"arm64"}}]})
+  isolation           supported=true workspace=/workspace experimental=true
 last probe sweep      [timestamp]
 recent lost           (none in last 24h)

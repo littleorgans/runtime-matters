@@ -4,9 +4,16 @@
 
 ### Features
 
+* add experimental Docker isolation diagnostics, documentation, and Claude image contract example
 * add Linux cargo-dist release artifact support for `x86_64-unknown-linux-gnu`
 * document macOS and Linux host support, including the Linux runtime socket path
 * start the v0.4 release notes with the public process exit observation rename
+
+### Notes
+
+* Docker isolation is experimental. Host execution remains the default, Docker is selected per spawn, and Docker absence does not block host use.
+* Docker support covers headless execution and host tmux attach behavior. Multiplexers inside the container, Kubernetes, SandboxClaim, injected sidecars, reconnecting PTY, credential volume management, first class firewall UX, privileged execution, and aggressive capability hardening remain out of scope.
+* `rtm doctor --format json` no longer reports the operator-facing internal jargon key `docker.pattern_e`. There were no other `docker.pattern_*` keys.
 
 ## [0.2.3](https://github.com/littleorgans/runtime-matters/compare/v0.2.2...v0.2.3) (2026-05-20)
 

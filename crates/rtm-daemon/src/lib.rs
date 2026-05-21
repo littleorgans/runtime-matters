@@ -1,3 +1,6 @@
+mod backend;
+pub mod docker_preflight;
+mod docker_runtime;
 mod doctor;
 mod error;
 pub mod event_channel;
@@ -5,6 +8,7 @@ mod event_log;
 mod handler;
 mod mcp_bridge;
 mod reconcile;
+mod runtime_kill;
 pub mod server;
 pub mod shim_socket;
 pub mod socket;

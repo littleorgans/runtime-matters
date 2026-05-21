@@ -1,5 +1,6 @@
 ---
 source: crates/rtm-core/tests/serde_snapshots.rs
+assertion_line: 106
 expression: rpcs
 ---
 [
@@ -9,6 +10,9 @@ expression: rpcs
       "request": {
         "session_id": "018f6e28-0000-7000-8000-000000000001",
         "runtime": "claude",
+        "isolation": {
+          "type": "host"
+        },
         "env": [],
         "cwd": "/tmp/rtm",
         "target": {

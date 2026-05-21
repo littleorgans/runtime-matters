@@ -3,8 +3,10 @@ use std::sync::Arc;
 use anyhow::Result;
 use chrono::{Duration, Utc};
 use lilo_rm_core::{
-    DoctorResponse, HeadlessSpawnTarget, LauncherStatus, SpawnRequest, SpawnTarget, TmuxStatus,
+    DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorResponse, HeadlessSpawnTarget,
+    LauncherStatus, SpawnRequest, SpawnTarget, TmuxStatus,
 };
+use tokio::process::Command;
 use uuid::Uuid;
 
 use crate::server::ServerState;
@@ -24,6 +26,7 @@ pub(crate) async fn collect(state: Arc<ServerState>) -> Result<DoctorResponse> {
         watchers: state.watcher_counts().await,
         launchers: launcher_statuses(),
         tmux: tmux_status().await,
+        docker: Box::new(docker_status().await),
         log_availability: state.log_availability_statuses().await,
         last_probe_sweep: state.store().last_probe_sweep().await?,
         recent_lost: state
@@ -45,6 +48,8 @@ fn launcher_status(launcher: &'static dyn lilo_rm_core::RuntimeLauncher) -> Laun
     let request = SpawnRequest {
         session_id: Uuid::nil(),
         runtime: runtime.clone(),
+        isolation: Default::default(),
+        image: None,
         env: Vec::new(),
         cwd: lilo_rm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
@@ -62,6 +67,57 @@ fn launcher_status(launcher: &'static dyn lilo_rm_core::RuntimeLauncher) -> Laun
             command: None,
             error: Some(error.to_string()),
         },
+    }
+}
+
+async fn docker_status() -> DockerStatus {
+    DockerStatus {
+        cli: command_status("docker", &["--version"], "docker CLI").await,
+        daemon: command_status(
+            "docker",
+            &["version", "--format", "{{.Server.Version}}"],
+            "docker daemon",
+        )
+        .await,
+        manifest_validation: command_status(
+            "docker",
+            &["manifest", "inspect", "--help"],
+            "docker manifest inspect",
+        )
+        .await,
+        isolation: DockerIsolationStatus {
+            supported: true,
+            default_workspace: "/workspace".to_owned(),
+            experimental: true,
+        },
+    }
+}
+
+async fn command_status(command: &str, args: &[&str], label: &str) -> DockerReadiness {
+    match Command::new(command).args(args).output().await {
+        Ok(output) if output.status.success() => {
+            DockerReadiness::ready(command_detail(&output.stdout, label))
+        }
+        Ok(output) => DockerReadiness::unavailable(command_error(&output.stderr, label)),
+        Err(error) => DockerReadiness::unavailable(error.to_string()),
+    }
+}
+
+fn command_detail(stdout: &[u8], label: &str) -> String {
+    let detail = String::from_utf8_lossy(stdout).trim().to_owned();
+    if detail.is_empty() {
+        format!("{label} is available")
+    } else {
+        detail
+    }
+}
+
+fn command_error(stderr: &[u8], label: &str) -> String {
+    let message = String::from_utf8_lossy(stderr).trim().to_owned();
+    if message.is_empty() {
+        format!("{label} check failed without stderr")
+    } else {
+        message
     }
 }
 

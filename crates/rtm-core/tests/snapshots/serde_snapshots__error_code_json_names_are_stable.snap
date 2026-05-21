@@ -1,5 +1,6 @@
 ---
 source: crates/rtm-core/tests/serde_snapshots.rs
+assertion_line: 296
 expression: codes
 ---
 [
@@ -9,6 +10,7 @@ expression: codes
   "headless_nudge_unsupported",
   "launch_failed",
   "invalid_target",
+  "unsupported_isolation_policy",
   "spawn_conflict",
   "protocol_mismatch"
 ]

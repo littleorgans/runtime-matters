@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use chrono::Utc;
-use lilo_rm_core::{Lifecycle, LostEvidence, RuntimeEvent};
+use lilo_rm_core::{IsolationPolicy, Lifecycle, LostEvidence, RuntimeEvent};
 use rtm_platform::process::ProcessStartTime;
 use tokio::sync::broadcast;
 use tokio::time::{Instant, sleep_until};
 
-use crate::server::ServerState;
+use crate::{docker_runtime, server::ServerState};
 
 pub const PROBE_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 const RESUME_POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -52,7 +52,18 @@ pub trait ProcessProbe {
     fn start_time_for_pid(&self, pid: u32) -> Result<ProcessStartTime>;
 }
 
+trait RuntimeLiveness {
+    fn lost_evidence(&self, lifecycle: &Lifecycle) -> Result<Option<LostEvidence>>;
+}
+
 pub struct SystemProcessProbe;
+
+struct ReconcileLiveness<'a, P, D> {
+    process: &'a P,
+    docker: &'a D,
+}
+
+struct DockerCliLiveness;
 
 impl ProcessProbe for SystemProcessProbe {
     fn pid_alive(&self, pid: u32) -> bool {
@@ -64,11 +75,46 @@ impl ProcessProbe for SystemProcessProbe {
     }
 }
 
+trait DockerLiveness {
+    fn lost_evidence(&self, lifecycle: &Lifecycle) -> Result<Option<LostEvidence>>;
+}
+
+impl DockerLiveness for DockerCliLiveness {
+    fn lost_evidence(&self, lifecycle: &Lifecycle) -> Result<Option<LostEvidence>> {
+        let running = docker_runtime::container_running_blocking(lifecycle.session_id)?;
+        if running {
+            Ok(None)
+        } else {
+            Ok(Some(LostEvidence::PidNotAlive))
+        }
+    }
+}
+
+impl<P, D> RuntimeLiveness for ReconcileLiveness<'_, P, D>
+where
+    P: ProcessProbe,
+    D: DockerLiveness,
+{
+    fn lost_evidence(&self, lifecycle: &Lifecycle) -> Result<Option<LostEvidence>> {
+        match &lifecycle.isolation {
+            IsolationPolicy::Host => host_lost_evidence(lifecycle, self.process),
+            IsolationPolicy::Docker(_) => self.docker.lost_evidence(lifecycle),
+        }
+    }
+}
+
 pub async fn reconcile_startup(
     state: Arc<ServerState>,
     probe: &impl ProcessProbe,
 ) -> Result<Vec<RuntimeEvent>> {
-    reconcile_once(state, probe).await
+    reconcile_once(
+        state,
+        &ReconcileLiveness {
+            process: probe,
+            docker: &DockerCliLiveness,
+        },
+    )
+    .await
 }
 
 pub async fn run_periodic<P>(
@@ -105,7 +151,11 @@ async fn run_periodic_with_config<P>(
                 last_wall_tick = wall_now;
 
                 if now >= next_deadline || resumed {
-                    if let Err(error) = reconcile_once(Arc::clone(&state), &probe).await {
+                    let liveness = ReconcileLiveness {
+                        process: &probe,
+                        docker: &DockerCliLiveness,
+                    };
+                    if let Err(error) = reconcile_once(Arc::clone(&state), &liveness).await {
                         tracing::warn!(%error, "periodic reconciliation failed");
                     }
                     next_deadline = if now >= next_deadline {
@@ -129,11 +179,11 @@ fn advance_deadline(mut deadline: Instant, interval: Duration, now: Instant) -> 
 
 async fn reconcile_once(
     state: Arc<ServerState>,
-    probe: &impl ProcessProbe,
+    liveness: &impl RuntimeLiveness,
 ) -> Result<Vec<RuntimeEvent>> {
     let mut events = Vec::new();
     for lifecycle in state.store().running().await? {
-        if let Some(evidence) = lost_evidence(&lifecycle, probe)? {
+        if let Some(evidence) = liveness.lost_evidence(&lifecycle)? {
             if let Some(event) = state.record_lost(lifecycle.session_id, evidence).await? {
                 events.push(event);
             }
@@ -150,7 +200,10 @@ async fn reconcile_once(
     Ok(events)
 }
 
-fn lost_evidence(lifecycle: &Lifecycle, probe: &impl ProcessProbe) -> Result<Option<LostEvidence>> {
+fn host_lost_evidence(
+    lifecycle: &Lifecycle,
+    probe: &impl ProcessProbe,
+) -> Result<Option<LostEvidence>> {
     let runtime_pid = lifecycle
         .runtime_pid
         .ok_or_else(|| anyhow!("running lifecycle missing runtime pid"))?;
@@ -212,7 +265,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use chrono::{DateTime, TimeZone};
-    use lilo_rm_core::{LifecycleState, RuntimeKind, ShimReady};
+    use lilo_rm_core::{IsolationPolicy, IsolationProfile, LifecycleState, RuntimeKind, ShimReady};
     use rtm_store::{LifecycleStore, StoreConfig};
     use uuid::Uuid;
 
@@ -262,6 +315,18 @@ mod tests {
 
         fn start_time_for_pid(&self, _pid: u32) -> Result<ProcessStartTime> {
             Ok(ProcessStartTime::Gone)
+        }
+    }
+
+    struct FakeDockerLiveness {
+        checks: AtomicUsize,
+        evidence: Option<LostEvidence>,
+    }
+
+    impl DockerLiveness for FakeDockerLiveness {
+        fn lost_evidence(&self, _lifecycle: &Lifecycle) -> Result<Option<LostEvidence>> {
+            self.checks.fetch_add(1, Ordering::SeqCst);
+            Ok(self.evidence)
         }
     }
 
@@ -390,6 +455,37 @@ mod tests {
         assert_eq!(store.running().await.expect("running").len(), 0);
     }
 
+    #[tokio::test]
+    async fn docker_reconciliation_uses_docker_liveness() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let store = LifecycleStore::open(StoreConfig {
+            db_path: temp.path().join("rtm.sqlite"),
+        })
+        .await
+        .expect("store");
+        let lifecycle = persist_docker_running(&store, 606).await;
+        let state =
+            Arc::new(ServerState::new(test_config(temp.path()), store.clone()).expect("state"));
+        let process = FakeProbe {
+            alive: HashSet::new(),
+            start_times: HashMap::new(),
+        };
+        let docker = FakeDockerLiveness {
+            checks: AtomicUsize::new(0),
+            evidence: Some(LostEvidence::PidNotAlive),
+        };
+        let liveness = ReconcileLiveness {
+            process: &process,
+            docker: &docker,
+        };
+
+        let events = reconcile_once(state, &liveness).await.expect("reconcile");
+
+        assert_eq!(docker.checks.load(Ordering::SeqCst), 1);
+        assert_eq!(events.len(), 1);
+        assert_lost(&store, lifecycle.session_id, LostEvidence::PidNotAlive).await;
+    }
+
     #[test]
     fn resume_gap_threshold_detects_wall_clock_jump() {
         let last_wall_tick = Utc.timestamp_opt(1_000, 0).unwrap();
@@ -419,6 +515,23 @@ mod tests {
             shim_pid: pid + 10_000,
             runtime_pid: pid,
             start_time,
+            tmux_pane: None,
+        });
+        store.update_lifecycle(&lifecycle).await.expect("running");
+        lifecycle
+    }
+
+    async fn persist_docker_running(store: &LifecycleStore, pid: u32) -> Lifecycle {
+        let mut lifecycle = forking_lifecycle();
+        lifecycle.isolation = IsolationPolicy::Docker(IsolationProfile {
+            name: Some("locked".to_owned()),
+        });
+        store.insert_forking(&lifecycle).await.expect("insert");
+        lifecycle.mark_running(ShimReady {
+            session_id: lifecycle.session_id,
+            shim_pid: pid + 10_000,
+            runtime_pid: pid,
+            start_time: Utc.timestamp_opt(6_000, 0).unwrap(),
             tmux_pane: None,
         });
         store.update_lifecycle(&lifecycle).await.expect("running");
@@ -462,6 +575,7 @@ mod tests {
                 db_path: root.join("rtm-test.sqlite"),
             },
             reconcile: ReconcileConfig::default(),
+            docker_preflight: Default::default(),
         }
     }
 }

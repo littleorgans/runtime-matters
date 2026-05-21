@@ -2,16 +2,30 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use lilo_rm_core::{
-    KillRequest, RuntimeResponse, RuntimeSignal, SpawnConflictKind, SpawnConflictPayload,
-    SpawnRequest,
+    IsolationPolicy, IsolationProfile, KillRequest, RuntimeResponse, RuntimeSignal,
+    SpawnConflictKind, SpawnConflictPayload, SpawnRequest,
 };
 
 use crate::server::ServerState;
+use crate::{
+    docker_preflight::{DockerCliInspector, DockerImageInspector},
+    error::RuntimeFailure,
+};
 
 pub(crate) async fn check(
     state: &Arc<ServerState>,
     request: &SpawnRequest,
 ) -> Result<Option<RuntimeResponse>> {
+    check_with_docker_inspector(state, request, &DockerCliInspector).await
+}
+
+async fn check_with_docker_inspector(
+    state: &Arc<ServerState>,
+    request: &SpawnRequest,
+    docker: &impl DockerImageInspector,
+) -> Result<Option<RuntimeResponse>> {
+    check_isolation_policy(state, request, docker).await?;
+
     if let Some(lifecycle) = state.store().get(request.session_id).await? {
         return Ok(Some(conflict(SpawnConflictKind::SessionId, lifecycle)));
     }
@@ -39,170 +53,135 @@ pub(crate) async fn check(
     Ok(None)
 }
 
+async fn check_isolation_policy(
+    state: &Arc<ServerState>,
+    request: &SpawnRequest,
+    docker: &impl DockerImageInspector,
+) -> Result<()> {
+    match &request.isolation {
+        IsolationPolicy::Host => Ok(()),
+        IsolationPolicy::Docker(profile) => {
+            check_docker_profile(state, request, profile, docker).await
+        }
+    }
+}
+
+async fn check_docker_profile(
+    state: &Arc<ServerState>,
+    request: &SpawnRequest,
+    profile: &IsolationProfile,
+    docker: &impl DockerImageInspector,
+) -> Result<()> {
+    match profile.name.as_deref() {
+        None
+        | Some("default")
+        | Some("own-init")
+        | Some("allow-root")
+        | Some("arm64-manifest-escape") => {
+            validate_docker_image_metadata_on_arch(
+                state,
+                request,
+                profile,
+                docker,
+                std::env::consts::ARCH,
+            )
+            .await
+        }
+        Some("pattern-e") | Some("tmux-primary") => Err(unsupported_docker_behavior(
+            "requests a multiplexer inside the container",
+        )),
+        Some("privileged") => Err(unsupported_docker_profile(
+            profile,
+            "requests privileged execution",
+        )),
+        Some(_) => Err(unsupported_docker_profile(
+            profile,
+            "is not an accepted Docker profile",
+        )),
+    }
+}
+
+async fn validate_docker_image_metadata_on_arch(
+    state: &Arc<ServerState>,
+    request: &SpawnRequest,
+    profile: &IsolationProfile,
+    docker: &impl DockerImageInspector,
+    host_arch: &str,
+) -> Result<()> {
+    docker.ensure_available().await?;
+    let image = state.config().docker_preflight.image_for(request)?;
+    let user = docker.image_user(image).await?;
+    if image_user_is_root(user.as_deref()) && !docker_root_allowed(state, profile) {
+        return Err(RuntimeFailure::docker_image_metadata_unavailable(format!(
+            "docker image {image} runs as root"
+        )));
+    }
+    if host_arch == "aarch64" && !docker_manifest_escape_allowed(state, profile) {
+        let arm64_available = docker_image_arm64_available(docker, image).await?;
+        if !arm64_available {
+            return Err(RuntimeFailure::docker_image_metadata_unavailable(format!(
+                "docker image {image} does not publish an arm64 manifest"
+            )));
+        }
+    }
+    Ok(())
+}
+
+async fn docker_image_arm64_available(
+    docker: &impl DockerImageInspector,
+    image: &str,
+) -> Result<bool> {
+    match docker.arm64_manifest_available(image).await {
+        Ok(available) => Ok(available),
+        Err(manifest_error) => match docker.image_architecture(image).await {
+            Ok(arch) => Ok(arch == "arm64"),
+            Err(local_error) if is_docker_image_unavailable(&local_error) => Err(local_error),
+            Err(_) => Err(manifest_error),
+        },
+    }
+}
+
+fn is_docker_image_unavailable(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<RuntimeFailure>()
+        .is_some_and(|failure| matches!(failure, RuntimeFailure::DockerImageUnavailable { .. }))
+}
+
+fn docker_root_allowed(state: &Arc<ServerState>, profile: &IsolationProfile) -> bool {
+    state.config().docker_preflight.allows_root_image_user()
+        || profile.name.as_deref() == Some("allow-root")
+}
+
+fn docker_manifest_escape_allowed(state: &Arc<ServerState>, profile: &IsolationProfile) -> bool {
+    state
+        .config()
+        .docker_preflight
+        .allows_arm64_manifest_escape()
+        || profile.name.as_deref() == Some("arm64-manifest-escape")
+}
+
+fn image_user_is_root(user: Option<&str>) -> bool {
+    let Some(user) = user else {
+        return true;
+    };
+    let primary = user.split(':').next().unwrap_or(user).trim();
+    primary.is_empty() || primary == "0" || primary == "root"
+}
+
+fn unsupported_docker_profile(profile: &IsolationProfile, reason: &str) -> anyhow::Error {
+    RuntimeFailure::unsupported_isolation_policy(format!(
+        "{} ({reason})",
+        IsolationPolicy::Docker(profile.clone())
+    ))
+}
+
+fn unsupported_docker_behavior(reason: &str) -> anyhow::Error {
+    RuntimeFailure::unsupported_isolation_policy(format!("docker profile that {reason}"))
+}
+
 fn conflict(kind: SpawnConflictKind, lifecycle: lilo_rm_core::Lifecycle) -> RuntimeResponse {
     RuntimeResponse::SpawnConflict(SpawnConflictPayload { kind, lifecycle })
 }
 
 #[cfg(test)]
-mod tests {
-    use std::process::Command;
-    use std::sync::Arc;
-    use std::time::{Duration, Instant};
-
-    use chrono::Utc;
-    use lilo_rm_core::{
-        HeadlessSpawnTarget, Lifecycle, RuntimeKind, RuntimeResponse, ShimReady, SpawnTarget,
-        TmuxSpawnTarget,
-    };
-    use rtm_store::{LifecycleStore, StoreConfig};
-    use uuid::Uuid;
-
-    use super::*;
-    use crate::reconcile::ReconcileConfig;
-    use crate::server::{DaemonConfig, ServerState};
-
-    #[tokio::test]
-    async fn session_id_conflict_includes_terminal_lifecycle() {
-        let state = test_state().await;
-        let session_id = Uuid::now_v7();
-        let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
-        state
-            .store()
-            .insert_forking(&lifecycle)
-            .await
-            .expect("insert");
-        lifecycle.mark_lost(lilo_rm_core::LostEvidence::PidNotAlive);
-        state
-            .store()
-            .update_lifecycle(&lifecycle)
-            .await
-            .expect("terminal");
-
-        let response = check(&state, &headless_request(session_id, false))
-            .await
-            .expect("preflight")
-            .expect("conflict");
-
-        assert_conflict(response, SpawnConflictKind::SessionId, session_id);
-    }
-
-    #[tokio::test]
-    async fn tmux_occupant_conflict_is_typed_without_force() {
-        let state = test_state().await;
-        let occupant = Uuid::now_v7();
-        insert_running_tmux(&state, occupant, 60_000).await;
-
-        let response = check(&state, &tmux_request(Uuid::now_v7(), false))
-            .await
-            .expect("preflight")
-            .expect("conflict");
-
-        assert_conflict(response, SpawnConflictKind::TmuxPaneOccupancy, occupant);
-    }
-
-    #[tokio::test]
-    async fn force_kills_tmux_occupant_and_allows_spawn() {
-        let state = test_state().await;
-        let mut child = Command::new("sleep").arg("60").spawn().expect("sleep");
-        let occupant = Uuid::now_v7();
-        insert_running_tmux(&state, occupant, child.id()).await;
-
-        let response = check(&state, &tmux_request(Uuid::now_v7(), true))
-            .await
-            .expect("preflight");
-
-        assert!(response.is_none(), "force should clear pane conflict");
-        wait_for_child_exit(&mut child);
-    }
-
-    async fn test_state() -> Arc<ServerState> {
-        let temp = std::env::temp_dir().join(format!("rtm-preflight-{}", Uuid::now_v7()));
-        std::fs::create_dir_all(&temp).expect("tempdir");
-        let store = LifecycleStore::open(StoreConfig {
-            db_path: temp.join("rtm.sqlite"),
-        })
-        .await
-        .expect("store");
-        Arc::new(
-            ServerState::new(
-                DaemonConfig {
-                    endpoint: rtm_paths::RuntimeEndpoint::unix_socket(temp.join("rtm.sock")),
-                    shim_path: temp.join("rtm"),
-                    log_root: temp.join("logs"),
-                    store: StoreConfig {
-                        db_path: temp.join("rtm.sqlite"),
-                    },
-                    reconcile: ReconcileConfig::default(),
-                },
-                store,
-            )
-            .expect("state"),
-        )
-    }
-
-    async fn insert_running_tmux(state: &Arc<ServerState>, session_id: Uuid, runtime_pid: u32) {
-        let mut lifecycle = Lifecycle::forking(session_id, RuntimeKind::Claude);
-        state
-            .store()
-            .insert_forking(&lifecycle)
-            .await
-            .expect("insert");
-        lifecycle.mark_running(ShimReady {
-            session_id,
-            shim_pid: runtime_pid + 1,
-            runtime_pid,
-            start_time: Utc::now(),
-            tmux_pane: Some(tmux_address()),
-        });
-        state
-            .store()
-            .update_lifecycle(&lifecycle)
-            .await
-            .expect("running");
-    }
-
-    fn headless_request(session_id: Uuid, force: bool) -> SpawnRequest {
-        SpawnRequest {
-            session_id,
-            runtime: RuntimeKind::Claude,
-            env: Vec::new(),
-            cwd: "/tmp".into(),
-            target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
-            force,
-            shell_resume: None,
-        }
-    }
-
-    fn tmux_request(session_id: Uuid, force: bool) -> SpawnRequest {
-        SpawnRequest {
-            target: SpawnTarget::Tmux(TmuxSpawnTarget {
-                address: tmux_address(),
-            }),
-            ..headless_request(session_id, force)
-        }
-    }
-
-    fn tmux_address() -> lilo_rm_core::TmuxAddress {
-        "rtm-test:0.1".parse().expect("tmux address")
-    }
-
-    fn assert_conflict(response: RuntimeResponse, kind: SpawnConflictKind, session_id: Uuid) {
-        let RuntimeResponse::SpawnConflict(payload) = response else {
-            panic!("unexpected response: {response:?}");
-        };
-        assert_eq!(payload.kind, kind);
-        assert_eq!(payload.lifecycle.session_id, session_id);
-    }
-
-    fn wait_for_child_exit(child: &mut std::process::Child) {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while Instant::now() < deadline {
-            match child.try_wait().expect("poll child") {
-                Some(_) => return,
-                None => std::thread::sleep(Duration::from_millis(25)),
-            }
-        }
-        let _ = child.kill();
-        panic!("child was still alive after force preemption");
-    }
-}
+mod tests;

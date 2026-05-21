@@ -19,6 +19,7 @@ pub mod admin;
 pub mod capture;
 mod cli_output;
 pub mod error;
+pub mod isolation;
 pub mod launcher;
 pub mod mcp;
 pub mod proto;
@@ -28,9 +29,9 @@ pub mod types;
 mod version;
 
 pub use admin::{
-    DoctorResponse, KillByPidRequest, KillByPidResponse, KillOutcome, LauncherStatus,
-    LifecycleCounts, LifecycleLogAvailability, MigrationState, RecentLostEvent, StatusFilter,
-    StatusResponse, TmuxStatus, WatcherCounts,
+    DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorResponse, KillByPidRequest,
+    KillByPidResponse, KillOutcome, LauncherStatus, LifecycleCounts, LifecycleLogAvailability,
+    MigrationState, RecentLostEvent, StatusFilter, StatusResponse, TmuxStatus, WatcherCounts,
 };
 pub use capture::{
     CaptureError, CaptureRequest, CaptureResponse, LogAvailability, LogsUnavailableReason,
@@ -38,7 +39,10 @@ pub use capture::{
 };
 pub use cli_output::{Ack, CliOutput};
 pub use error::{ErrorCode, ProtocolError, RuntimeKindParseError};
-pub use launcher::{LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher, ShellResume};
+pub use isolation::{IsolationPolicy, IsolationPolicyParseError, IsolationProfile};
+pub use launcher::{
+    LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher, ShellResume, upsert_launch_env,
+};
 pub use mcp::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION, McpBridgeRequest,
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,

@@ -64,6 +64,108 @@ to `~/.rtm/sock`. macOS defaults to `~/.rtm/sock`. `RTM_DB_PATH`,
 `RTM_HOME`, and `RTM_SHIM_PATH` keep their existing behavior for database,
 runtime home, logs, event log placement, and shim bootstrap.
 
+## Docker Isolation
+
+Host execution is the default. Docker isolation is an experimental execution
+policy selected per spawn with `--isolation docker`. Runtime kind remains
+unchanged. Launchers still choose the agent command. The backend decides whether
+that command runs on the host or inside Docker.
+
+Headless Docker spawns run as foreground `docker run` processes owned by the
+host shim. Tmux Docker spawns start a detached container and attach the existing
+host tmux pane to it. Closing the pane ends the attach path, while the container
+remains managed by the Docker backend until runtime exit or an explicit kill.
+Manual detach and reconnect UX are out of scope.
+
+`/workspace` is the canonical default workspace path for Docker images and
+operator examples. The current backend bind mounts the requested spawn cwd at
+the same path inside the container and sets it as the container workdir.
+
+The Docker image policy is Option A: `rtm` is image agnostic. A practical
+starter base is `mcr.microsoft.com/devcontainers/base:ubuntu` because it already
+fits interactive coding agent expectations. Distroless and Alpine/musl images
+are discouraged starters. They commonly lack the shell, libc, and
+troubleshooting surface expected by interactive coding agents.
+
+Interactive images must provide `/bin/sh`; `/bin/bash` is recommended where
+practical. Starter images should include or inherit `git`. Images should run as
+a non-root user. The daemon enforces non-root image metadata by default, rejects
+missing root metadata as root, and requires an explicit opt in for root images.
+On arm64 hosts the daemon validates image manifest metadata by default and fails
+early when an arm64 manifest is known absent or cannot be checked.
+
+The backend adds Docker init by default. Images that provide their own init can
+use the `docker:own-init` isolation profile. Capability changes are opt in.
+Privileged execution is rejected, and aggressive capability hardening is
+deferred.
+
+`rtm` does not automatically mount host credential directories. Credential pass
+through is explicit. Operators can pass environment variables through the spawn
+request and can add explicit bind mounts in their own image or daemon profile
+configuration when a deployment owns that risk. Named credential volume
+management is deferred.
+
+```bash
+SESSION_ID="$(uuidgen)"
+rtm spawn \
+  --session-id "$SESSION_ID" \
+  --runtime claude \
+  --target headless \
+  --isolation docker \
+  --image runtime-matters-claude:local \
+  --env CLAUDE_CODE_OAUTH_TOKEN
+```
+
+Prefer `--image` for ad hoc Docker spawns. `RTM_DOCKER_IMAGE` is a daemon
+startup environment default used only when a Docker spawn omits `--image`.
+
+```toml
+# Example operator profile fragment.
+[docker.credentials]
+env = ["ANTHROPIC_API_KEY"]
+mounts = [
+  { source = "/secure/agent-credentials", target = "/run/agent-credentials", readonly = true },
+]
+```
+
+`rtm doctor` reports Docker CLI readiness, daemon readiness, manifest validation
+capability, and Docker isolation support. Docker can be unavailable and host
+spawning remains supported.
+
+Multiplexers inside the container, Kubernetes, SandboxClaim, `rtm` injected sidecars,
+reconnecting PTY servers, first class firewall UX, named credential volume
+management, and aggressive capability hardening are not part of this
+experimental surface.
+
+## Dockerfile Contract
+
+The in-repo example at `examples/dockerfiles/claude.Dockerfile` demonstrates the
+contract for the Claude runtime and serves as the repository end-to-end Docker
+verification target. Treat it as a contract example, not a supported recipe
+matrix.
+
+Docker images used with `rtm` must satisfy this contract:
+
+- Base image: any Debian or Ubuntu compatible base is acceptable. The suggested
+  starter is `mcr.microsoft.com/devcontainers/base:ubuntu`.
+- User: the final image should declare a non-root `USER`. Root requires an
+  explicit operator escape hatch.
+- Entrypoint: do not replace the runtime command with a long running wrapper.
+  Leave `ENTRYPOINT` empty or use a pass through entrypoint that execs the
+  command supplied by `docker run`.
+- Environment: runtime credentials are explicit pass through. Do not assume host
+  credential directories are mounted.
+- Runtime binary: install the runtime executable on `PATH`. `rtm` passes the
+  runtime command directly, for example `claude`, and does not inject it into
+  the image.
+- Workspace: create `/workspace`, make it writable by the runtime user, and
+  expect `rtm` to set the workdir from the spawn cwd.
+- Tools: include `git`; include `/bin/sh`; prefer `/bin/bash`.
+- Exit codes: the runtime command exit code is the container exit code. Do not
+  mask failures in shell wrappers.
+- Init: rely on the default Docker init added by `rtm`, unless the image owns
+  init and the spawn uses `docker:own-init`.
+
 ## Events Contract
 
 `RuntimeRpc::Events` is the v0.4 event endpoint. It returns

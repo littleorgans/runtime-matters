@@ -7,7 +7,7 @@ pub use claude::ClaudeLauncher;
 pub use codex::CodexLauncher;
 use lilo_rm_core::{
     HeadlessSpawnTarget, LaunchEnv, LauncherError, RuntimeKind, RuntimeLauncher, SpawnRequest,
-    SpawnTarget,
+    SpawnTarget, upsert_launch_env,
 };
 
 static CLAUDE: ClaudeLauncher = ClaudeLauncher;
@@ -32,6 +32,8 @@ pub fn warm_registry() -> Result<(), LauncherError> {
         let request = SpawnRequest {
             session_id: uuid::Uuid::nil(),
             runtime: launcher.kind(),
+            isolation: Default::default(),
+            image: None,
             env: Vec::new(),
             cwd: lilo_rm_core::launcher_probe_cwd(),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
@@ -52,31 +54,23 @@ pub(crate) fn resolved_argv(
 
 pub(crate) fn runtime_env(request: &SpawnRequest) -> Vec<LaunchEnv> {
     let mut env = request.env.clone();
-    upsert_env(
+    upsert_launch_env(
         &mut env,
         LaunchEnv::new("HELIOY_SESSION_ID", request.session_id.to_string()),
     );
-    upsert_env(
+    upsert_launch_env(
         &mut env,
         LaunchEnv::new("HELIOY_RUNTIME", request.runtime.to_string()),
     );
-    upsert_env(
+    upsert_launch_env(
         &mut env,
         LaunchEnv::new("RTM_SESSION_ID", request.session_id.to_string()),
     );
-    upsert_env(
+    upsert_launch_env(
         &mut env,
         LaunchEnv::new("RTM_RUNTIME_KIND", request.runtime.to_string()),
     );
     env
-}
-
-fn upsert_env(env: &mut Vec<LaunchEnv>, next: LaunchEnv) {
-    if let Some(existing) = env.iter_mut().find(|entry| entry.key == next.key) {
-        *existing = next;
-    } else {
-        env.push(next);
-    }
 }
 
 fn cached_binary(

@@ -258,11 +258,12 @@ expression: responses
         "socket_path": "/tmp/rtmd.sock",
         "uptime_secs": 12,
         "sqlite": {
-          "applied": 2,
-          "total": 2,
+          "applied": 3,
+          "total": 3,
           "applied_descriptions": [
             "lifecycle",
-            "probe state"
+            "probe state",
+            "lifecycle isolation"
           ],
           "pending_descriptions": []
         },
@@ -288,6 +289,28 @@ expression: responses
           "available": true,
           "version": "tmux 3.5a",
           "error": null
+        },
+        "docker": {
+          "cli": {
+            "ready": true,
+            "detail": "Docker version 27.0.0",
+            "error": null
+          },
+          "daemon": {
+            "ready": true,
+            "detail": "27.0.0",
+            "error": null
+          },
+          "manifest_validation": {
+            "ready": true,
+            "detail": "docker manifest inspect is available",
+            "error": null
+          },
+          "isolation": {
+            "supported": true,
+            "default_workspace": "/workspace",
+            "experimental": true
+          }
         },
         "log_availability": [
           {

@@ -201,6 +201,55 @@ fn capture_dead_tmux_pane_returns_pane_unavailable() {
 }
 
 #[test]
+fn docker_tmux_pattern_a_container_survives_pane_close() {
+    let Some(tmux_session) = common::tmux::TmuxSession::start("rtm-docker-pattern-a") else {
+        eprintln!("skipping Docker tmux Pattern A test because tmux is unavailable");
+        return;
+    };
+
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7();
+    let expected_pane = tmux_session.pane();
+    let spawn = harness
+        .spawn_command(
+            &session_id.to_string(),
+            "claude",
+            &format!("tmux:{expected_pane}"),
+            true,
+        )
+        .arg("--isolation")
+        .arg("docker")
+        .arg("--image")
+        .arg("runtime-matters-agent:latest")
+        .output()
+        .expect("spawn client");
+    spawn_output_ok(spawn, "claude");
+    let mut last_capture = String::new();
+    common::wait_until(Duration::from_secs(5), || {
+        last_capture = tmux_session.capture();
+        last_capture.contains(FAKE_RUNTIME_READY).then_some(())
+    })
+    .unwrap_or_else(|| panic!("pane never contained Docker runtime ready: {last_capture}"));
+
+    let container_pid = common::docker::container_pid(&harness, session_id);
+    assert!(
+        common::process_alive(container_pid),
+        "fake container exited before pane close"
+    );
+    tmux_session.kill();
+    thread::sleep(Duration::from_millis(300));
+    assert!(
+        common::process_alive(container_pid),
+        "pane close should terminate attach without killing the container"
+    );
+
+    let kill = harness.kill(&session_id.to_string(), "TERM", 2);
+    assert!(kill.status.success(), "kill failed: {kill:?}");
+    common::wait_until_not_alive(container_pid);
+    harness.stop();
+}
+
+#[test]
 fn ctrl_c_induced_tmux_pane_loss_repro_covers_claude_and_codex() {
     for runtime in ["claude", "codex"] {
         ctrl_c_interrupts_runtime_without_losing_tmux_pane(runtime);

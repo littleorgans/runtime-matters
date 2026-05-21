@@ -19,6 +19,14 @@ impl LaunchEnv {
     }
 }
 
+pub fn upsert_launch_env(env: &mut Vec<LaunchEnv>, next: LaunchEnv) {
+    if let Some(existing) = env.iter_mut().find(|entry| entry.key == next.key) {
+        *existing = next;
+    } else {
+        env.push(next);
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LaunchSpec {
     pub argv: Vec<String>,

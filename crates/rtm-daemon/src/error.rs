@@ -16,6 +16,11 @@ pub(crate) enum RuntimeFailure {
     SessionAlreadyExists { session_id: Uuid },
     SessionNotFound { session_id: Uuid },
     TmuxPaneDead { address: TmuxAddress },
+    DockerUnavailable { message: String },
+    DockerImageNotConfigured,
+    DockerImageUnavailable { message: String },
+    DockerImageMetadataUnavailable { message: String },
+    UnsupportedIsolationPolicy { policy: String },
 }
 
 impl RuntimeFailure {
@@ -38,12 +43,49 @@ impl RuntimeFailure {
         Self::TmuxPaneDead { address }.into()
     }
 
+    pub(crate) fn docker_unavailable(message: impl Into<String>) -> anyhow::Error {
+        Self::DockerUnavailable {
+            message: message.into(),
+        }
+        .into()
+    }
+
+    pub(crate) fn docker_image_unavailable(message: impl Into<String>) -> anyhow::Error {
+        Self::DockerImageUnavailable {
+            message: message.into(),
+        }
+        .into()
+    }
+
+    pub(crate) fn docker_image_not_configured() -> anyhow::Error {
+        Self::DockerImageNotConfigured.into()
+    }
+
+    pub(crate) fn docker_image_metadata_unavailable(message: impl Into<String>) -> anyhow::Error {
+        Self::DockerImageMetadataUnavailable {
+            message: message.into(),
+        }
+        .into()
+    }
+
+    pub(crate) fn unsupported_isolation_policy(policy: impl Into<String>) -> anyhow::Error {
+        Self::UnsupportedIsolationPolicy {
+            policy: policy.into(),
+        }
+        .into()
+    }
+
     fn code(&self) -> ErrorCode {
         match self {
             Self::ProtocolMismatch { .. } => ErrorCode::ProtocolMismatch,
             Self::SessionAlreadyExists { .. } => ErrorCode::InvalidTarget,
             Self::SessionNotFound { .. } => ErrorCode::SessionNotFound,
             Self::TmuxPaneDead { .. } => ErrorCode::TmuxPaneDead,
+            Self::DockerUnavailable { .. } => ErrorCode::RuntimeUnavailable,
+            Self::DockerImageNotConfigured => ErrorCode::DockerImageNotConfigured,
+            Self::DockerImageUnavailable { .. } => ErrorCode::RuntimeUnavailable,
+            Self::DockerImageMetadataUnavailable { .. } => ErrorCode::RuntimeUnavailable,
+            Self::UnsupportedIsolationPolicy { .. } => ErrorCode::UnsupportedIsolationPolicy,
         }
     }
 }
@@ -60,6 +102,21 @@ impl Display for RuntimeFailure {
             }
             Self::TmuxPaneDead { address } => {
                 write!(formatter, "tmux address {address} is not alive")
+            }
+            Self::DockerUnavailable { message } => {
+                write!(formatter, "docker daemon is unavailable: {message}")
+            }
+            Self::DockerImageNotConfigured => {
+                formatter.write_str("docker image is not configured; pass --image or set RTM_DOCKER_IMAGE before starting the daemon")
+            }
+            Self::DockerImageUnavailable { message } => {
+                write!(formatter, "docker image is unavailable: {message}")
+            }
+            Self::DockerImageMetadataUnavailable { message } => {
+                write!(formatter, "docker image metadata is unavailable: {message}")
+            }
+            Self::UnsupportedIsolationPolicy { policy } => {
+                write!(formatter, "isolation policy {policy} is not supported")
             }
         }
     }
@@ -141,12 +198,20 @@ mod tests {
                 ErrorCode::TmuxPaneDead,
             ),
             (
+                RuntimeFailure::docker_unavailable("docker not running"),
+                ErrorCode::RuntimeUnavailable,
+            ),
+            (
                 RuntimeFailure::session_already_exists(session_id),
                 ErrorCode::InvalidTarget,
             ),
             (
                 RuntimeFailure::protocol_mismatch("bad shim state"),
                 ErrorCode::ProtocolMismatch,
+            ),
+            (
+                RuntimeFailure::unsupported_isolation_policy("docker"),
+                ErrorCode::UnsupportedIsolationPolicy,
             ),
         ];
 

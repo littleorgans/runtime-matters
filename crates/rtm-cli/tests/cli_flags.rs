@@ -32,6 +32,12 @@ fn spawn_help_documents_cwd_flag() {
 
     let stdout = String::from_utf8(output.stdout).expect("help output utf8");
     assert!(stdout.contains("--cwd <PATH>"), "{stdout}");
+    assert!(
+        stdout.contains("--isolation <host|docker[:PROFILE]>"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("--image <IMAGE>"), "{stdout}");
+    assert!(stdout.contains("--env <KEY[=VALUE]>"), "{stdout}");
 }
 
 #[test]
@@ -79,6 +85,58 @@ fn spawn_cwd_flag_rejects_file_path_before_daemon_request() {
     let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
     assert!(
         stderr.contains(&format!("spawn cwd is not a directory: {}", file.display())),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn spawn_isolation_flag_rejects_invalid_policy_before_daemon_request() {
+    let output = Command::new(env!("CARGO_BIN_EXE_rtm"))
+        .args([
+            "spawn",
+            "--runtime",
+            "claude",
+            "--session-id",
+            &Uuid::now_v7().to_string(),
+            "--target",
+            "headless",
+            "--isolation",
+            "sandbox",
+        ])
+        .output()
+        .expect("rtm spawn");
+
+    assert!(!output.status.success(), "spawn unexpectedly succeeded");
+    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+    assert!(
+        stderr.contains("invalid isolation policy sandbox"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn spawn_env_flag_rejects_missing_caller_env_before_daemon_request() {
+    let key = format!("RTM_TEST_MISSING_{}", Uuid::now_v7().simple());
+    let output = Command::new(env!("CARGO_BIN_EXE_rtm"))
+        .args([
+            "spawn",
+            "--runtime",
+            "claude",
+            "--session-id",
+            &Uuid::now_v7().to_string(),
+            "--target",
+            "headless",
+            "--env",
+            &key,
+        ])
+        .env_remove(&key)
+        .output()
+        .expect("rtm spawn");
+
+    assert!(!output.status.success(), "spawn unexpectedly succeeded");
+    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+    assert!(
+        stderr.contains(&format!("spawn env {key} is not set in caller environment")),
         "{stderr}"
     );
 }

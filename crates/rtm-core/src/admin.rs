@@ -120,6 +120,73 @@ pub struct TmuxStatus {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DockerReadiness {
+    pub ready: bool,
+    pub detail: Option<String>,
+    pub error: Option<String>,
+}
+
+impl DockerReadiness {
+    pub fn ready(detail: impl Into<String>) -> Self {
+        Self {
+            ready: true,
+            detail: Some(detail.into()),
+            error: None,
+        }
+    }
+
+    pub fn unavailable(error: impl Into<String>) -> Self {
+        Self {
+            ready: false,
+            detail: None,
+            error: Some(error.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DockerIsolationStatus {
+    pub supported: bool,
+    pub default_workspace: String,
+    pub experimental: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DockerStatus {
+    pub cli: DockerReadiness,
+    pub daemon: DockerReadiness,
+    pub manifest_validation: DockerReadiness,
+    pub isolation: DockerIsolationStatus,
+}
+
+impl DockerStatus {
+    pub fn legacy_missing() -> Self {
+        Self {
+            cli: DockerReadiness::unavailable("not reported by this daemon"),
+            daemon: DockerReadiness::unavailable("not reported by this daemon"),
+            manifest_validation: DockerReadiness::unavailable("not reported by this daemon"),
+            isolation: DockerIsolationStatus {
+                supported: false,
+                default_workspace: String::new(),
+                experimental: false,
+            },
+        }
+    }
+
+    pub fn is_legacy_missing(&self) -> bool {
+        self == &Self::legacy_missing()
+    }
+}
+
+fn legacy_missing_docker_status() -> Box<DockerStatus> {
+    Box::new(DockerStatus::legacy_missing())
+}
+
+fn is_legacy_missing_docker_status(status: &DockerStatus) -> bool {
+    status.is_legacy_missing()
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LifecycleLogAvailability {
     pub session_id: Uuid,
     pub log_availability: LogAvailability,
@@ -139,6 +206,11 @@ pub struct DoctorResponse {
     pub watchers: WatcherCounts,
     pub launchers: Vec<LauncherStatus>,
     pub tmux: TmuxStatus,
+    #[serde(
+        default = "legacy_missing_docker_status",
+        skip_serializing_if = "is_legacy_missing_docker_status"
+    )]
+    pub docker: Box<DockerStatus>,
     pub log_availability: Vec<LifecycleLogAvailability>,
     pub last_probe_sweep: Option<DateTime<Utc>>,
     pub recent_lost: Vec<RecentLostEvent>,

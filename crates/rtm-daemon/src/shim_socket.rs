@@ -251,6 +251,7 @@ mod tests {
                 db_path: PathBuf::from("/tmp/rtm.db"),
             },
             reconcile: ReconcileConfig::default(),
+            docker_preflight: Default::default(),
         }
     }
 
@@ -293,6 +294,8 @@ mod tests {
             &SpawnRequest {
                 session_id: uuid::Uuid::now_v7(),
                 runtime: RuntimeKind::Claude,
+                isolation: Default::default(),
+                image: None,
                 env: Vec::new(),
                 cwd: PathBuf::from("/tmp"),
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {

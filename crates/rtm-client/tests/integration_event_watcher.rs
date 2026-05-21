@@ -35,6 +35,7 @@ impl TestDaemon {
                 db_path: tempdir.path().join("rtm.sqlite"),
             },
             reconcile: ReconcileConfig::default(),
+            docker_preflight: Default::default(),
         };
         let task = tokio::spawn(async move {
             run_daemon(config).await.expect("daemon run");

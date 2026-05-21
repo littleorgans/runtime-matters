@@ -13,6 +13,8 @@ pub enum ErrorCode {
     HeadlessNudgeUnsupported,
     LaunchFailed,
     InvalidTarget,
+    DockerImageNotConfigured,
+    UnsupportedIsolationPolicy,
     SpawnConflict,
     ProtocolMismatch,
 }
@@ -26,6 +28,8 @@ impl ErrorCode {
             Self::HeadlessNudgeUnsupported => "headless_nudge_unsupported",
             Self::LaunchFailed => "launch_failed",
             Self::InvalidTarget => "invalid_target",
+            Self::DockerImageNotConfigured => "docker_image_not_configured",
+            Self::UnsupportedIsolationPolicy => "unsupported_isolation_policy",
             Self::SpawnConflict => "spawn_conflict",
             Self::ProtocolMismatch => "protocol_mismatch",
         }
