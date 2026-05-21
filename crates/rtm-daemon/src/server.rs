@@ -24,7 +24,7 @@ use crate::{
     error::RuntimeFailure,
     event_channel,
     event_log::{CursorExpired, EventBatch, EventLog},
-    handler, reconcile, socket,
+    handler, reconcile, runtime_kill, socket,
 };
 
 #[derive(Clone, Debug)]
@@ -306,26 +306,7 @@ impl ServerState {
     }
 
     pub(crate) async fn kill_runtime(&self, request: KillRequest) -> Result<KillOutcome> {
-        let runtime_pid = self.runtime_pid(request.session_id).await?;
-        let outcome = rtm_platform::signal::send_signal_for_kill(runtime_pid, request.signal)?;
-        if matches!(outcome, KillOutcome::AlreadyExited) {
-            return Ok(outcome);
-        }
-        let deadline = Instant::now() + Duration::from_secs(request.grace_secs);
-
-        while Instant::now() < deadline {
-            if self.is_terminal(request.session_id).await
-                || !rtm_platform::process::pid_alive(runtime_pid)
-            {
-                return Ok(outcome);
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-
-        if rtm_platform::process::pid_alive(runtime_pid) && request.signal != RuntimeSignal::Kill {
-            rtm_platform::signal::send_signal(runtime_pid, RuntimeSignal::Kill)?;
-        }
-        Ok(outcome)
+        runtime_kill::kill_runtime(self, request).await
     }
 
     pub(crate) async fn kill_pid(&self, request: KillByPidRequest) -> Result<KillByPidResponse> {
@@ -536,15 +517,7 @@ impl ServerState {
         Ok(())
     }
 
-    async fn runtime_pid(&self, session_id: Uuid) -> Result<u32> {
-        self.store
-            .get(session_id)
-            .await?
-            .and_then(|lifecycle| lifecycle.runtime_pid)
-            .ok_or_else(|| RuntimeFailure::session_not_found(session_id))
-    }
-
-    async fn is_terminal(&self, session_id: Uuid) -> bool {
+    pub(crate) async fn is_terminal(&self, session_id: Uuid) -> bool {
         self.store
             .get(session_id)
             .await

@@ -106,6 +106,7 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
             }
             let launch = rtm_launchers::dispatch(&request.runtime)?.launch_spec(&request)?;
             let backends = RuntimeBackends::new(state.config());
+            let launch = backends.prepare_launch(&request, launch)?;
             let ready_rx = state.begin_spawn(&request, launch.clone()).await?;
             let evidence = match backends.spawn(&request, &launch).await {
                 Ok(evidence) => evidence,

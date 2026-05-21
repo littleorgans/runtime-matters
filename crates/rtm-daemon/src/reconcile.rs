@@ -8,7 +8,7 @@ use rtm_platform::process::ProcessStartTime;
 use tokio::sync::broadcast;
 use tokio::time::{Instant, sleep_until};
 
-use crate::server::ServerState;
+use crate::{docker_runtime, server::ServerState};
 
 pub const PROBE_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 const RESUME_POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -63,7 +63,7 @@ struct ReconcileLiveness<'a, P, D> {
     docker: &'a D,
 }
 
-struct UnavailableDockerLiveness;
+struct DockerCliLiveness;
 
 impl ProcessProbe for SystemProcessProbe {
     fn pid_alive(&self, pid: u32) -> bool {
@@ -79,12 +79,14 @@ trait DockerLiveness {
     fn lost_evidence(&self, lifecycle: &Lifecycle) -> Result<Option<LostEvidence>>;
 }
 
-impl DockerLiveness for UnavailableDockerLiveness {
+impl DockerLiveness for DockerCliLiveness {
     fn lost_evidence(&self, lifecycle: &Lifecycle) -> Result<Option<LostEvidence>> {
-        Err(anyhow!(
-            "docker lifecycle probe is not configured for session {}",
-            lifecycle.session_id
-        ))
+        let running = docker_runtime::container_running_blocking(lifecycle.session_id)?;
+        if running {
+            Ok(None)
+        } else {
+            Ok(Some(LostEvidence::PidNotAlive))
+        }
     }
 }
 
@@ -109,7 +111,7 @@ pub async fn reconcile_startup(
         state,
         &ReconcileLiveness {
             process: probe,
-            docker: &UnavailableDockerLiveness,
+            docker: &DockerCliLiveness,
         },
     )
     .await
@@ -151,7 +153,7 @@ async fn run_periodic_with_config<P>(
                 if now >= next_deadline || resumed {
                     let liveness = ReconcileLiveness {
                         process: &probe,
-                        docker: &UnavailableDockerLiveness,
+                        docker: &DockerCliLiveness,
                     };
                     if let Err(error) = reconcile_once(Arc::clone(&state), &liveness).await {
                         tracing::warn!(%error, "periodic reconciliation failed");
