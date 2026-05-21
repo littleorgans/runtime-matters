@@ -27,7 +27,7 @@ pub(crate) fn docker_run_launch(
     let command = launch.command()?;
     let tmux_target = matches!(target, SpawnTarget::Tmux(_));
     let mut run_argv = docker_run_argv(session_id, profile, image, launch, tmux_target);
-    run_argv.push(command.to_owned());
+    run_argv.push(container_command(command));
     run_argv.extend(launch.argv.iter().skip(1).cloned());
 
     let argv = match target {
@@ -100,6 +100,17 @@ fn docker_command() -> String {
         .find(|path| is_executable(path))
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_else(|| "docker".to_owned())
+}
+
+fn container_command(command: &str) -> String {
+    let path = Path::new(command);
+    if path.is_absolute() {
+        return path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| command.to_owned());
+    }
+    command.to_owned()
 }
 
 fn is_executable(path: &Path) -> bool {
@@ -271,6 +282,45 @@ mod tests {
         .expect("docker launch");
 
         assert!(!spec.argv.contains(&"--init".to_owned()));
+    }
+
+    #[test]
+    fn docker_run_launch_uses_container_command_for_host_resolved_launcher() {
+        let host_launcher = "/Users/alphab/.local/bin/claude";
+        let launch = LaunchSpec {
+            argv: vec![host_launcher.to_owned(), "--print".to_owned()],
+            env: vec![LaunchEnv::new("CLAUDE_CODE", "1")],
+            cwd: PathBuf::from("/workspace/project"),
+            shell_resume: None,
+        };
+
+        let spec = docker_run_launch(
+            Uuid::nil(),
+            &IsolationProfile::default(),
+            "runtime-matters-agent:latest",
+            &launch,
+            &SpawnTarget::Headless(HeadlessSpawnTarget {}),
+        )
+        .expect("docker launch");
+
+        let image_index = spec
+            .argv
+            .iter()
+            .position(|arg| arg == "runtime-matters-agent:latest")
+            .expect("image arg");
+        assert!(
+            !spec.argv[image_index + 1..]
+                .iter()
+                .any(|arg| arg.starts_with("/Users/alphab"))
+        );
+        assert_eq!(
+            spec.argv[spec.argv.len() - 3..],
+            [
+                "runtime-matters-agent:latest".to_owned(),
+                "claude".to_owned(),
+                "--print".to_owned(),
+            ]
+        );
     }
 
     #[test]
