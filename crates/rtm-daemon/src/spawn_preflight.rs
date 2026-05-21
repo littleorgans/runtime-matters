@@ -109,7 +109,7 @@ async fn validate_docker_image_metadata_on_arch(
         )));
     }
     if host_arch == "aarch64" && !docker_manifest_escape_allowed(state, profile) {
-        let arm64_available = docker.arm64_manifest_available(image).await?;
+        let arm64_available = docker_image_arm64_available(docker, image).await?;
         if !arm64_available {
             return Err(RuntimeFailure::docker_image_metadata_unavailable(format!(
                 "docker image {image} does not publish an arm64 manifest"
@@ -117,6 +117,26 @@ async fn validate_docker_image_metadata_on_arch(
         }
     }
     Ok(())
+}
+
+async fn docker_image_arm64_available(
+    docker: &impl DockerImageInspector,
+    image: &str,
+) -> Result<bool> {
+    match docker.arm64_manifest_available(image).await {
+        Ok(available) => Ok(available),
+        Err(manifest_error) => match docker.image_architecture(image).await {
+            Ok(arch) => Ok(arch == "arm64"),
+            Err(local_error) if is_docker_image_unavailable(&local_error) => Err(local_error),
+            Err(_) => Err(manifest_error),
+        },
+    }
+}
+
+fn is_docker_image_unavailable(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<RuntimeFailure>()
+        .is_some_and(|failure| matches!(failure, RuntimeFailure::DockerImageUnavailable { .. }))
 }
 
 fn docker_root_allowed(state: &Arc<ServerState>, profile: &IsolationProfile) -> bool {

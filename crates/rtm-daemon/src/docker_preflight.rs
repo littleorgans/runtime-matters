@@ -68,6 +68,7 @@ pub(crate) trait DockerImageInspector {
     async fn ensure_available(&self) -> Result<()>;
     async fn image_user(&self, image: &str) -> Result<Option<String>>;
     async fn arm64_manifest_available(&self, image: &str) -> Result<bool>;
+    async fn image_architecture(&self, image: &str) -> Result<String>;
 }
 
 pub(crate) struct DockerCliInspector;
@@ -143,6 +144,36 @@ impl DockerImageInspector for DockerCliInspector {
         }
 
         manifest_has_arm64(&output.stdout)
+    }
+
+    async fn image_architecture(&self, image: &str) -> Result<String> {
+        let output = Command::new("docker")
+            .arg("image")
+            .arg("inspect")
+            .arg(image)
+            .arg("--format")
+            .arg("{{json .Architecture}}")
+            .output()
+            .await
+            .map_err(|error| RuntimeFailure::docker_image_unavailable(error.to_string()))?;
+
+        if !output.status.success() {
+            return Err(RuntimeFailure::docker_image_unavailable(
+                command_error_message(&output.stderr, "docker image inspect failed without stderr"),
+            ));
+        }
+
+        let raw = String::from_utf8_lossy(&output.stdout);
+        let architecture = serde_json::from_str::<String>(raw.trim()).map_err(|error| {
+            RuntimeFailure::docker_image_metadata_unavailable(format!(
+                "docker image inspect returned invalid architecture metadata: {error}"
+            ))
+        })?;
+        non_empty(architecture).ok_or_else(|| {
+            RuntimeFailure::docker_image_metadata_unavailable(
+                "docker image inspect returned empty architecture metadata",
+            )
+        })
     }
 }
 

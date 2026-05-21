@@ -20,6 +20,7 @@ struct FakeDockerInspector {
     availability: Result<(), &'static str>,
     user: Result<Option<&'static str>, &'static str>,
     arm64_manifest: Result<bool, &'static str>,
+    image_architecture: Result<&'static str, FakeDockerImageError>,
 }
 
 impl FakeDockerInspector {
@@ -28,8 +29,15 @@ impl FakeDockerInspector {
             availability: Ok(()),
             user: Ok(Some("1000")),
             arm64_manifest: Ok(true),
+            image_architecture: Ok("arm64"),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum FakeDockerImageError {
+    Unavailable(&'static str),
+    MetadataUnavailable(&'static str),
 }
 
 impl DockerImageInspector for FakeDockerInspector {
@@ -47,6 +55,19 @@ impl DockerImageInspector for FakeDockerInspector {
     async fn arm64_manifest_available(&self, _image: &str) -> Result<bool> {
         self.arm64_manifest
             .map_err(RuntimeFailure::docker_image_metadata_unavailable)
+    }
+
+    async fn image_architecture(&self, _image: &str) -> Result<String> {
+        self.image_architecture
+            .map(ToOwned::to_owned)
+            .map_err(|error| match error {
+                FakeDockerImageError::Unavailable(message) => {
+                    RuntimeFailure::docker_image_unavailable(message)
+                }
+                FakeDockerImageError::MetadataUnavailable(message) => {
+                    RuntimeFailure::docker_image_metadata_unavailable(message)
+                }
+            })
     }
 }
 
@@ -118,6 +139,7 @@ async fn docker_unavailable_fails_before_lifecycle_insert() {
             availability: Err("daemon socket refused"),
             user: Ok(Some("1000")),
             arm64_manifest: Ok(true),
+            image_architecture: Ok("arm64"),
         },
     )
     .await
@@ -214,6 +236,7 @@ async fn root_image_user_is_allowed_by_profile_escape_hatch() {
             availability: Ok(()),
             user: Ok(Some("root")),
             arm64_manifest: Ok(true),
+            image_architecture: Ok("arm64"),
         },
     )
     .await
@@ -237,6 +260,7 @@ async fn root_image_user_is_allowed_by_config_escape_hatch() {
             availability: Ok(()),
             user: Ok(Some("0")),
             arm64_manifest: Ok(true),
+            image_architecture: Ok("arm64"),
         },
     )
     .await
@@ -259,6 +283,7 @@ async fn image_unavailable_fails_before_lifecycle_insert() {
             availability: Ok(()),
             user: Err("pull access denied"),
             arm64_manifest: Ok(true),
+            image_architecture: Ok("arm64"),
         },
     )
     .await
@@ -281,10 +306,46 @@ async fn arm64_manifest_absence_fails_before_lifecycle_insert() {
 }
 
 #[tokio::test]
-async fn arm64_manifest_inspection_failure_fails_before_lifecycle_insert() {
-    assert_arm64_manifest_failure(
+async fn registry_failure_with_invalid_local_metadata_preserves_metadata_category() {
+    assert_arm64_manifest_failure_with_architecture(
         Err("registry authentication required"),
-        "docker image metadata is unavailable: registry authentication required",
+        Err(FakeDockerImageError::MetadataUnavailable(
+            "invalid architecture metadata",
+        )),
+        RuntimeFailure::DockerImageMetadataUnavailable {
+            message: "registry authentication required".to_owned(),
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn local_only_arm64_image_passes_on_arm64_host() {
+    assert_arm64_manifest_success(Err("registry authentication required"), Ok("arm64")).await;
+}
+
+#[tokio::test]
+async fn local_only_non_arm64_image_fails_on_arm64_host() {
+    assert_arm64_manifest_failure_with_architecture(
+        Err("registry authentication required"),
+        Ok("amd64"),
+        RuntimeFailure::DockerImageMetadataUnavailable {
+            message: "docker image test-agent:latest does not publish an arm64 manifest".to_owned(),
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn nonexistent_local_image_reports_image_unavailable_after_registry_failure() {
+    assert_arm64_manifest_failure_with_architecture(
+        Err("registry authentication required"),
+        Err(FakeDockerImageError::Unavailable(
+            "No such image: test-agent:latest",
+        )),
+        RuntimeFailure::DockerImageUnavailable {
+            message: "No such image: test-agent:latest".to_owned(),
+        },
     )
     .await;
 }
@@ -302,6 +363,9 @@ async fn arm64_manifest_escape_hatch_skips_manifest_inspection() {
             availability: Ok(()),
             user: Ok(Some("1000")),
             arm64_manifest: Err("registry authentication required"),
+            image_architecture: Err(FakeDockerImageError::Unavailable(
+                "No such image: test-agent:latest",
+            )),
         },
         "aarch64",
     )
@@ -422,6 +486,7 @@ async fn assert_docker_image_user_rejected(user: Option<&'static str>) {
             availability: Ok(()),
             user: Ok(user),
             arm64_manifest: Ok(true),
+            image_architecture: Ok("arm64"),
         },
     )
     .await
@@ -431,6 +496,67 @@ async fn assert_docker_image_user_rejected(user: Option<&'static str>) {
         error.to_string(),
         "docker image metadata is unavailable: docker image runtime-matters-agent:latest runs as root"
     );
+    assert_no_lifecycle_or_waiters(&state, session_id).await;
+}
+
+async fn assert_arm64_manifest_success(
+    arm64_manifest: Result<bool, &'static str>,
+    image_architecture: Result<&'static str, FakeDockerImageError>,
+) {
+    let state = test_state_with_docker_config(DockerPreflightConfig::new(
+        "test-agent:latest",
+        false,
+        false,
+    ))
+    .await;
+    let mut request = headless_request(Uuid::now_v7(), false);
+    request.isolation = docker_profile(None);
+
+    validate_docker_image_metadata_on_arch(
+        &state,
+        docker_profile_ref(&request),
+        &FakeDockerInspector {
+            availability: Ok(()),
+            user: Ok(Some("1000")),
+            arm64_manifest,
+            image_architecture,
+        },
+        "aarch64",
+    )
+    .await
+    .expect("arm64 image should pass preflight");
+}
+
+async fn assert_arm64_manifest_failure_with_architecture(
+    arm64_manifest: Result<bool, &'static str>,
+    image_architecture: Result<&'static str, FakeDockerImageError>,
+    expected: RuntimeFailure,
+) {
+    let state = test_state_with_docker_config(DockerPreflightConfig::new(
+        "test-agent:latest",
+        false,
+        false,
+    ))
+    .await;
+    let session_id = Uuid::now_v7();
+    let mut request = headless_request(session_id, false);
+    request.isolation = docker_profile(None);
+
+    let error = validate_docker_image_metadata_on_arch(
+        &state,
+        docker_profile_ref(&request),
+        &FakeDockerInspector {
+            availability: Ok(()),
+            user: Ok(Some("1000")),
+            arm64_manifest,
+            image_architecture,
+        },
+        "aarch64",
+    )
+    .await
+    .expect_err("arm64 image should fail preflight");
+
+    assert_runtime_failure(error, expected);
     assert_no_lifecycle_or_waiters(&state, session_id).await;
 }
 
@@ -452,6 +578,7 @@ async fn assert_arm64_manifest_failure(arm64_manifest: Result<bool, &'static str
             availability: Ok(()),
             user: Ok(Some("1000")),
             arm64_manifest,
+            image_architecture: Ok("arm64"),
         },
         "aarch64",
     )
@@ -460,6 +587,25 @@ async fn assert_arm64_manifest_failure(arm64_manifest: Result<bool, &'static str
 
     assert_eq!(error.to_string(), expected);
     assert_no_lifecycle_or_waiters(&state, session_id).await;
+}
+
+fn assert_runtime_failure(error: anyhow::Error, expected: RuntimeFailure) {
+    let failure = error
+        .downcast_ref::<RuntimeFailure>()
+        .expect("runtime failure category");
+    match (failure, expected) {
+        (
+            RuntimeFailure::DockerImageUnavailable { message },
+            RuntimeFailure::DockerImageUnavailable { message: expected },
+        )
+        | (
+            RuntimeFailure::DockerImageMetadataUnavailable { message },
+            RuntimeFailure::DockerImageMetadataUnavailable { message: expected },
+        ) => assert_eq!(message, &expected),
+        (actual, expected) => {
+            panic!("unexpected failure category: {actual:?}, expected {expected:?}")
+        }
+    }
 }
 
 fn docker_profile_ref(request: &SpawnRequest) -> &IsolationProfile {
