@@ -13,11 +13,12 @@ use tokio::net::UnixStream;
 use tokio::sync::broadcast;
 
 use crate::{
+    backend::RuntimeBackends,
     doctor,
     error::{RpcErrorContext, protocol_error_response, rpc_error_response},
     mcp_bridge,
     server::ServerState,
-    shim_socket, spawn_preflight,
+    spawn_preflight,
 };
 
 pub(crate) async fn handle_connection(
@@ -104,9 +105,10 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
                 return Ok(conflict);
             }
             let launch = rtm_launchers::dispatch(&request.runtime)?.launch_spec(&request)?;
-            let ready_rx = state.begin_spawn(&request, launch).await?;
-            let log_paths = match shim_socket::launch_shim(state.config(), &request).await {
-                Ok(log_paths) => log_paths,
+            let backends = RuntimeBackends::new(state.config());
+            let ready_rx = state.begin_spawn(&request, launch.clone()).await?;
+            let evidence = match backends.spawn(&request, &launch).await {
+                Ok(evidence) => evidence,
                 Err(error) => {
                     state.cancel_spawn(request.session_id).await;
                     return Err(error);
@@ -118,7 +120,7 @@ async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<R
                 .context("timed out waiting for ShimReady")?
                 .context("shim ready channel closed")?;
             let (lifecycle, event) = state.record_running(&request, ready).await?;
-            let (log_dir, stdout_path, stderr_path) = match log_paths {
+            let (log_dir, stdout_path, stderr_path) = match evidence.log_paths {
                 Some(paths) => (
                     Some(paths.log_dir),
                     Some(paths.stdout_path),

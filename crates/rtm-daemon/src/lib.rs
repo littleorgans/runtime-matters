@@ -1,3 +1,4 @@
+mod backend;
 mod doctor;
 mod error;
 pub mod event_channel;
