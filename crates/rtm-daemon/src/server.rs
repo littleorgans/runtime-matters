@@ -170,7 +170,8 @@ impl ServerState {
         }
         self.validate_spawn_target(request).await?;
 
-        let lifecycle = Lifecycle::forking(request.session_id, request.runtime.clone());
+        let mut lifecycle = Lifecycle::forking(request.session_id, request.runtime.clone());
+        lifecycle.isolation = request.isolation.clone();
         self.store.insert_forking(&lifecycle).await?;
         self.pending_launches
             .lock()

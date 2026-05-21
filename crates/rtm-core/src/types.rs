@@ -402,6 +402,8 @@ pub struct ShimExit {
 pub struct Lifecycle {
     pub session_id: Uuid,
     pub runtime: RuntimeKind,
+    #[serde(default, skip_serializing_if = "IsolationPolicy::is_host")]
+    pub isolation: IsolationPolicy,
     pub state: LifecycleState,
     pub shim_pid: Option<u32>,
     pub runtime_pid: Option<u32>,
@@ -416,6 +418,7 @@ impl Lifecycle {
         Self {
             session_id,
             runtime,
+            isolation: IsolationPolicy::Host,
             state: LifecycleState::Forking,
             shim_pid: None,
             runtime_pid: None,

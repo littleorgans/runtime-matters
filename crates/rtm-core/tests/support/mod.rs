@@ -50,9 +50,13 @@ pub fn doctor_response() -> DoctorResponse {
         socket_path: "/tmp/rtmd.sock".to_owned(),
         uptime_secs: 12,
         sqlite: MigrationState {
-            applied: 2,
-            total: 2,
-            applied_descriptions: vec!["lifecycle".to_owned(), "probe state".to_owned()],
+            applied: 3,
+            total: 3,
+            applied_descriptions: vec![
+                "lifecycle".to_owned(),
+                "probe state".to_owned(),
+                "lifecycle isolation".to_owned(),
+            ],
             pending_descriptions: Vec::new(),
         },
         lifecycles: LifecycleCounts {

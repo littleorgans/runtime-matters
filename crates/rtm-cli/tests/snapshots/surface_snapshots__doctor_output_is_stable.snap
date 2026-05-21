@@ -9,7 +9,7 @@ rtmd
   socket              [socket]
   uptime              [uptime]
 sqlite
-  applied migrations  2 of 2 (lifecycle, probe state)
+  applied migrations  3 of 3 (lifecycle, probe state, lifecycle isolation)
 lifecycles
   forking             0
   running             0

@@ -26,13 +26,14 @@ expression: doctor
   "recent_lost": [],
   "socket_path": "[socket]",
   "sqlite": {
-    "applied": 2,
+    "applied": 3,
     "applied_descriptions": [
       "lifecycle",
-      "probe state"
+      "probe state",
+      "lifecycle isolation"
     ],
     "pending_descriptions": [],
-    "total": 2
+    "total": 3
   },
   "tmux": {
     "available": "[tmux]",

@@ -3,13 +3,13 @@ mod support;
 use lilo_rm_core::{
     CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
     DoctorPayload, ErrorCode, ErrorPayload, EventsPayload, EventsRequest, IsolationPolicy,
-    IsolationProfile, KillByPidRequest, KillRequest, LogAvailability, LogsUnavailableReason,
-    LostEvidence, McpBridgeRequest, NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest,
-    NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc,
-    RuntimeSignal, ShimExit, ShimLaunchPayload, ShimLaunchRequest, SpawnConflictKind,
-    SpawnConflictPayload, SpawnRequest, SpawnTarget, SpawnedPayload, StatusRequest,
-    TerminationEvidence, TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetPayload,
-    ValidateTargetRequest, ValidateTargetResponse, VersionPayload,
+    IsolationProfile, KillByPidRequest, KillRequest, Lifecycle, LogAvailability,
+    LogsUnavailableReason, LostEvidence, McpBridgeRequest, NudgeFailureReason, NudgeOutcome,
+    NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeKind,
+    RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchPayload, ShimLaunchRequest,
+    SpawnConflictKind, SpawnConflictPayload, SpawnRequest, SpawnTarget, SpawnedPayload,
+    StatusRequest, TerminationEvidence, TmuxSpawnTarget, ValidateTargetOutcome,
+    ValidateTargetPayload, ValidateTargetRequest, ValidateTargetResponse, VersionPayload,
 };
 use serde_json::json;
 use support::{
@@ -377,6 +377,43 @@ fn spawn_request_json_round_trips_explicit_isolation_policies() {
 
         assert_eq!(actual, request);
     }
+}
+
+#[test]
+fn lifecycle_json_defaults_omitted_isolation_to_host() {
+    let lifecycle: Lifecycle = serde_json::from_value(json!({
+        "session_id": session_id(),
+        "runtime": "claude",
+        "state": "running",
+        "shim_pid": 4241,
+        "runtime_pid": 4242,
+        "start_time": timestamp(),
+        "tmux_pane": null
+    }))
+    .expect("deserialize");
+
+    assert_eq!(lifecycle.isolation, IsolationPolicy::Host);
+}
+
+#[test]
+fn lifecycle_json_omits_host_and_keeps_docker_isolation() {
+    let host = headless_lifecycle(session_id());
+    let host_json = serde_json::to_value(host).expect("serialize host");
+    assert!(host_json.get("isolation").is_none());
+
+    let mut docker = headless_lifecycle(session_id());
+    docker.isolation = IsolationPolicy::Docker(IsolationProfile {
+        name: Some("locked".to_owned()),
+    });
+    let docker_json = serde_json::to_value(docker).expect("serialize docker");
+
+    assert_eq!(
+        docker_json.get("isolation"),
+        Some(&json!({
+            "type": "docker",
+            "payload": { "name": "locked" }
+        }))
+    );
 }
 
 #[test]
