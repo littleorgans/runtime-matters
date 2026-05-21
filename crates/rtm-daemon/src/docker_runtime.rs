@@ -131,14 +131,10 @@ fn path_arg(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-pub(crate) trait DockerContainerLiveness {
-    async fn running(&self, session_id: Uuid) -> Result<bool>;
-}
-
 pub(crate) struct DockerCliRuntime;
 
-impl DockerContainerLiveness for DockerCliRuntime {
-    async fn running(&self, session_id: Uuid) -> Result<bool> {
+impl DockerCliRuntime {
+    pub(crate) async fn running(&self, session_id: Uuid) -> Result<bool> {
         let output = Command::new("docker")
             .arg("container")
             .arg("inspect")

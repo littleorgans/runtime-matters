@@ -1,13 +1,12 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use lilo_rm_core::{IsolationPolicy, KillOutcome, KillRequest, Lifecycle, RuntimeSignal};
+use lilo_rm_core::{IsolationPolicy, KillOutcome, KillRequest, RuntimeSignal};
+use uuid::Uuid;
 
-use crate::{
-    docker_runtime::{self, DockerContainerLiveness},
-    error::RuntimeFailure,
-    server::ServerState,
-};
+use crate::{docker_runtime, error::RuntimeFailure, server::ServerState};
+
+const KILL_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
 pub(crate) async fn kill_runtime(state: &ServerState, request: KillRequest) -> Result<KillOutcome> {
     let lifecycle = state
@@ -16,64 +15,184 @@ pub(crate) async fn kill_runtime(state: &ServerState, request: KillRequest) -> R
         .await?
         .ok_or_else(|| RuntimeFailure::session_not_found(request.session_id))?;
     match lifecycle.isolation {
-        IsolationPolicy::Host => kill_host_runtime(state, request, lifecycle).await,
-        IsolationPolicy::Docker(_) => kill_docker_runtime(state, request).await,
+        IsolationPolicy::Host => {
+            let runtime_pid = lifecycle
+                .runtime_pid
+                .ok_or_else(|| RuntimeFailure::session_not_found(request.session_id))?;
+            let target = HostKillTarget { runtime_pid };
+            let mut terminal = StateTerminalCheck::new(state, request.session_id);
+            run_kill_loop(&target, &mut terminal, request.signal, request.grace_secs).await
+        }
+        IsolationPolicy::Docker(_) => {
+            let target = DockerKillTarget {
+                session_id: request.session_id,
+            };
+            let mut terminal = StateTerminalCheck::new(state, request.session_id);
+            run_kill_loop(&target, &mut terminal, request.signal, request.grace_secs).await
+        }
     }
 }
 
-async fn kill_host_runtime(
-    state: &ServerState,
-    request: KillRequest,
-    lifecycle: Lifecycle,
-) -> Result<KillOutcome> {
-    let runtime_pid = lifecycle
-        .runtime_pid
-        .ok_or_else(|| RuntimeFailure::session_not_found(request.session_id))?;
-    let outcome = rtm_platform::signal::send_signal_for_kill(runtime_pid, request.signal)?;
+async fn run_kill_loop<T, C>(
+    target: &T,
+    terminal: &mut C,
+    signal: RuntimeSignal,
+    grace_secs: u64,
+) -> Result<KillOutcome>
+where
+    T: KillTarget,
+    C: TerminalCheck,
+{
+    let outcome = target.send_signal(signal).await?;
     if matches!(outcome, KillOutcome::AlreadyExited) {
         return Ok(outcome);
     }
-    let deadline = Instant::now() + Duration::from_secs(request.grace_secs);
+    let deadline = Instant::now() + Duration::from_secs(grace_secs);
 
     while Instant::now() < deadline {
-        if state.is_terminal(request.session_id).await
-            || !rtm_platform::process::pid_alive(runtime_pid)
-        {
+        if terminal.is_terminal().await? || !target.is_alive().await? {
             return Ok(outcome);
         }
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        tokio::time::sleep(KILL_POLL_INTERVAL).await;
     }
 
-    if rtm_platform::process::pid_alive(runtime_pid) && request.signal != RuntimeSignal::Kill {
-        rtm_platform::signal::send_signal(runtime_pid, RuntimeSignal::Kill)?;
+    if target.is_alive().await? && signal != RuntimeSignal::Kill {
+        target.send_kill().await?;
     }
     Ok(outcome)
 }
 
-async fn kill_docker_runtime(state: &ServerState, request: KillRequest) -> Result<KillOutcome> {
-    let outcome = docker_runtime::kill_container(request.session_id, request.signal).await?;
-    if matches!(outcome, KillOutcome::AlreadyExited) {
-        return Ok(outcome);
-    }
-    let deadline = Instant::now() + Duration::from_secs(request.grace_secs);
+trait KillTarget {
+    async fn send_signal(&self, signal: RuntimeSignal) -> Result<KillOutcome>;
 
-    while Instant::now() < deadline {
-        if state.is_terminal(request.session_id).await
-            || !docker_runtime::DockerCliRuntime
-                .running(request.session_id)
-                .await?
-        {
-            return Ok(outcome);
+    async fn send_kill(&self) -> Result<()>;
+
+    async fn is_alive(&self) -> Result<bool>;
+}
+
+trait TerminalCheck {
+    async fn is_terminal(&mut self) -> Result<bool>;
+}
+
+struct HostKillTarget {
+    runtime_pid: u32,
+}
+
+impl KillTarget for HostKillTarget {
+    async fn send_signal(&self, signal: RuntimeSignal) -> Result<KillOutcome> {
+        rtm_platform::signal::send_signal_for_kill(self.runtime_pid, signal)
+    }
+
+    async fn send_kill(&self) -> Result<()> {
+        rtm_platform::signal::send_signal(self.runtime_pid, RuntimeSignal::Kill)
+    }
+
+    async fn is_alive(&self) -> Result<bool> {
+        Ok(rtm_platform::process::pid_alive(self.runtime_pid))
+    }
+}
+
+struct DockerKillTarget {
+    session_id: Uuid,
+}
+
+impl KillTarget for DockerKillTarget {
+    async fn send_signal(&self, signal: RuntimeSignal) -> Result<KillOutcome> {
+        docker_runtime::kill_container(self.session_id, signal).await
+    }
+
+    async fn send_kill(&self) -> Result<()> {
+        docker_runtime::kill_container(self.session_id, RuntimeSignal::Kill)
+            .await
+            .map(|_| ())
+    }
+
+    async fn is_alive(&self) -> Result<bool> {
+        docker_runtime::DockerCliRuntime
+            .running(self.session_id)
+            .await
+    }
+}
+
+struct StateTerminalCheck<'a> {
+    state: &'a ServerState,
+    session_id: Uuid,
+}
+
+impl<'a> StateTerminalCheck<'a> {
+    fn new(state: &'a ServerState, session_id: Uuid) -> Self {
+        Self { state, session_id }
+    }
+}
+
+impl TerminalCheck for StateTerminalCheck<'_> {
+    async fn is_terminal(&mut self) -> Result<bool> {
+        Ok(self.state.is_terminal(self.session_id).await)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn shared_kill_loop_escalates_alive_target_after_grace_deadline() {
+        let target = FakeKillTarget::new();
+        let mut terminal = FakeTerminalCheck;
+
+        let outcome = run_kill_loop(&target, &mut terminal, RuntimeSignal::Term, 0)
+            .await
+            .expect("kill loop");
+
+        assert_eq!(outcome, KillOutcome::Signalled);
+        assert_eq!(
+            target.signals(),
+            vec![RuntimeSignal::Term, RuntimeSignal::Kill]
+        );
+    }
+
+    struct FakeKillTarget {
+        signals: Arc<Mutex<Vec<RuntimeSignal>>>,
+    }
+
+    impl FakeKillTarget {
+        fn new() -> Self {
+            Self {
+                signals: Arc::new(Mutex::new(Vec::new())),
+            }
         }
-        tokio::time::sleep(Duration::from_millis(25)).await;
+
+        fn signals(&self) -> Vec<RuntimeSignal> {
+            self.signals.lock().expect("signals").clone()
+        }
     }
 
-    if docker_runtime::DockerCliRuntime
-        .running(request.session_id)
-        .await?
-        && request.signal != RuntimeSignal::Kill
-    {
-        docker_runtime::kill_container(request.session_id, RuntimeSignal::Kill).await?;
+    impl KillTarget for FakeKillTarget {
+        async fn send_signal(&self, signal: RuntimeSignal) -> Result<KillOutcome> {
+            self.signals.lock().expect("signals").push(signal);
+            Ok(KillOutcome::Signalled)
+        }
+
+        async fn send_kill(&self) -> Result<()> {
+            self.signals
+                .lock()
+                .expect("signals")
+                .push(RuntimeSignal::Kill);
+            Ok(())
+        }
+
+        async fn is_alive(&self) -> Result<bool> {
+            Ok(true)
+        }
     }
-    Ok(outcome)
+
+    struct FakeTerminalCheck;
+
+    impl TerminalCheck for FakeTerminalCheck {
+        async fn is_terminal(&mut self) -> Result<bool> {
+            Ok(false)
+        }
+    }
 }
