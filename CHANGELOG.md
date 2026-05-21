@@ -15,6 +15,13 @@
 * Docker support covers headless execution and host tmux attach behavior. Multiplexers inside the container, Kubernetes, SandboxClaim, injected sidecars, reconnecting PTY, credential volume management, first class firewall UX, privileged execution, and aggressive capability hardening remain out of scope.
 * `rtm doctor --format json` no longer reports the operator-facing internal jargon key `docker.pattern_e`. There were no other `docker.pattern_*` keys.
 
+## [0.2.4](https://github.com/littleorgans/runtime-matters/compare/v0.2.3...v0.2.4) (2026-05-21)
+
+
+### Features
+
+* add host and Docker sandboxing for runtime execution ([#43](https://github.com/littleorgans/runtime-matters/issues/43)) ([4578495](https://github.com/littleorgans/runtime-matters/commit/45784958cc501a15620a8c2034816cf5e4e5560e))
+
 ## [0.2.3](https://github.com/littleorgans/runtime-matters/compare/v0.2.2...v0.2.3) (2026-05-20)
 
 
