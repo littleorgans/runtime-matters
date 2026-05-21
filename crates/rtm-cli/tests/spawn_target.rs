@@ -208,9 +208,18 @@ fn docker_spawn_env_flag_reaches_container_and_runtime() {
         .arg("RTM_TEST_PRINT_ENV=1")
         .arg("--env")
         .arg("CLAUDE_CODE_OAUTH_TOKEN")
+        .arg("--env")
+        .arg("CLAUDE_CODE_DUP=first")
+        .arg("--env")
+        .arg("CLAUDE_CODE_DUP=second")
+        .arg("--env")
+        .arg("CLAUDE_CODE_EMPTY=")
         .env_clear()
         .env("RTM_SOCKET_PATH", harness.socket_path())
         .env("CLAUDE_CODE_OAUTH_TOKEN", &token)
+        .env("HOME", "/host/home")
+        .env("USER", "host-user")
+        .env("SHELL", "/host/shell")
         .output()
         .expect("spawn client");
     spawn_output_ok(output, "claude");
@@ -225,16 +234,28 @@ fn docker_spawn_env_flag_reaches_container_and_runtime() {
         env.contains(&format!("CLAUDE_CODE_OAUTH_TOKEN={token}")),
         "{env:?}"
     );
+    assert!(
+        env.contains(&"CLAUDE_CODE_DUP=second".to_owned()),
+        "{env:?}"
+    );
+    assert!(
+        !env.contains(&"CLAUDE_CODE_DUP=first".to_owned()),
+        "{env:?}"
+    );
+    assert!(env.contains(&"CLAUDE_CODE_EMPTY=".to_owned()), "{env:?}");
     assert!(!env.contains(&"HOME=/host/home".to_owned()), "{env:?}");
     assert!(!env.contains(&"USER=host-user".to_owned()), "{env:?}");
     assert!(!env.contains(&"SHELL=/host/shell".to_owned()), "{env:?}");
-    common::wait_until(Duration::from_secs(5), || {
+    let output = common::wait_until(Duration::from_secs(5), || {
         let output = common::docker::container_output(&harness, session_id);
         output
             .contains(&format!("CLAUDE_CODE_OAUTH_TOKEN={token}\n"))
-            .then_some(())
+            .then_some(output)
     })
     .unwrap_or_else(|| panic!("container runtime output never contained CLAUDE_CODE_OAUTH_TOKEN"));
+    assert!(output.contains("CLAUDE_CODE_DUP=second\n"), "{output}");
+    assert!(!output.contains("CLAUDE_CODE_DUP=first\n"), "{output}");
+    assert!(output.contains("CLAUDE_CODE_EMPTY=\n"), "{output}");
 }
 
 #[test]

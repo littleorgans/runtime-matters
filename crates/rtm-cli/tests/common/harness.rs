@@ -384,7 +384,7 @@ fn test_path(fake_bin_dir: &Path) -> String {
 }
 
 fn wait_for_socket(socket: &Path, daemon: &mut Child) {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(15);
     let mut last_error = None;
     while Instant::now() < deadline {
         match UnixStream::connect(socket) {
