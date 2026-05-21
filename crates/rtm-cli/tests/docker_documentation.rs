@@ -28,6 +28,8 @@ fn readme_documents_docker_operator_contract() {
         "Pattern E",
         "experimental",
         "Dockerfile Contract",
+        "Runtime binary",
+        "runtime executable on `PATH`",
         "exit code",
     ] {
         assert!(body.contains(expected), "README missing {expected:?}");
@@ -63,6 +65,8 @@ fn claude_dockerfile_conforms_to_contract() {
         "USER ${USERNAME}",
         "WORKDIR /workspace",
         "git bash",
+        "nodejs npm",
+        "npm install -g @anthropic-ai/claude-code",
         "CMD [\"claude\"]",
     ] {
         assert!(body.contains(expected), "Dockerfile missing {expected:?}");

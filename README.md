@@ -146,6 +146,9 @@ Docker images used with `rtm` must satisfy this contract:
   command supplied by `docker run`.
 - Environment: runtime credentials are explicit pass through. Do not assume host
   credential directories are mounted.
+- Runtime binary: install the runtime executable on `PATH`. `rtm` passes the
+  runtime command directly, for example `claude`, and does not inject it into
+  the image.
 - Workspace: create `/workspace`, make it writable by the runtime user, and
   expect `rtm` to set the workdir from the spawn cwd.
 - Tools: include `git`; include `/bin/sh`; prefer `/bin/bash`.

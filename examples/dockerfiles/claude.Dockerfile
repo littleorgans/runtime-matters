@@ -12,8 +12,11 @@ RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
 
 # hadolint ignore=DL3008
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git bash curl \
+    && apt-get install -y --no-install-recommends ca-certificates git bash curl nodejs npm \
     && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g @anthropic-ai/claude-code \
+    && npm cache clean --force
 
 WORKDIR /workspace
 USER ${USERNAME}
