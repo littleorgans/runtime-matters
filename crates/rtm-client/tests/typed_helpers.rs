@@ -3,12 +3,13 @@ use std::path::PathBuf;
 use lilo_rm_client::{ClientError, RuntimeClient, request};
 use lilo_rm_core::{
     CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
-    DoctorPayload, DoctorResponse, ErrorCode, EventBatch, EventsPayload, EventsRequest,
-    HeadlessSpawnTarget, KillByPidPayload, KillByPidRequest, KillByPidResponse, KillOutcome,
-    KillRequest, KilledPayload, Lifecycle, LifecycleCounts, MigrationState, NudgeFailureReason,
-    NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeKind,
-    RuntimeResponse, RuntimeRpc, RuntimeSignal, SpawnConflictKind, SpawnConflictPayload,
-    SpawnRequest, SpawnTarget, SpawnedPayload, StatusFilter, StatusPayload, ValidateTargetPayload,
+    DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorPayload, DoctorResponse, ErrorCode,
+    EventBatch, EventsPayload, EventsRequest, HeadlessSpawnTarget, KillByPidPayload,
+    KillByPidRequest, KillByPidResponse, KillOutcome, KillRequest, KilledPayload, Lifecycle,
+    LifecycleCounts, MigrationState, NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest,
+    NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal,
+    SpawnConflictKind, SpawnConflictPayload, SpawnRequest, SpawnTarget, SpawnedPayload,
+    StatusFilter, StatusPayload, UnsupportedPatternStatus, ValidateTargetPayload,
     ValidateTargetRequest, ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts,
     read_json_line, write_json_line,
 };
@@ -306,6 +307,22 @@ fn doctor_payload() -> DoctorPayload {
                 version: None,
                 error: None,
             },
+            docker: Box::new(DockerStatus {
+                cli: DockerReadiness::unavailable("docker unavailable"),
+                daemon: DockerReadiness::unavailable("docker daemon unavailable"),
+                manifest_validation: DockerReadiness::unavailable("docker manifest unavailable"),
+                isolation: DockerIsolationStatus {
+                    supported: true,
+                    default_workspace: "/workspace".to_owned(),
+                    experimental: true,
+                },
+                pattern_e: UnsupportedPatternStatus {
+                    supported: false,
+                    guidance:
+                        "Pattern E is unsupported; use headless Docker or tmux Pattern A attach"
+                            .to_owned(),
+                },
+            }),
             log_availability: Vec::new(),
             last_probe_sweep: None,
             recent_lost: Vec::new(),

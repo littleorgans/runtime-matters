@@ -29,9 +29,10 @@ pub mod types;
 mod version;
 
 pub use admin::{
-    DoctorResponse, KillByPidRequest, KillByPidResponse, KillOutcome, LauncherStatus,
-    LifecycleCounts, LifecycleLogAvailability, MigrationState, RecentLostEvent, StatusFilter,
-    StatusResponse, TmuxStatus, WatcherCounts,
+    DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorResponse, KillByPidRequest,
+    KillByPidResponse, KillOutcome, LauncherStatus, LifecycleCounts, LifecycleLogAvailability,
+    MigrationState, RecentLostEvent, StatusFilter, StatusResponse, TmuxStatus,
+    UnsupportedPatternStatus, WatcherCounts,
 };
 pub use capture::{
     CaptureError, CaptureRequest, CaptureResponse, LogAvailability, LogsUnavailableReason,

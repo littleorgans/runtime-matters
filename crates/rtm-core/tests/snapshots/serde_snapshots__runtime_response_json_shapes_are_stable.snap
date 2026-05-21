@@ -290,6 +290,32 @@ expression: responses
           "version": "tmux 3.5a",
           "error": null
         },
+        "docker": {
+          "cli": {
+            "ready": true,
+            "detail": "Docker version 27.0.0",
+            "error": null
+          },
+          "daemon": {
+            "ready": true,
+            "detail": "27.0.0",
+            "error": null
+          },
+          "manifest_validation": {
+            "ready": true,
+            "detail": "docker manifest inspect is available",
+            "error": null
+          },
+          "isolation": {
+            "supported": true,
+            "default_workspace": "/workspace",
+            "experimental": true
+          },
+          "pattern_e": {
+            "supported": false,
+            "guidance": "Pattern E is unsupported; use headless Docker or tmux Pattern A attach"
+          }
+        },
         "log_availability": [
           {
             "session_id": "018f6e28-0000-7000-8000-000000000001",

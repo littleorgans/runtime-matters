@@ -2,9 +2,10 @@
 
 use chrono::{TimeZone, Utc};
 use lilo_rm_core::{
-    DoctorResponse, LaunchEnv, LaunchSpec, LauncherStatus, Lifecycle, LifecycleCounts,
-    LifecycleLogAvailability, LogAvailability, LostEvidence, MigrationState, PaneSnapshot,
-    RecentLostEvent, RuntimeKind, ShimReady, TmuxStatus, VersionInfo, WatcherCounts, version_info,
+    DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorResponse, LaunchEnv, LaunchSpec,
+    LauncherStatus, Lifecycle, LifecycleCounts, LifecycleLogAvailability, LogAvailability,
+    LostEvidence, MigrationState, PaneSnapshot, RecentLostEvent, RuntimeKind, ShimReady,
+    TmuxStatus, UnsupportedPatternStatus, VersionInfo, WatcherCounts, version_info,
 };
 use uuid::Uuid;
 
@@ -76,6 +77,7 @@ pub fn doctor_response() -> DoctorResponse {
             version: Some("tmux 3.5a".to_owned()),
             error: None,
         },
+        docker: Box::new(docker_status()),
         log_availability: vec![LifecycleLogAvailability {
             session_id: session_id(),
             log_availability: LogAvailability::TmuxPaneSnapshot,
@@ -86,6 +88,24 @@ pub fn doctor_response() -> DoctorResponse {
             evidence: LostEvidence::PidNotAlive,
             occurred_at: timestamp(),
         }],
+    }
+}
+
+pub fn docker_status() -> DockerStatus {
+    DockerStatus {
+        cli: DockerReadiness::ready("Docker version 27.0.0"),
+        daemon: DockerReadiness::ready("27.0.0"),
+        manifest_validation: DockerReadiness::ready("docker manifest inspect is available"),
+        isolation: DockerIsolationStatus {
+            supported: true,
+            default_workspace: "/workspace".to_owned(),
+            experimental: true,
+        },
+        pattern_e: UnsupportedPatternStatus {
+            supported: false,
+            guidance: "Pattern E is unsupported; use headless Docker or tmux Pattern A attach"
+                .to_owned(),
+        },
     }
 }
 

@@ -32,6 +32,9 @@ state="$(dirname "$0")/fake-docker-state"
 mkdir -p "$state"
 
 case "${1:-}" in
+  --version)
+    printf 'Docker version 27.0.0\n'
+    ;;
   version)
     printf 'fake-docker\n'
     ;;

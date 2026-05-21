@@ -6,12 +6,12 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 use lilo_rm_core::{
-    CaptureError, CapturePayload, CaptureResponse, CursorExpiredPayload, DoctorPayload, ErrorCode,
-    ErrorPayload, EventsPayload, KillByPidPayload, KillByPidResponse, KillOutcome, KilledPayload,
-    LaunchEnv, LaunchSpec, LauncherStatus, Lifecycle, LifecycleCounts, LifecycleLogAvailability,
-    LogAvailability, McpBridgePayload, McpBridgeResponse, MigrationState, NudgeFailureReason,
-    NudgeOutcome, NudgePayload, NudgeResponse, RuntimeCapability, RuntimeEvent, RuntimeKind,
-    RuntimeResponse, ShimLaunchPayload, SpawnedPayload, StatusPayload, TmuxStatus,
+    CaptureError, CapturePayload, CaptureResponse, CursorExpiredPayload, DockerStatus,
+    DoctorPayload, ErrorCode, ErrorPayload, EventsPayload, KillByPidPayload, KillByPidResponse,
+    KillOutcome, KilledPayload, LaunchEnv, LaunchSpec, LauncherStatus, Lifecycle, LifecycleCounts,
+    LifecycleLogAvailability, LogAvailability, McpBridgePayload, McpBridgeResponse, MigrationState,
+    NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeResponse, RuntimeCapability, RuntimeEvent,
+    RuntimeKind, RuntimeResponse, ShimLaunchPayload, SpawnedPayload, StatusPayload, TmuxStatus,
     ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetResponse, VersionInfo,
     VersionPayload, WatcherCounts, WatchersPayload,
 };
@@ -289,6 +289,7 @@ fn v05_doctor_response() -> lilo_rm_core::DoctorResponse {
             version: Some("tmux 3.6a".to_owned()),
             error: None,
         },
+        docker: Box::new(DockerStatus::legacy_missing()),
         log_availability: vec![LifecycleLogAvailability {
             session_id: session_id(),
             log_availability: LogAvailability::Headless {
