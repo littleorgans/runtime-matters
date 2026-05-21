@@ -358,6 +358,7 @@ async fn arm64_manifest_escape_hatch_skips_manifest_inspection() {
 
     validate_docker_image_metadata_on_arch(
         &state,
+        &request,
         docker_profile_ref(&request),
         &FakeDockerInspector {
             availability: Ok(()),
@@ -374,7 +375,12 @@ async fn arm64_manifest_escape_hatch_skips_manifest_inspection() {
 }
 
 async fn test_state() -> Arc<ServerState> {
-    test_state_with_docker_config(DockerPreflightConfig::default()).await
+    test_state_with_docker_config(DockerPreflightConfig::new(
+        "runtime-matters-agent:latest",
+        false,
+        false,
+    ))
+    .await
 }
 
 async fn test_state_with_docker_config(
@@ -431,6 +437,7 @@ fn headless_request(session_id: Uuid, force: bool) -> SpawnRequest {
         session_id,
         runtime: RuntimeKind::Claude,
         isolation: Default::default(),
+        image: None,
         env: Vec::new(),
         cwd: "/tmp".into(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
@@ -514,6 +521,7 @@ async fn assert_arm64_manifest_success(
 
     validate_docker_image_metadata_on_arch(
         &state,
+        &request,
         docker_profile_ref(&request),
         &FakeDockerInspector {
             availability: Ok(()),
@@ -544,6 +552,7 @@ async fn assert_arm64_manifest_failure_with_architecture(
 
     let error = validate_docker_image_metadata_on_arch(
         &state,
+        &request,
         docker_profile_ref(&request),
         &FakeDockerInspector {
             availability: Ok(()),
@@ -573,6 +582,7 @@ async fn assert_arm64_manifest_failure(arm64_manifest: Result<bool, &'static str
 
     let error = validate_docker_image_metadata_on_arch(
         &state,
+        &request,
         docker_profile_ref(&request),
         &FakeDockerInspector {
             availability: Ok(()),

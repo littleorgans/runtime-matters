@@ -33,6 +33,10 @@ impl RtmHarness {
         Self::start_with_options(Vec::new(), true)
     }
 
+    pub fn start_with_docker_image(image: &str) -> Self {
+        Self::start_with_options(vec![("RTM_DOCKER_IMAGE", image.to_owned())], true)
+    }
+
     pub fn start_with_fast_resume_probe() -> Self {
         Self::start_with_options(
             vec![

@@ -27,6 +27,7 @@ fn runtime_rpc_json_shapes_are_stable() {
                 session_id,
                 runtime: RuntimeKind::Claude,
                 isolation: Default::default(),
+                image: None,
                 env: Vec::new(),
                 cwd: "/tmp/rtm".into(),
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {
@@ -366,6 +367,7 @@ fn spawn_request_json_round_trips_explicit_isolation_policies() {
             session_id: session_id(),
             runtime: RuntimeKind::Claude,
             isolation,
+            image: None,
             env: Vec::new(),
             cwd: "/tmp/rtm".into(),
             target: SpawnTarget::Headless(lilo_rm_core::HeadlessSpawnTarget {}),

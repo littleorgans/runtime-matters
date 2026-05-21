@@ -79,6 +79,8 @@ pub struct SpawnRequest {
     pub runtime: RuntimeKind,
     #[serde(default)]
     pub isolation: IsolationPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
     #[serde(default)]
     pub env: Vec<LaunchEnv>,
     pub cwd: std::path::PathBuf,

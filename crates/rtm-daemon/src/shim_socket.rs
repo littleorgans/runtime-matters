@@ -295,6 +295,7 @@ mod tests {
                 session_id: uuid::Uuid::now_v7(),
                 runtime: RuntimeKind::Claude,
                 isolation: Default::default(),
+                image: None,
                 env: Vec::new(),
                 cwd: PathBuf::from("/tmp"),
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {

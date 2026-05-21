@@ -37,6 +37,14 @@ pub fn container_env(harness: &RtmHarness, session_id: Uuid) -> Vec<String> {
         .collect()
 }
 
+pub fn container_image(harness: &RtmHarness, session_id: Uuid) -> String {
+    let path = harness
+        .temp_path()
+        .join("fake-docker-state")
+        .join(format!("rtm-{session_id}.image"));
+    std::fs::read_to_string(&path).unwrap_or_default()
+}
+
 pub fn container_output(harness: &RtmHarness, session_id: Uuid) -> String {
     let path = harness
         .temp_path()
@@ -66,6 +74,7 @@ case "${1:-}" in
   run)
     shift
     name=""
+    image=""
     env_values=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
@@ -75,7 +84,7 @@ case "${1:-}" in
         --label|--mount|--workdir) shift 2 ;;
         --rm|-d|-i|-t|--init) shift ;;
         --*) shift ;;
-        *) shift; break ;;
+        *) image="$1"; shift; break ;;
       esac
     done
     command="$1"; shift
@@ -89,6 +98,7 @@ case "${1:-}" in
     done <<EOF
 $env_values
 EOF
+    printf '%s\n' "$image" > "$state/$name.image"
     nohup "$command" "$@" > "$state/$name.out" 2>&1 < /dev/null &
     printf '%s\n' "$!" > "$state/$name.pid"
     printf '%s' "$env_values" > "$state/$name.env"

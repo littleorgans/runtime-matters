@@ -17,6 +17,7 @@ pub(crate) enum RuntimeFailure {
     SessionNotFound { session_id: Uuid },
     TmuxPaneDead { address: TmuxAddress },
     DockerUnavailable { message: String },
+    DockerImageNotConfigured,
     DockerImageUnavailable { message: String },
     DockerImageMetadataUnavailable { message: String },
     UnsupportedIsolationPolicy { policy: String },
@@ -56,6 +57,10 @@ impl RuntimeFailure {
         .into()
     }
 
+    pub(crate) fn docker_image_not_configured() -> anyhow::Error {
+        Self::DockerImageNotConfigured.into()
+    }
+
     pub(crate) fn docker_image_metadata_unavailable(message: impl Into<String>) -> anyhow::Error {
         Self::DockerImageMetadataUnavailable {
             message: message.into(),
@@ -77,6 +82,7 @@ impl RuntimeFailure {
             Self::SessionNotFound { .. } => ErrorCode::SessionNotFound,
             Self::TmuxPaneDead { .. } => ErrorCode::TmuxPaneDead,
             Self::DockerUnavailable { .. } => ErrorCode::RuntimeUnavailable,
+            Self::DockerImageNotConfigured => ErrorCode::DockerImageNotConfigured,
             Self::DockerImageUnavailable { .. } => ErrorCode::RuntimeUnavailable,
             Self::DockerImageMetadataUnavailable { .. } => ErrorCode::RuntimeUnavailable,
             Self::UnsupportedIsolationPolicy { .. } => ErrorCode::UnsupportedIsolationPolicy,
@@ -99,6 +105,9 @@ impl Display for RuntimeFailure {
             }
             Self::DockerUnavailable { message } => {
                 write!(formatter, "docker daemon is unavailable: {message}")
+            }
+            Self::DockerImageNotConfigured => {
+                formatter.write_str("docker image is not configured; pass --image or set RTM_DOCKER_IMAGE before starting the daemon")
             }
             Self::DockerImageUnavailable { message } => {
                 write!(formatter, "docker image is unavailable: {message}")

@@ -33,6 +33,7 @@ pub fn warm_registry() -> Result<(), LauncherError> {
             session_id: uuid::Uuid::nil(),
             runtime: launcher.kind(),
             isolation: Default::default(),
+            image: None,
             env: Vec::new(),
             cwd: lilo_rm_core::launcher_probe_cwd(),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),

@@ -79,6 +79,8 @@ pub struct SpawnArgs {
     target: SpawnTarget,
     #[arg(long, default_value_t = IsolationPolicy::Host, value_name = "host|docker[:PROFILE]")]
     isolation: IsolationPolicy,
+    #[arg(long, value_name = "IMAGE")]
+    image: Option<String>,
     #[arg(long, value_name = "PATH")]
     cwd: Option<PathBuf>,
     #[arg(long = "env", value_name = "KEY[=VALUE]")]
@@ -199,6 +201,7 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
         session_id,
         target,
         isolation,
+        image,
         cwd,
         env,
         force,
@@ -214,6 +217,7 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
             session_id,
             runtime,
             isolation,
+            image,
             env,
             cwd,
             target,

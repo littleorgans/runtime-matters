@@ -219,6 +219,8 @@ fn docker_tmux_pattern_a_container_survives_pane_close() {
         )
         .arg("--isolation")
         .arg("docker")
+        .arg("--image")
+        .arg("runtime-matters-agent:latest")
         .output()
         .expect("spawn client");
     spawn_output_ok(spawn, "claude");

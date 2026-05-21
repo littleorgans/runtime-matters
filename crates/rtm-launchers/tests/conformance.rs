@@ -26,6 +26,7 @@ fn assert_launcher_conforms(launcher: &'static dyn RuntimeLauncher) {
         session_id: Uuid::now_v7(),
         runtime: launcher.kind(),
         isolation: Default::default(),
+        image: None,
         env: Vec::new(),
         cwd: lilo_rm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),

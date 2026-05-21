@@ -60,12 +60,15 @@ async fn check_isolation_policy(
 ) -> Result<()> {
     match &request.isolation {
         IsolationPolicy::Host => Ok(()),
-        IsolationPolicy::Docker(profile) => check_docker_profile(state, profile, docker).await,
+        IsolationPolicy::Docker(profile) => {
+            check_docker_profile(state, request, profile, docker).await
+        }
     }
 }
 
 async fn check_docker_profile(
     state: &Arc<ServerState>,
+    request: &SpawnRequest,
     profile: &IsolationProfile,
     docker: &impl DockerImageInspector,
 ) -> Result<()> {
@@ -75,8 +78,14 @@ async fn check_docker_profile(
         | Some("own-init")
         | Some("allow-root")
         | Some("arm64-manifest-escape") => {
-            validate_docker_image_metadata_on_arch(state, profile, docker, std::env::consts::ARCH)
-                .await
+            validate_docker_image_metadata_on_arch(
+                state,
+                request,
+                profile,
+                docker,
+                std::env::consts::ARCH,
+            )
+            .await
         }
         Some("pattern-e") | Some("tmux-primary") => Err(unsupported_docker_profile(
             profile,
@@ -95,13 +104,13 @@ async fn check_docker_profile(
 
 async fn validate_docker_image_metadata_on_arch(
     state: &Arc<ServerState>,
+    request: &SpawnRequest,
     profile: &IsolationProfile,
     docker: &impl DockerImageInspector,
     host_arch: &str,
 ) -> Result<()> {
     docker.ensure_available().await?;
-    let config = &state.config().docker_preflight;
-    let image = config.image();
+    let image = state.config().docker_preflight.image_for(request)?;
     let user = docker.image_user(image).await?;
     if image_user_is_root(user.as_deref()) && !docker_root_allowed(state, profile) {
         return Err(RuntimeFailure::docker_image_metadata_unavailable(format!(

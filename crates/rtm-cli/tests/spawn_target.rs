@@ -96,6 +96,7 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
                     session_id,
                     runtime: RuntimeKind::Claude,
                     isolation: Default::default(),
+                    image: None,
                     env: vec![LaunchEnv::new("RTM_TEST_STDIO_SENTINELS", "1")],
                     cwd: harness.rtm_home().to_path_buf(),
                     target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
@@ -201,6 +202,8 @@ fn docker_spawn_env_flag_reaches_container_and_runtime() {
         .spawn_command(&session_id.to_string(), "claude", "headless", true)
         .arg("--isolation")
         .arg("docker")
+        .arg("--image")
+        .arg("runtime-matters-agent:latest")
         .arg("--env")
         .arg("RTM_TEST_PRINT_ENV=1")
         .arg("--env")
@@ -232,6 +235,30 @@ fn docker_spawn_env_flag_reaches_container_and_runtime() {
             .then_some(())
     })
     .unwrap_or_else(|| panic!("container runtime output never contained CLAUDE_CODE_OAUTH_TOKEN"));
+}
+
+#[test]
+fn docker_spawn_image_flag_overrides_daemon_default() {
+    let harness = RtmHarness::start_with_docker_image("daemon-default:latest");
+    let session_id = Uuid::now_v7();
+    let output = harness
+        .spawn_command(&session_id.to_string(), "claude", "headless", true)
+        .arg("--isolation")
+        .arg("docker")
+        .arg("--image")
+        .arg("ghcr.io/org/runtime-matters-claude:1.2.3")
+        .output()
+        .expect("spawn client");
+    spawn_output_ok(output, "claude");
+
+    let image = common::wait_until(Duration::from_secs(5), || {
+        let image = common::docker::container_image(&harness, session_id);
+        image
+            .contains("ghcr.io/org/runtime-matters-claude:1.2.3")
+            .then_some(image)
+    })
+    .unwrap_or_else(|| panic!("container image was not recorded"));
+    assert_eq!(image.trim(), "ghcr.io/org/runtime-matters-claude:1.2.3");
 }
 
 #[test]

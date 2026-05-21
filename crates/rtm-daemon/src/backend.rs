@@ -81,7 +81,7 @@ impl RuntimeBackend for DockerRuntimeBackend<'_> {
         docker_runtime::docker_run_launch(
             request.session_id,
             profile,
-            self.config.docker_preflight.image(),
+            self.config.docker_preflight.image_for(request)?,
             &launch,
             &request.target,
         )
@@ -105,7 +105,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::RuntimeBackends;
-    use crate::server::DaemonConfig;
+    use crate::{docker_preflight::DockerPreflightConfig, server::DaemonConfig};
 
     #[test]
     fn docker_policy_wraps_launch_for_host_shim() {
@@ -113,6 +113,7 @@ mod tests {
         let backends = RuntimeBackends::new(&config);
         let mut request = spawn_request();
         request.isolation = IsolationPolicy::Docker(IsolationProfile::default());
+        request.image = Some("runtime-matters-agent:latest".to_owned());
 
         let launch = backends
             .prepare_launch(&request, launch_spec())
@@ -154,7 +155,11 @@ mod tests {
                 db_path: PathBuf::from("/tmp/rtm.db"),
             },
             reconcile: Default::default(),
-            docker_preflight: Default::default(),
+            docker_preflight: DockerPreflightConfig::new(
+                "runtime-matters-agent:latest",
+                false,
+                false,
+            ),
         }
     }
 
@@ -163,6 +168,7 @@ mod tests {
             session_id: Uuid::nil(),
             runtime: RuntimeKind::Claude,
             isolation: IsolationPolicy::Host,
+            image: None,
             env: vec![],
             cwd: PathBuf::from("/tmp"),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),

@@ -106,9 +106,18 @@ configuration when a deployment owns that risk. Named credential volume
 management is deferred.
 
 ```bash
-RTM_DOCKER_IMAGE=runtime-matters-claude:local \
-rtm spawn "$SESSION_ID" --runtime claude --target headless --isolation docker
+SESSION_ID="$(uuidgen)"
+rtm spawn \
+  --session-id "$SESSION_ID" \
+  --runtime claude \
+  --target headless \
+  --isolation docker \
+  --image runtime-matters-claude:local \
+  --env CLAUDE_CODE_OAUTH_TOKEN
 ```
+
+Prefer `--image` for ad hoc Docker spawns. `RTM_DOCKER_IMAGE` is a daemon
+startup environment default used only when a Docker spawn omits `--image`.
 
 ```toml
 # Example operator profile fragment.

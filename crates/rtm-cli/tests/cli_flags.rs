@@ -36,6 +36,7 @@ fn spawn_help_documents_cwd_flag() {
         stdout.contains("--isolation <host|docker[:PROFILE]>"),
         "{stdout}"
     );
+    assert!(stdout.contains("--image <IMAGE>"), "{stdout}");
     assert!(stdout.contains("--env <KEY[=VALUE]>"), "{stdout}");
 }
 

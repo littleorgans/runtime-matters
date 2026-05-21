@@ -1,17 +1,17 @@
 use anyhow::Result;
+use lilo_rm_core::SpawnRequest;
 use serde::Deserialize;
 use tokio::process::Command;
 
 use crate::error::RuntimeFailure;
 
-const DEFAULT_DOCKER_IMAGE: &str = "runtime-matters-agent:latest";
 const RTM_DOCKER_IMAGE: &str = "RTM_DOCKER_IMAGE";
 const RTM_DOCKER_ALLOW_ROOT_IMAGE_USER: &str = "RTM_DOCKER_ALLOW_ROOT_IMAGE_USER";
 const RTM_DOCKER_ALLOW_ARM64_MANIFEST_ESCAPE: &str = "RTM_DOCKER_ALLOW_ARM64_MANIFEST_ESCAPE";
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct DockerPreflightConfig {
-    image: String,
+    image: Option<String>,
     allow_root_image_user: bool,
     allow_arm64_manifest_escape: bool,
 }
@@ -22,7 +22,7 @@ impl DockerPreflightConfig {
             image: std::env::var(RTM_DOCKER_IMAGE)
                 .ok()
                 .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| DEFAULT_DOCKER_IMAGE.to_owned()),
+                .map(trimmed_string),
             allow_root_image_user: env_flag(RTM_DOCKER_ALLOW_ROOT_IMAGE_USER),
             allow_arm64_manifest_escape: env_flag(RTM_DOCKER_ALLOW_ARM64_MANIFEST_ESCAPE),
         }
@@ -35,14 +35,18 @@ impl DockerPreflightConfig {
         allow_arm64_manifest_escape: bool,
     ) -> Self {
         Self {
-            image: image.into(),
+            image: Some(image.into()),
             allow_root_image_user,
             allow_arm64_manifest_escape,
         }
     }
 
-    pub(crate) fn image(&self) -> &str {
-        &self.image
+    pub(crate) fn image_for<'a>(&'a self, request: &'a SpawnRequest) -> Result<&'a str> {
+        request
+            .image
+            .as_deref()
+            .or(self.image.as_deref())
+            .ok_or_else(RuntimeFailure::docker_image_not_configured)
     }
 
     pub(crate) fn allows_root_image_user(&self) -> bool {
@@ -54,14 +58,8 @@ impl DockerPreflightConfig {
     }
 }
 
-impl Default for DockerPreflightConfig {
-    fn default() -> Self {
-        Self {
-            image: DEFAULT_DOCKER_IMAGE.to_owned(),
-            allow_root_image_user: false,
-            allow_arm64_manifest_escape: false,
-        }
-    }
+fn trimmed_string(value: String) -> String {
+    value.trim().to_owned()
 }
 
 pub(crate) trait DockerImageInspector {
@@ -233,6 +231,60 @@ struct DockerPlatform {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lilo_rm_core::{
+        HeadlessSpawnTarget, IsolationPolicy, RuntimeKind, ShellResume, SpawnTarget,
+    };
+    use uuid::Uuid;
+
+    #[test]
+    fn request_image_overrides_env_default() {
+        let config = DockerPreflightConfig::new("env-default:latest", false, false);
+        let mut request = spawn_request();
+        request.image = Some("request-image:dev".to_owned());
+
+        assert_eq!(
+            config.image_for(&request).expect("image"),
+            "request-image:dev"
+        );
+    }
+
+    #[test]
+    fn env_default_is_used_when_request_image_is_absent() {
+        let config = DockerPreflightConfig::new("env-default:latest", false, false);
+
+        assert_eq!(
+            config.image_for(&spawn_request()).expect("image"),
+            "env-default:latest"
+        );
+    }
+
+    #[test]
+    fn missing_request_and_env_image_is_typed_error() {
+        let error = DockerPreflightConfig::default()
+            .image_for(&spawn_request())
+            .expect_err("missing image should fail");
+
+        assert!(matches!(
+            error.downcast_ref::<RuntimeFailure>(),
+            Some(RuntimeFailure::DockerImageNotConfigured)
+        ));
+    }
+
+    #[test]
+    fn request_image_accepts_oci_reference_shapes() {
+        let config = DockerPreflightConfig::default();
+
+        for image in [
+            "runtime-matters-claude",
+            "runtime-matters-claude:local",
+            "ghcr.io/org/runtime-matters-claude:1.2.3",
+            "runtime-matters-claude@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ] {
+            let mut request = spawn_request();
+            request.image = Some(image.to_owned());
+            assert_eq!(config.image_for(&request).expect("image"), image);
+        }
+    }
 
     #[test]
     fn manifest_list_reports_arm64_availability() {
@@ -262,5 +314,19 @@ mod tests {
         let manifest = br#"{ "schemaVersion": 2 }"#;
 
         assert!(manifest_has_arm64(manifest).expect("manifest"));
+    }
+
+    fn spawn_request() -> SpawnRequest {
+        SpawnRequest {
+            session_id: Uuid::nil(),
+            runtime: RuntimeKind::Claude,
+            isolation: IsolationPolicy::Docker(Default::default()),
+            image: None,
+            env: Vec::new(),
+            cwd: "/tmp".into(),
+            target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
+            force: false,
+            shell_resume: None::<ShellResume>,
+        }
     }
 }
