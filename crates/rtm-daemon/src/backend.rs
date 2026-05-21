@@ -83,6 +83,7 @@ impl RuntimeBackend for DockerRuntimeBackend<'_> {
             profile,
             self.config.docker_preflight.image(),
             &launch,
+            &request.target,
         )
     }
 
@@ -99,7 +100,7 @@ mod tests {
 
     use lilo_rm_core::{
         HeadlessSpawnTarget, IsolationPolicy, IsolationProfile, LaunchEnv, LaunchSpec, RuntimeKind,
-        SpawnRequest, SpawnTarget,
+        SpawnRequest, SpawnTarget, TmuxAddress, TmuxSpawnTarget,
     };
     use uuid::Uuid;
 
@@ -117,12 +118,31 @@ mod tests {
             .prepare_launch(&request, launch_spec())
             .expect("prepare launch");
 
-        assert_eq!(launch.argv[0], "docker");
+        assert!(launch.argv[0].ends_with("docker"));
         assert!(
             launch
                 .argv
                 .contains(&"runtime-matters-agent:latest".to_owned())
         );
+    }
+
+    #[test]
+    fn docker_tmux_policy_uses_host_shim_attach_wrapper() {
+        let config = daemon_config();
+        let backends = RuntimeBackends::new(&config);
+        let mut request = spawn_request();
+        request.isolation = IsolationPolicy::Docker(IsolationProfile::default());
+        request.target = SpawnTarget::Tmux(TmuxSpawnTarget {
+            address: "rtm:0.1".parse::<TmuxAddress>().expect("tmux address"),
+        });
+
+        let launch = backends
+            .prepare_launch(&request, launch_spec())
+            .expect("prepare launch");
+
+        assert_eq!(launch.argv[0], "/bin/sh");
+        assert!(launch.argv[2].contains("'run'"));
+        assert!(launch.argv[2].contains(" attach "));
     }
 
     fn daemon_config() -> DaemonConfig {

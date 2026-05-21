@@ -2,7 +2,9 @@ use std::path::Path;
 use std::process::Command as StdCommand;
 
 use anyhow::Result;
-use lilo_rm_core::{IsolationProfile, KillOutcome, LaunchEnv, LaunchSpec, RuntimeSignal};
+use lilo_rm_core::{
+    IsolationProfile, KillOutcome, LaunchEnv, LaunchSpec, RuntimeSignal, SpawnTarget,
+};
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -20,11 +22,47 @@ pub(crate) fn docker_run_launch(
     profile: &IsolationProfile,
     image: &str,
     launch: &LaunchSpec,
+    target: &SpawnTarget,
 ) -> Result<LaunchSpec> {
     let command = launch.command()?;
+    let tmux_target = matches!(target, SpawnTarget::Tmux(_));
+    let mut run_argv = docker_run_argv(session_id, profile, image, launch, tmux_target);
+    run_argv.push(command.to_owned());
+    run_argv.extend(launch.argv.iter().skip(1).cloned());
+
+    let argv = match target {
+        SpawnTarget::Headless(_) => run_argv,
+        SpawnTarget::Tmux(_) => docker_tmux_attach_argv(run_argv),
+    };
+
+    Ok(LaunchSpec {
+        argv,
+        env: launch.env.clone(),
+        cwd: launch.cwd.clone(),
+        shell_resume: launch.shell_resume.clone(),
+    })
+}
+
+fn docker_run_argv(
+    session_id: Uuid,
+    profile: &IsolationProfile,
+    image: &str,
+    launch: &LaunchSpec,
+    tmux_target: bool,
+) -> Vec<String> {
     let cwd = path_arg(&launch.cwd);
+    let mut argv = docker_run_base_argv(session_id, cwd, tmux_target);
+    if profile.name.as_deref() != Some("own-init") {
+        argv.push("--init".to_owned());
+    }
+    append_env_args(&mut argv, &launch.env);
+    argv.push(image.to_owned());
+    argv
+}
+
+fn docker_run_base_argv(session_id: Uuid, cwd: String, tty: bool) -> Vec<String> {
     let mut argv = vec![
-        "docker".to_owned(),
+        docker_command(),
         "run".to_owned(),
         "--rm".to_owned(),
         "--name".to_owned(),
@@ -36,20 +74,50 @@ pub(crate) fn docker_run_launch(
         "--workdir".to_owned(),
         cwd,
     ];
-    if profile.name.as_deref() != Some("own-init") {
-        argv.push("--init".to_owned());
+    if tty {
+        argv.extend(["-d".to_owned(), "-i".to_owned(), "-t".to_owned()]);
     }
-    append_env_args(&mut argv, &launch.env);
-    argv.push(image.to_owned());
-    argv.push(command.to_owned());
-    argv.extend(launch.argv.iter().skip(1).cloned());
+    argv
+}
 
-    Ok(LaunchSpec {
-        argv,
-        env: launch.env.clone(),
-        cwd: launch.cwd.clone(),
-        shell_resume: launch.shell_resume.clone(),
-    })
+fn docker_tmux_attach_argv(run_argv: Vec<String>) -> Vec<String> {
+    let docker = shell_quote(&run_argv[0]);
+    vec![
+        "/bin/sh".to_owned(),
+        "-c".to_owned(),
+        format!(
+            "set -e; container_id=$({}); exec {docker} attach --detach-keys '' --sig-proxy=false \"$container_id\"",
+            shell_command(&run_argv),
+        ),
+    ]
+}
+
+fn docker_command() -> String {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+        .map(|dir| dir.join("docker"))
+        .find(|path| is_executable(path))
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "docker".to_owned())
+}
+
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
+}
+
+fn shell_command(argv: &[String]) -> String {
+    argv.iter()
+        .map(|arg| shell_quote(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_owned();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn append_env_args(argv: &mut Vec<String>, env: &[LaunchEnv]) {
@@ -147,7 +215,7 @@ fn command_stderr(stderr: &[u8]) -> String {
 mod tests {
     use std::path::PathBuf;
 
-    use lilo_rm_core::{IsolationProfile, LaunchEnv, LaunchSpec};
+    use lilo_rm_core::{HeadlessSpawnTarget, IsolationProfile, LaunchEnv, LaunchSpec, SpawnTarget};
     use uuid::Uuid;
 
     use super::{container_name, docker_run_launch};
@@ -167,10 +235,11 @@ mod tests {
             &IsolationProfile::default(),
             "runtime-matters-agent:latest",
             &launch,
+            &SpawnTarget::Headless(HeadlessSpawnTarget {}),
         )
         .expect("docker launch");
 
-        assert_eq!(spec.argv[0], "docker");
+        assert!(spec.argv[0].ends_with("docker"));
         assert!(spec.argv.contains(&"--init".to_owned()));
         assert!(spec.argv.contains(&container_name(session_id)));
         assert!(spec.argv.contains(&"CLAUDE_CODE=1".to_owned()));
@@ -201,9 +270,61 @@ mod tests {
             },
             "runtime-matters-agent:latest",
             &launch,
+            &SpawnTarget::Headless(HeadlessSpawnTarget {}),
         )
         .expect("docker launch");
 
         assert!(!spec.argv.contains(&"--init".to_owned()));
+    }
+
+    #[test]
+    fn tmux_launch_starts_detached_container_and_attaches_without_detach_keys() {
+        let session_id = Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap();
+        let launch = LaunchSpec {
+            argv: vec!["claude".to_owned(), "--dangerously-skip".to_owned()],
+            env: vec![LaunchEnv::new("CLAUDE_CODE", "1")],
+            cwd: PathBuf::from("/workspace/project"),
+            shell_resume: None,
+        };
+
+        let spec = docker_run_launch(
+            session_id,
+            &IsolationProfile::default(),
+            "runtime-matters-agent:latest",
+            &launch,
+            &"tmux:rtm:0.1".parse::<SpawnTarget>().expect("tmux target"),
+        )
+        .expect("docker tmux launch");
+
+        assert_eq!(spec.argv[..2], ["/bin/sh".to_owned(), "-c".to_owned()]);
+        let script = &spec.argv[2];
+        assert!(script.contains("'run'"));
+        assert!(script.contains("'-d' '-i' '-t'"));
+        assert!(script.contains("'--rm'"));
+        assert!(script.contains("'--name' 'rtm-22222222-2222-2222-2222-222222222222'"));
+        assert!(script.contains("'runtime-matters-agent:latest' 'claude' '--dangerously-skip'"));
+        assert!(script.contains(" attach --detach-keys '' --sig-proxy=false"));
+    }
+
+    #[test]
+    fn shell_quote_preserves_single_quotes_in_docker_args() {
+        let launch = LaunchSpec {
+            argv: vec!["claude".to_owned(), "it's-safe".to_owned()],
+            env: vec![LaunchEnv::new("RTM_QUOTE", "it's-safe")],
+            cwd: PathBuf::from("/workspace/project"),
+            shell_resume: None,
+        };
+
+        let spec = docker_run_launch(
+            Uuid::nil(),
+            &IsolationProfile::default(),
+            "runtime-matters-agent:latest",
+            &launch,
+            &"tmux:rtm:0.1".parse::<SpawnTarget>().expect("tmux target"),
+        )
+        .expect("docker tmux launch");
+
+        assert!(spec.argv[2].contains("'RTM_QUOTE=it'\\''s-safe'"));
+        assert!(spec.argv[2].contains("'it'\\''s-safe'"));
     }
 }

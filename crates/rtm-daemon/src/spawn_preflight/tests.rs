@@ -131,22 +131,17 @@ async fn docker_unavailable_fails_before_lifecycle_insert() {
 }
 
 #[tokio::test]
-async fn docker_tmux_pattern_e_fails_before_lifecycle_insert() {
+async fn docker_tmux_pattern_a_passes_preflight() {
     let state = test_state().await;
-    let session_id = Uuid::now_v7();
-    let mut request = tmux_request(session_id, false);
+    let mut request = tmux_request(Uuid::now_v7(), false);
     request.isolation = docker_profile(None);
 
-    let error =
+    let response =
         check_with_docker_inspector(&state, &request, &FakeDockerInspector::available_non_root())
             .await
-            .expect_err("docker tmux target should fail preflight");
+            .expect("docker tmux target should pass preflight");
 
-    assert_eq!(
-        error.to_string(),
-        "isolation policy docker (tmux target requests unsupported Pattern E) is not supported"
-    );
-    assert_no_lifecycle_or_waiters(&state, session_id).await;
+    assert!(response.is_none(), "tmux Pattern A returned conflict");
 }
 
 #[tokio::test]

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use lilo_rm_core::{
     IsolationPolicy, IsolationProfile, KillRequest, RuntimeResponse, RuntimeSignal,
-    SpawnConflictKind, SpawnConflictPayload, SpawnRequest, SpawnTarget,
+    SpawnConflictKind, SpawnConflictPayload, SpawnRequest,
 };
 
 use crate::server::ServerState;
@@ -60,25 +60,15 @@ async fn check_isolation_policy(
 ) -> Result<()> {
     match &request.isolation {
         IsolationPolicy::Host => Ok(()),
-        IsolationPolicy::Docker(profile) => {
-            check_docker_profile(state, profile, &request.target, docker).await
-        }
+        IsolationPolicy::Docker(profile) => check_docker_profile(state, profile, docker).await,
     }
 }
 
 async fn check_docker_profile(
     state: &Arc<ServerState>,
     profile: &IsolationProfile,
-    target: &SpawnTarget,
     docker: &impl DockerImageInspector,
 ) -> Result<()> {
-    if matches!(target, SpawnTarget::Tmux(_)) {
-        return Err(unsupported_docker_profile(
-            profile,
-            "tmux target requests unsupported Pattern E",
-        ));
-    }
-
     match profile.name.as_deref() {
         None
         | Some("default")

@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod docker;
 pub mod mcp;
 pub mod tmux;
 
@@ -65,6 +66,7 @@ impl RtmHarness {
         let rtm_home = temp.path().join("rtm-home");
         write_fake_runtime(temp.path(), "claude");
         write_fake_runtime(temp.path(), "codex");
+        docker::write_fake_cli(temp.path());
         let rtm = default_rtm_path();
         let mut daemon = start_daemon(
             &rtm,
