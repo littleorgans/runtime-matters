@@ -23,10 +23,6 @@ expression: doctor
       "detail": "[detail]",
       "error": "[launcher_error]",
       "ready": "[readiness]"
-    },
-    "pattern_e": {
-      "guidance": "Pattern E is unsupported; use headless Docker or tmux Pattern A attach",
-      "supported": "[support]"
     }
   },
   "last_probe_sweep": "[timestamp]",

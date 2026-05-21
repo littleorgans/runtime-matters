@@ -163,14 +163,14 @@ async fn docker_tmux_pattern_a_passes_preflight() {
             .await
             .expect("docker tmux target should pass preflight");
 
-    assert!(response.is_none(), "tmux Pattern A returned conflict");
+    assert!(response.is_none(), "tmux Docker attach returned conflict");
 }
 
 #[tokio::test]
 async fn docker_pattern_e_profile_fails_before_lifecycle_insert() {
     assert_docker_profile_rejected(
         "pattern-e",
-        "isolation policy docker:pattern-e (requests unsupported Pattern E) is not supported",
+        "isolation policy docker profile that requests a multiplexer inside the container is not supported",
     )
     .await;
 }

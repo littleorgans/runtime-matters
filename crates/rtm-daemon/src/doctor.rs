@@ -4,7 +4,7 @@ use anyhow::Result;
 use chrono::{Duration, Utc};
 use lilo_rm_core::{
     DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorResponse, HeadlessSpawnTarget,
-    LauncherStatus, SpawnRequest, SpawnTarget, TmuxStatus, UnsupportedPatternStatus,
+    LauncherStatus, SpawnRequest, SpawnTarget, TmuxStatus,
 };
 use tokio::process::Command;
 use uuid::Uuid;
@@ -89,11 +89,6 @@ async fn docker_status() -> DockerStatus {
             supported: true,
             default_workspace: "/workspace".to_owned(),
             experimental: true,
-        },
-        pattern_e: UnsupportedPatternStatus {
-            supported: false,
-            guidance: "Pattern E is unsupported; use headless Docker or tmux Pattern A attach"
-                .to_owned(),
         },
     }
 }

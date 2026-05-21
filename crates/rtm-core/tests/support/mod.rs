@@ -5,7 +5,7 @@ use lilo_rm_core::{
     DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorResponse, LaunchEnv, LaunchSpec,
     LauncherStatus, Lifecycle, LifecycleCounts, LifecycleLogAvailability, LogAvailability,
     LostEvidence, MigrationState, PaneSnapshot, RecentLostEvent, RuntimeKind, ShimReady,
-    TmuxStatus, UnsupportedPatternStatus, VersionInfo, WatcherCounts, version_info,
+    TmuxStatus, VersionInfo, WatcherCounts, version_info,
 };
 use uuid::Uuid;
 
@@ -100,11 +100,6 @@ pub fn docker_status() -> DockerStatus {
             supported: true,
             default_workspace: "/workspace".to_owned(),
             experimental: true,
-        },
-        pattern_e: UnsupportedPatternStatus {
-            supported: false,
-            guidance: "Pattern E is unsupported; use headless Docker or tmux Pattern A attach"
-                .to_owned(),
         },
     }
 }

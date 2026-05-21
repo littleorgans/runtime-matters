@@ -113,11 +113,6 @@ impl CliOutput for DoctorResponse {
         )?;
         writeln!(
             f,
-            "  pattern e           supported={} guidance={}",
-            self.docker.pattern_e.supported, self.docker.pattern_e.guidance
-        )?;
-        writeln!(
-            f,
             "last probe sweep      {}",
             self.last_probe_sweep
                 .map(|time| time.to_rfc3339())

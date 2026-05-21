@@ -9,9 +9,9 @@ use lilo_rm_core::{
     LifecycleCounts, MigrationState, NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest,
     NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal,
     SpawnConflictKind, SpawnConflictPayload, SpawnRequest, SpawnTarget, SpawnedPayload,
-    StatusFilter, StatusPayload, UnsupportedPatternStatus, ValidateTargetPayload,
-    ValidateTargetRequest, ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts,
-    read_json_line, write_json_line,
+    StatusFilter, StatusPayload, ValidateTargetPayload, ValidateTargetRequest,
+    ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts, read_json_line,
+    write_json_line,
 };
 use tokio::io::BufReader;
 use tokio::net::UnixListener;
@@ -316,12 +316,6 @@ fn doctor_payload() -> DoctorPayload {
                     supported: true,
                     default_workspace: "/workspace".to_owned(),
                     experimental: true,
-                },
-                pattern_e: UnsupportedPatternStatus {
-                    supported: false,
-                    guidance:
-                        "Pattern E is unsupported; use headless Docker or tmux Pattern A attach"
-                            .to_owned(),
                 },
             }),
             log_availability: Vec::new(),

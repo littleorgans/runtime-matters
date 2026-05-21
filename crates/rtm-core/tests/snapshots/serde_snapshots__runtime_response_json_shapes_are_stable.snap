@@ -310,10 +310,6 @@ expression: responses
             "supported": true,
             "default_workspace": "/workspace",
             "experimental": true
-          },
-          "pattern_e": {
-            "supported": false,
-            "guidance": "Pattern E is unsupported; use headless Docker or tmux Pattern A attach"
           }
         },
         "log_availability": [

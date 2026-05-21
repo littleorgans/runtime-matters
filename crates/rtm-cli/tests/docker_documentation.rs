@@ -8,7 +8,7 @@ fn readme_documents_docker_operator_contract() {
     for expected in [
         "Host execution is the default.",
         "--isolation docker",
-        "Pattern A",
+        "Tmux Docker spawns start a detached container",
         "Headless Docker spawns",
         "/workspace",
         "Option A",
@@ -29,8 +29,7 @@ fn readme_documents_docker_operator_contract() {
         "non-root",
         "Docker init",
         "Manual detach and reconnect UX are out of scope.",
-        "Pattern D",
-        "Pattern E",
+        "Multiplexers inside the container",
         "experimental",
         "Dockerfile Contract",
         "Runtime binary",
@@ -49,14 +48,25 @@ fn changelog_records_docker_boundaries() {
     for expected in [
         "experimental Docker isolation diagnostics",
         "Host execution remains the default",
-        "Pattern D",
-        "Pattern E",
+        "host tmux attach behavior",
+        "Multiplexers inside the container",
         "Kubernetes",
         "SandboxClaim",
         "credential volume management",
         "privileged execution",
+        "`docker.pattern_e`",
     ] {
         assert!(body.contains(expected), "CHANGELOG missing {expected:?}");
+    }
+
+    assert_absent_pattern_jargon(&body, "CHANGELOG");
+}
+
+#[test]
+fn docker_docs_do_not_expose_pattern_jargon() {
+    for (label, path) in [("README", "README.md"), ("CHANGELOG", "CHANGELOG.md")] {
+        let body = std::fs::read_to_string(repo_file(path)).expect(label);
+        assert_absent_pattern_jargon(&body, label);
     }
 }
 
@@ -98,4 +108,13 @@ fn repo_file(path: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(path)
+}
+
+fn assert_absent_pattern_jargon(body: &str, label: &str) {
+    for forbidden in ["Pattern A", "Pattern D", "Pattern E"] {
+        assert!(
+            !body.contains(forbidden),
+            "{label} must not expose {forbidden:?}"
+        );
+    }
 }

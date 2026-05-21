@@ -152,18 +152,11 @@ pub struct DockerIsolationStatus {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct UnsupportedPatternStatus {
-    pub supported: bool,
-    pub guidance: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DockerStatus {
     pub cli: DockerReadiness,
     pub daemon: DockerReadiness,
     pub manifest_validation: DockerReadiness,
     pub isolation: DockerIsolationStatus,
-    pub pattern_e: UnsupportedPatternStatus,
 }
 
 impl DockerStatus {
@@ -176,10 +169,6 @@ impl DockerStatus {
                 supported: false,
                 default_workspace: String::new(),
                 experimental: false,
-            },
-            pattern_e: UnsupportedPatternStatus {
-                supported: false,
-                guidance: String::new(),
             },
         }
     }

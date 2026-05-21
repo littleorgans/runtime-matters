@@ -72,10 +72,10 @@ unchanged. Launchers still choose the agent command. The backend decides whether
 that command runs on the host or inside Docker.
 
 Headless Docker spawns run as foreground `docker run` processes owned by the
-host shim. Tmux Docker spawns use Pattern A: `rtm` starts a detached container
-and attaches the existing host tmux pane to it. Closing the pane ends the attach
-path, while the container remains managed by the Docker backend until runtime
-exit or an explicit kill. Manual detach and reconnect UX are out of scope.
+host shim. Tmux Docker spawns start a detached container and attach the existing
+host tmux pane to it. Closing the pane ends the attach path, while the container
+remains managed by the Docker backend until runtime exit or an explicit kill.
+Manual detach and reconnect UX are out of scope.
 
 `/workspace` is the canonical default workspace path for Docker images and
 operator examples. The current backend bind mounts the requested spawn cwd at
@@ -129,10 +129,10 @@ mounts = [
 ```
 
 `rtm doctor` reports Docker CLI readiness, daemon readiness, manifest validation
-capability, Docker isolation support, and the unsupported Pattern E boundary.
-Docker can be unavailable and host spawning remains supported.
+capability, and Docker isolation support. Docker can be unavailable and host
+spawning remains supported.
 
-Pattern D, Pattern E, Kubernetes, SandboxClaim, `rtm` injected sidecars,
+Multiplexers inside the container, Kubernetes, SandboxClaim, `rtm` injected sidecars,
 reconnecting PTY servers, first class firewall UX, named credential volume
 management, and aggressive capability hardening are not part of this
 experimental surface.

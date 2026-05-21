@@ -87,9 +87,8 @@ async fn check_docker_profile(
             )
             .await
         }
-        Some("pattern-e") | Some("tmux-primary") => Err(unsupported_docker_profile(
-            profile,
-            "requests unsupported Pattern E",
+        Some("pattern-e") | Some("tmux-primary") => Err(unsupported_docker_behavior(
+            "requests a multiplexer inside the container",
         )),
         Some("privileged") => Err(unsupported_docker_profile(
             profile,
@@ -174,6 +173,10 @@ fn unsupported_docker_profile(profile: &IsolationProfile, reason: &str) -> anyho
         "{} ({reason})",
         IsolationPolicy::Docker(profile.clone())
     ))
+}
+
+fn unsupported_docker_behavior(reason: &str) -> anyhow::Error {
+    RuntimeFailure::unsupported_isolation_policy(format!("docker profile that {reason}"))
 }
 
 fn conflict(kind: SpawnConflictKind, lifecycle: lilo_rm_core::Lifecycle) -> RuntimeResponse {

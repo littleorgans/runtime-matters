@@ -31,8 +31,7 @@ mod version;
 pub use admin::{
     DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorResponse, KillByPidRequest,
     KillByPidResponse, KillOutcome, LauncherStatus, LifecycleCounts, LifecycleLogAvailability,
-    MigrationState, RecentLostEvent, StatusFilter, StatusResponse, TmuxStatus,
-    UnsupportedPatternStatus, WatcherCounts,
+    MigrationState, RecentLostEvent, StatusFilter, StatusResponse, TmuxStatus, WatcherCounts,
 };
 pub use capture::{
     CaptureError, CaptureRequest, CaptureResponse, LogAvailability, LogsUnavailableReason,

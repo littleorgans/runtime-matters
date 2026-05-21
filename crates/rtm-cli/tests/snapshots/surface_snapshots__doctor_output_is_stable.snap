@@ -27,6 +27,5 @@ docker
   daemon              ready (fake-docker)
   manifest validation ready ({"manifests":[{"platform":{"architecture":"arm64"}}]})
   isolation           supported=true workspace=/workspace experimental=true
-  pattern e           supported=false guidance=Pattern E is unsupported; use headless Docker or tmux Pattern A attach
 last probe sweep      [timestamp]
 recent lost           (none in last 24h)
