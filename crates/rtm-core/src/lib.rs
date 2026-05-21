@@ -41,7 +41,9 @@ pub use capture::{
 pub use cli_output::{Ack, CliOutput};
 pub use error::{ErrorCode, ProtocolError, RuntimeKindParseError};
 pub use isolation::{IsolationPolicy, IsolationPolicyParseError, IsolationProfile};
-pub use launcher::{LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher, ShellResume};
+pub use launcher::{
+    LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher, ShellResume, upsert_launch_env,
+};
 pub use mcp::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION, McpBridgeRequest,
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,

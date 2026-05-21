@@ -36,6 +36,7 @@ fn spawn_help_documents_cwd_flag() {
         stdout.contains("--isolation <host|docker[:PROFILE]>"),
         "{stdout}"
     );
+    assert!(stdout.contains("--env <KEY[=VALUE]>"), "{stdout}");
 }
 
 #[test]
@@ -108,6 +109,33 @@ fn spawn_isolation_flag_rejects_invalid_policy_before_daemon_request() {
     let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
     assert!(
         stderr.contains("invalid isolation policy sandbox"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn spawn_env_flag_rejects_missing_caller_env_before_daemon_request() {
+    let key = format!("RTM_TEST_MISSING_{}", Uuid::now_v7().simple());
+    let output = Command::new(env!("CARGO_BIN_EXE_rtm"))
+        .args([
+            "spawn",
+            "--runtime",
+            "claude",
+            "--session-id",
+            &Uuid::now_v7().to_string(),
+            "--target",
+            "headless",
+            "--env",
+            &key,
+        ])
+        .env_remove(&key)
+        .output()
+        .expect("rtm spawn");
+
+    assert!(!output.status.success(), "spawn unexpectedly succeeded");
+    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+    assert!(
+        stderr.contains(&format!("spawn env {key} is not set in caller environment")),
         "{stderr}"
     );
 }

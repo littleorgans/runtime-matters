@@ -25,6 +25,26 @@ pub fn container_pid(harness: &RtmHarness, session_id: Uuid) -> u32 {
         .expect("fake container pid")
 }
 
+pub fn container_env(harness: &RtmHarness, session_id: Uuid) -> Vec<String> {
+    let path = harness
+        .temp_path()
+        .join("fake-docker-state")
+        .join(format!("rtm-{session_id}.env"));
+    std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_owned)
+        .collect()
+}
+
+pub fn container_output(harness: &RtmHarness, session_id: Uuid) -> String {
+    let path = harness
+        .temp_path()
+        .join("fake-docker-state")
+        .join(format!("rtm-{session_id}.out"));
+    std::fs::read_to_string(&path).unwrap_or_default()
+}
+
 const FAKE_DOCKER: &str = r#"#!/bin/sh
 set -eu
 state="$(dirname "$0")/fake-docker-state"
@@ -46,10 +66,13 @@ case "${1:-}" in
   run)
     shift
     name=""
+    env_values=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --name) name="$2"; shift 2 ;;
-        --label|--mount|--workdir|--env) shift 2 ;;
+        --env) env_values="${env_values}${2}
+"; shift 2 ;;
+        --label|--mount|--workdir) shift 2 ;;
         --rm|-d|-i|-t|--init) shift ;;
         --*) shift ;;
         *) shift; break ;;
@@ -60,9 +83,35 @@ case "${1:-}" in
       */*) ;;
       *) [ ! -x "$(dirname "$0")/$command" ] || command="$(dirname "$0")/$command" ;;
     esac
+    while IFS= read -r entry; do
+      [ -n "$entry" ] || continue
+      export "$entry"
+    done <<EOF
+$env_values
+EOF
     nohup "$command" "$@" > "$state/$name.out" 2>&1 < /dev/null &
     printf '%s\n' "$!" > "$state/$name.pid"
+    printf '%s' "$env_values" > "$state/$name.env"
     printf '%s\n' "$name"
+    ;;
+  inspect)
+    shift
+    format=""
+    if [ "${1:-}" = "--format" ]; then format="$2"; shift 2; fi
+    name="$1"
+    case "$format" in
+      "{{.Config.Env}}")
+        printf '['
+        sep=""
+        while IFS= read -r line; do
+          [ -n "$line" ] || continue
+          printf '%s%s' "$sep" "$line"
+          sep=" "
+        done < "$state/$name.env"
+        printf ']\n'
+        ;;
+      *) exit 23 ;;
+    esac
     ;;
   attach)
     shift

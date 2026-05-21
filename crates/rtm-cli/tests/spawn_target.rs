@@ -2,6 +2,7 @@ mod common;
 
 use std::io::BufReader;
 use std::os::unix::net::UnixStream;
+use std::time::Duration;
 
 use common::{
     FAKE_RUNTIME_READY, RtmHarness, output_stderr, output_stdout, spawn_ok, spawn_output_ok,
@@ -148,6 +149,92 @@ fn headless_spawn_cwd_flag_overrides_caller_cwd() {
 }
 
 #[test]
+fn headless_spawn_env_flag_forwards_caller_explicit_duplicate_and_empty_values() {
+    let harness = RtmHarness::start_outside_tmux();
+    let session_id = Uuid::now_v7().to_string();
+    let token = format!("token-{}", Uuid::now_v7().simple());
+    let output = harness
+        .spawn_command(&session_id, "claude", "headless", true)
+        .arg("--env")
+        .arg("RTM_TEST_PRINT_ENV=1")
+        .arg("--env")
+        .arg("CLAUDE_CODE_OAUTH_TOKEN")
+        .arg("--env")
+        .arg("CLAUDE_CODE_EXPLICIT=literal")
+        .arg("--env")
+        .arg("CLAUDE_CODE_DUP=first")
+        .arg("--env")
+        .arg("CLAUDE_CODE_DUP=second")
+        .arg("--env")
+        .arg("CLAUDE_CODE_EMPTY=")
+        .env_clear()
+        .env("RTM_SOCKET_PATH", harness.socket_path())
+        .env("CLAUDE_CODE_OAUTH_TOKEN", &token)
+        .env("HOME", "/host/home")
+        .env("USER", "host-user")
+        .env("SHELL", "/host/shell")
+        .output()
+        .expect("spawn client");
+    spawn_output_ok(output, "claude");
+
+    let stdout_path = harness
+        .rtm_home()
+        .join("logs")
+        .join(&session_id)
+        .join("stdout.log");
+    let stdout = wait_for_log_contains(&stdout_path, &format!("CLAUDE_CODE_OAUTH_TOKEN={token}\n"));
+    assert!(
+        stdout.contains("CLAUDE_CODE_EXPLICIT=literal\n"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("CLAUDE_CODE_DUP=second\n"), "{stdout}");
+    assert!(!stdout.contains("CLAUDE_CODE_DUP=first\n"), "{stdout}");
+    assert!(stdout.contains("CLAUDE_CODE_EMPTY=\n"), "{stdout}");
+}
+
+#[test]
+fn docker_spawn_env_flag_reaches_container_and_runtime() {
+    let harness = RtmHarness::start_outside_tmux();
+    let session_id = Uuid::now_v7();
+    let token = format!("token-{}", Uuid::now_v7().simple());
+    let output = harness
+        .spawn_command(&session_id.to_string(), "claude", "headless", true)
+        .arg("--isolation")
+        .arg("docker")
+        .arg("--env")
+        .arg("RTM_TEST_PRINT_ENV=1")
+        .arg("--env")
+        .arg("CLAUDE_CODE_OAUTH_TOKEN")
+        .env_clear()
+        .env("RTM_SOCKET_PATH", harness.socket_path())
+        .env("CLAUDE_CODE_OAUTH_TOKEN", &token)
+        .output()
+        .expect("spawn client");
+    spawn_output_ok(output, "claude");
+
+    let env = common::wait_until(Duration::from_secs(5), || {
+        let env = common::docker::container_env(&harness, session_id);
+        env.contains(&format!("CLAUDE_CODE_OAUTH_TOKEN={token}"))
+            .then_some(env)
+    })
+    .unwrap_or_else(|| panic!("container env never contained CLAUDE_CODE_OAUTH_TOKEN"));
+    assert!(
+        env.contains(&format!("CLAUDE_CODE_OAUTH_TOKEN={token}")),
+        "{env:?}"
+    );
+    assert!(!env.contains(&"HOME=/host/home".to_owned()), "{env:?}");
+    assert!(!env.contains(&"USER=host-user".to_owned()), "{env:?}");
+    assert!(!env.contains(&"SHELL=/host/shell".to_owned()), "{env:?}");
+    common::wait_until(Duration::from_secs(5), || {
+        let output = common::docker::container_output(&harness, session_id);
+        output
+            .contains(&format!("CLAUDE_CODE_OAUTH_TOKEN={token}\n"))
+            .then_some(())
+    })
+    .unwrap_or_else(|| panic!("container runtime output never contained CLAUDE_CODE_OAUTH_TOKEN"));
+}
+
+#[test]
 fn spawn_rejects_live_and_terminal_session_id_reuse() {
     let harness = RtmHarness::start();
     let session_id = Uuid::now_v7().to_string();
@@ -283,6 +370,20 @@ fn assert_spawn_conflict(
     assert!(stderr.contains(kind), "{stderr}");
     assert!(stderr.contains(session_id), "{stderr}");
     assert!(stderr.contains(identity), "{stderr}");
+}
+
+fn wait_for_log_contains(path: &std::path::Path, expected: &str) -> String {
+    common::wait_until(Duration::from_secs(5), || {
+        let contents = std::fs::read_to_string(path).ok()?;
+        contents.contains(expected).then_some(contents)
+    })
+    .unwrap_or_else(|| {
+        let observed = std::fs::read_to_string(path);
+        panic!(
+            "log {} never contained {expected:?}, observed {observed:?}",
+            path.display()
+        )
+    })
 }
 
 fn request_raw(harness: &RtmHarness, rpc: RuntimeRpc) -> RuntimeResponse {
