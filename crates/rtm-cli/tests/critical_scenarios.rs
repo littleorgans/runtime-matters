@@ -158,6 +158,32 @@ fn dead_tmux_address_rejects_spawn_without_lifecycle_row() {
     assert_eq!(output_stdout(status), "no lifecycles\n");
 }
 
+#[test]
+fn docker_isolation_rejects_spawn_without_lifecycle_row() {
+    let harness = RtmHarness::start();
+    let session_id = Uuid::now_v7().to_string();
+    let spawn = harness
+        .spawn_command(&session_id, "claude", "headless", true)
+        .arg("--isolation")
+        .arg("docker:locked")
+        .output()
+        .expect("spawn client");
+
+    assert!(
+        !spawn.status.success(),
+        "spawn unexpectedly succeeded: {spawn:?}"
+    );
+    let stderr = output_stderr(spawn);
+    assert!(
+        stderr.contains("isolation policy docker:locked is not supported"),
+        "{stderr}"
+    );
+
+    let status = harness.status(&session_id);
+    assert!(status.status.success(), "status failed: {status:?}");
+    assert_eq!(output_stdout(status), "no lifecycles\n");
+}
+
 fn wait_for_json_status(harness: &RtmHarness, session_id: &str, needle: &str) -> String {
     wait_until(Duration::from_secs(5), || {
         let output = harness.status_format(session_id, "json");

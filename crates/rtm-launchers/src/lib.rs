@@ -32,6 +32,7 @@ pub fn warm_registry() -> Result<(), LauncherError> {
         let request = SpawnRequest {
             session_id: uuid::Uuid::nil(),
             runtime: launcher.kind(),
+            isolation: Default::default(),
             env: Vec::new(),
             cwd: lilo_rm_core::launcher_probe_cwd(),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),

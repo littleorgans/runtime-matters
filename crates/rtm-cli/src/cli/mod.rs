@@ -3,9 +3,9 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use lilo_rm_client::RuntimeClient;
 use lilo_rm_core::{
-    CaptureRequest, EventBatch, EventsPayload, KillByPidRequest, KillRequest, KilledPayload,
-    NudgeFailureReason, NudgeOutcome, NudgeRequest, RuntimeKind, RuntimeResponse, RuntimeRpc,
-    RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter, ValidateTargetOutcome,
+    CaptureRequest, EventBatch, EventsPayload, IsolationPolicy, KillByPidRequest, KillRequest,
+    KilledPayload, NudgeFailureReason, NudgeOutcome, NudgeRequest, RuntimeKind, RuntimeResponse,
+    RuntimeRpc, RuntimeSignal, SpawnRequest, SpawnTarget, StatusFilter, ValidateTargetOutcome,
     ValidateTargetResponse,
 };
 use serde::Serialize;
@@ -77,6 +77,8 @@ pub struct SpawnArgs {
     session_id: Uuid,
     #[arg(long, value_name = "headless|tmux:SESSION:WINDOW.PANE")]
     target: SpawnTarget,
+    #[arg(long, default_value_t = IsolationPolicy::Host, value_name = "host|docker[:PROFILE]")]
+    isolation: IsolationPolicy,
     #[arg(long, value_name = "PATH")]
     cwd: Option<PathBuf>,
     /// Pre-empt a live runtime that already occupies the requested tmux pane.
@@ -194,6 +196,7 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
         runtime,
         session_id,
         target,
+        isolation,
         cwd,
         force,
     } = args;
@@ -207,6 +210,7 @@ async fn spawn(args: SpawnArgs) -> Result<()> {
         .spawn(SpawnRequest {
             session_id,
             runtime,
+            isolation,
             env,
             cwd,
             target,

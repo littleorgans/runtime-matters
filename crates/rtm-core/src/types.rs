@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
-use crate::{LaunchEnv, RuntimeKindParseError, ShellResume};
+use crate::{IsolationPolicy, LaunchEnv, RuntimeKindParseError, ShellResume};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeKind {
@@ -274,6 +274,8 @@ fn is_unsupported_target(target: &str) -> bool {
 pub struct SpawnRequest {
     pub session_id: Uuid,
     pub runtime: RuntimeKind,
+    #[serde(default)]
+    pub isolation: IsolationPolicy,
     #[serde(default)]
     pub env: Vec<LaunchEnv>,
     pub cwd: std::path::PathBuf,

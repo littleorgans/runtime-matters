@@ -6,12 +6,19 @@ use lilo_rm_core::{
     SpawnRequest,
 };
 
+use crate::error::RuntimeFailure;
 use crate::server::ServerState;
 
 pub(crate) async fn check(
     state: &Arc<ServerState>,
     request: &SpawnRequest,
 ) -> Result<Option<RuntimeResponse>> {
+    if !request.isolation.is_host() {
+        return Err(RuntimeFailure::unsupported_isolation_policy(
+            request.isolation.to_string(),
+        ));
+    }
+
     if let Some(lifecycle) = state.store().get(request.session_id).await? {
         return Ok(Some(conflict(SpawnConflictKind::SessionId, lifecycle)));
     }
@@ -51,8 +58,8 @@ mod tests {
 
     use chrono::Utc;
     use lilo_rm_core::{
-        HeadlessSpawnTarget, Lifecycle, RuntimeKind, RuntimeResponse, ShimReady, SpawnTarget,
-        TmuxSpawnTarget,
+        HeadlessSpawnTarget, IsolationPolicy, IsolationProfile, Lifecycle, RuntimeKind,
+        RuntimeResponse, ShimReady, SpawnTarget, TmuxSpawnTarget,
     };
     use rtm_store::{LifecycleStore, StoreConfig};
     use uuid::Uuid;
@@ -115,6 +122,34 @@ mod tests {
         wait_for_child_exit(&mut child);
     }
 
+    #[tokio::test]
+    async fn docker_isolation_fails_before_lifecycle_insert() {
+        let state = test_state().await;
+        let session_id = Uuid::now_v7();
+        let mut request = headless_request(session_id, false);
+        request.isolation = IsolationPolicy::Docker(IsolationProfile {
+            name: Some("locked".to_owned()),
+        });
+
+        let error = check(&state, &request)
+            .await
+            .expect_err("docker isolation should be unsupported");
+
+        assert_eq!(
+            error.to_string(),
+            "isolation policy docker:locked is not supported"
+        );
+        assert!(
+            state
+                .store()
+                .get(session_id)
+                .await
+                .expect("store")
+                .is_none(),
+            "unsupported isolation inserted lifecycle row"
+        );
+    }
+
     async fn test_state() -> Arc<ServerState> {
         let temp = std::env::temp_dir().join(format!("rtm-preflight-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&temp).expect("tempdir");
@@ -165,6 +200,7 @@ mod tests {
         SpawnRequest {
             session_id,
             runtime: RuntimeKind::Claude,
+            isolation: Default::default(),
             env: Vec::new(),
             cwd: "/tmp".into(),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),

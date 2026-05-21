@@ -193,6 +193,7 @@ fn spawn_request() -> SpawnRequest {
     SpawnRequest {
         session_id: session_id(),
         runtime: RuntimeKind::Claude,
+        isolation: Default::default(),
         env: Vec::new(),
         cwd: "/tmp/rtm".into(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),

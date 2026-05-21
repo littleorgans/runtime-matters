@@ -27,6 +27,7 @@ fn main() {
                     request: SpawnRequest {
                         session_id,
                         runtime: RuntimeKind::Claude,
+                        isolation: Default::default(),
                         env: Vec::new(),
                         cwd: harness.rtm_home().to_path_buf(),
                         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),

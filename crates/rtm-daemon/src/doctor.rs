@@ -45,6 +45,7 @@ fn launcher_status(launcher: &'static dyn lilo_rm_core::RuntimeLauncher) -> Laun
     let request = SpawnRequest {
         session_id: Uuid::nil(),
         runtime: runtime.clone(),
+        isolation: Default::default(),
         env: Vec::new(),
         cwd: lilo_rm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),

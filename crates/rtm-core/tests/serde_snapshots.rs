@@ -2,14 +2,14 @@ mod support;
 
 use lilo_rm_core::{
     CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
-    DoctorPayload, ErrorCode, ErrorPayload, EventsPayload, EventsRequest, KillByPidRequest,
-    KillRequest, LogAvailability, LogsUnavailableReason, LostEvidence, McpBridgeRequest,
-    NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent,
-    RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit,
-    ShimLaunchPayload, ShimLaunchRequest, SpawnConflictKind, SpawnConflictPayload, SpawnRequest,
-    SpawnTarget, SpawnedPayload, StatusRequest, TerminationEvidence, TmuxSpawnTarget,
-    ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetRequest, ValidateTargetResponse,
-    VersionPayload,
+    DoctorPayload, ErrorCode, ErrorPayload, EventsPayload, EventsRequest, IsolationPolicy,
+    IsolationProfile, KillByPidRequest, KillRequest, LogAvailability, LogsUnavailableReason,
+    LostEvidence, McpBridgeRequest, NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest,
+    NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeResponse, RuntimeRpc,
+    RuntimeSignal, ShimExit, ShimLaunchPayload, ShimLaunchRequest, SpawnConflictKind,
+    SpawnConflictPayload, SpawnRequest, SpawnTarget, SpawnedPayload, StatusRequest,
+    TerminationEvidence, TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetPayload,
+    ValidateTargetRequest, ValidateTargetResponse, VersionPayload,
 };
 use serde_json::json;
 use support::{
@@ -26,6 +26,7 @@ fn runtime_rpc_json_shapes_are_stable() {
             request: SpawnRequest {
                 session_id,
                 runtime: RuntimeKind::Claude,
+                isolation: Default::default(),
                 env: Vec::new(),
                 cwd: "/tmp/rtm".into(),
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {
@@ -287,6 +288,7 @@ fn error_code_json_names_are_stable() {
         ErrorCode::HeadlessNudgeUnsupported,
         ErrorCode::LaunchFailed,
         ErrorCode::InvalidTarget,
+        ErrorCode::UnsupportedIsolationPolicy,
         ErrorCode::SpawnConflict,
         ErrorCode::ProtocolMismatch,
     ];
@@ -335,4 +337,62 @@ fn spawn_request_json_requires_cwd() {
     .expect_err("spawn request without cwd should fail");
 
     assert!(error.to_string().contains("missing field `cwd`"), "{error}");
+}
+
+#[test]
+fn spawn_request_json_defaults_omitted_isolation_to_host() {
+    let request = serde_json::from_value::<SpawnRequest>(json!({
+        "session_id": session_id(),
+        "runtime": "claude",
+        "env": [],
+        "cwd": "/tmp/rtm",
+        "target": { "type": "headless", "payload": {} }
+    }))
+    .expect("spawn request");
+
+    assert_eq!(request.isolation, IsolationPolicy::Host);
+}
+
+#[test]
+fn spawn_request_json_round_trips_explicit_isolation_policies() {
+    for isolation in [
+        IsolationPolicy::Host,
+        IsolationPolicy::Docker(IsolationProfile { name: None }),
+        IsolationPolicy::Docker(IsolationProfile {
+            name: Some("locked".to_owned()),
+        }),
+    ] {
+        let request = SpawnRequest {
+            session_id: session_id(),
+            runtime: RuntimeKind::Claude,
+            isolation,
+            env: Vec::new(),
+            cwd: "/tmp/rtm".into(),
+            target: SpawnTarget::Headless(lilo_rm_core::HeadlessSpawnTarget {}),
+            force: false,
+            shell_resume: None,
+        };
+        let json = serde_json::to_value(&request).expect("serialize");
+        let actual: SpawnRequest = serde_json::from_value(json).expect("deserialize");
+
+        assert_eq!(actual, request);
+    }
+}
+
+#[test]
+fn spawn_request_json_rejects_invalid_isolation_policy() {
+    let error = serde_json::from_value::<SpawnRequest>(json!({
+        "session_id": session_id(),
+        "runtime": "claude",
+        "isolation": { "type": "sandbox", "payload": {} },
+        "env": [],
+        "cwd": "/tmp/rtm",
+        "target": { "type": "headless", "payload": {} }
+    }))
+    .expect_err("spawn request with invalid isolation should fail");
+
+    assert!(
+        error.to_string().contains("unknown variant `sandbox`"),
+        "{error}"
+    );
 }

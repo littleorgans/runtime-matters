@@ -19,6 +19,7 @@ pub mod admin;
 pub mod capture;
 mod cli_output;
 pub mod error;
+pub mod isolation;
 pub mod launcher;
 pub mod mcp;
 pub mod proto;
@@ -38,6 +39,7 @@ pub use capture::{
 };
 pub use cli_output::{Ack, CliOutput};
 pub use error::{ErrorCode, ProtocolError, RuntimeKindParseError};
+pub use isolation::{IsolationPolicy, IsolationPolicyParseError, IsolationProfile};
 pub use launcher::{LaunchEnv, LaunchSpec, LauncherError, RuntimeLauncher, ShellResume};
 pub use mcp::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION, McpBridgeRequest,

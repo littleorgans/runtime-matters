@@ -16,6 +16,7 @@ pub(crate) enum RuntimeFailure {
     SessionAlreadyExists { session_id: Uuid },
     SessionNotFound { session_id: Uuid },
     TmuxPaneDead { address: TmuxAddress },
+    UnsupportedIsolationPolicy { policy: String },
 }
 
 impl RuntimeFailure {
@@ -38,12 +39,20 @@ impl RuntimeFailure {
         Self::TmuxPaneDead { address }.into()
     }
 
+    pub(crate) fn unsupported_isolation_policy(policy: impl Into<String>) -> anyhow::Error {
+        Self::UnsupportedIsolationPolicy {
+            policy: policy.into(),
+        }
+        .into()
+    }
+
     fn code(&self) -> ErrorCode {
         match self {
             Self::ProtocolMismatch { .. } => ErrorCode::ProtocolMismatch,
             Self::SessionAlreadyExists { .. } => ErrorCode::InvalidTarget,
             Self::SessionNotFound { .. } => ErrorCode::SessionNotFound,
             Self::TmuxPaneDead { .. } => ErrorCode::TmuxPaneDead,
+            Self::UnsupportedIsolationPolicy { .. } => ErrorCode::UnsupportedIsolationPolicy,
         }
     }
 }
@@ -60,6 +69,9 @@ impl Display for RuntimeFailure {
             }
             Self::TmuxPaneDead { address } => {
                 write!(formatter, "tmux address {address} is not alive")
+            }
+            Self::UnsupportedIsolationPolicy { policy } => {
+                write!(formatter, "isolation policy {policy} is not supported")
             }
         }
     }
@@ -147,6 +159,10 @@ mod tests {
             (
                 RuntimeFailure::protocol_mismatch("bad shim state"),
                 ErrorCode::ProtocolMismatch,
+            ),
+            (
+                RuntimeFailure::unsupported_isolation_policy("docker"),
+                ErrorCode::UnsupportedIsolationPolicy,
             ),
         ];
 

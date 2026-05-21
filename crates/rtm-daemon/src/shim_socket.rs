@@ -293,6 +293,7 @@ mod tests {
             &SpawnRequest {
                 session_id: uuid::Uuid::now_v7(),
                 runtime: RuntimeKind::Claude,
+                isolation: Default::default(),
                 env: Vec::new(),
                 cwd: PathBuf::from("/tmp"),
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {

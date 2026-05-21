@@ -18,6 +18,7 @@ pub async fn spawn_runtime(
             request: SpawnRequest {
                 session_id,
                 runtime,
+                isolation: Default::default(),
                 env,
                 cwd,
                 target,
