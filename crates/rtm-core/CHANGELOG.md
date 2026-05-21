@@ -2,6 +2,12 @@
 
 All notable changes documented here.
 
+## [0.6.3](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.6.2...lilo-rm-core-v0.6.3) - 2026-05-21
+
+### Miscellaneous
+
+- *(internal)* release v0.6.2 ([#42](https://github.com/littleorgans/runtime-matters/pull/42))
+
 ## [0.6.2](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.6.1...lilo-rm-core-v0.6.2) - 2026-05-21
 
 ### Miscellaneous
