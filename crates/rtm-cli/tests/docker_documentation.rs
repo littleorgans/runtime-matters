@@ -71,6 +71,18 @@ fn claude_dockerfile_conforms_to_contract() {
         !body.contains("ENTRYPOINT"),
         "Dockerfile must not mask runtime command"
     );
+
+    // Regression: devcontainers/base:ubuntu ships a `vscode` user at UID/GID
+    // 1000, so the example Dockerfile must default the new user to a free id
+    // or `groupadd` fails out of the box.
+    assert!(
+        !body.contains("ARG USER_UID=1000"),
+        "Default USER_UID collides with the devcontainers base `vscode` user"
+    );
+    assert!(
+        !body.contains("ARG USER_GID=1000"),
+        "Default USER_GID collides with the devcontainers base `vscode` group"
+    );
 }
 
 fn repo_file(path: &str) -> std::path::PathBuf {

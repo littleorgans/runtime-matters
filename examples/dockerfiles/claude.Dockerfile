@@ -1,8 +1,9 @@
 FROM mcr.microsoft.com/devcontainers/base:ubuntu
 
 ARG USERNAME=rtm
-ARG USER_UID=1000
-ARG USER_GID=1000
+# devcontainers/base:ubuntu reserves UID/GID 1000 for its `vscode` user.
+ARG USER_UID=1001
+ARG USER_GID=1001
 
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}" \
