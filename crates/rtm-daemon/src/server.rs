@@ -1,6 +1,11 @@
 mod config;
+mod events;
 mod runner;
+mod spawn;
 mod state;
+mod status;
+mod termination;
+mod watcher;
 
 pub use config::DaemonConfig;
 pub use runner::run_daemon;

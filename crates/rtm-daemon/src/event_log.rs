@@ -18,7 +18,7 @@ const EVENT_LOG_SYNC_BATCH: usize = 32;
 const EVENT_LOG_SYNC_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug)]
-pub(crate) struct EventBatch {
+pub(crate) struct EventLogPage {
     pub(crate) events: Vec<RuntimeEvent>,
     pub(crate) cursor: EventCursor,
 }
@@ -112,7 +112,7 @@ impl EventLog {
     pub(crate) async fn events_since(
         &self,
         since: Option<EventCursor>,
-    ) -> std::result::Result<EventBatch, CursorExpired> {
+    ) -> std::result::Result<EventLogPage, CursorExpired> {
         let cursor = since.unwrap_or_default();
         let inner = self.inner.lock().await;
         if let Some(oldest) = oldest_valid_cursor(&inner.events)
@@ -126,7 +126,7 @@ impl EventLog {
             .filter(|entry| entry.seq > cursor)
             .map(|entry| entry.event.clone())
             .collect();
-        Ok(EventBatch {
+        Ok(EventLogPage {
             events,
             cursor: inner.events.last().map(|entry| entry.seq).unwrap_or(cursor),
         })
@@ -136,7 +136,7 @@ impl EventLog {
         &self,
         since: Option<EventCursor>,
         wait_ms: Option<u32>,
-    ) -> std::result::Result<EventBatch, CursorExpired> {
+    ) -> std::result::Result<EventLogPage, CursorExpired> {
         let wait_ms = clamped_event_wait_ms(wait_ms);
         let immediate = self.events_since(since).await?;
         if wait_ms == 0 || !immediate.events.is_empty() {
