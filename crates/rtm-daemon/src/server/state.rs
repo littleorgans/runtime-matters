@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::{
     error::RuntimeFailure,
-    event_log::{CursorExpired, EventBatch, EventLog},
+    event_log::{CursorExpired, EventLog, EventLogPage},
     runtime_kill,
 };
 
@@ -179,7 +179,7 @@ impl ServerState {
     pub(crate) async fn events(
         &self,
         request: EventsRequest,
-    ) -> std::result::Result<EventBatch, CursorExpired> {
+    ) -> std::result::Result<EventLogPage, CursorExpired> {
         self.events.events(request).await
     }
 

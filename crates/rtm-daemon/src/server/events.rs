@@ -1,7 +1,7 @@
 use anyhow::Result;
 use lilo_rm_core::{EventsRequest, RuntimeEvent};
 
-use crate::event_log::{CursorExpired, EventBatch, EventLog};
+use crate::event_log::{CursorExpired, EventLog, EventLogPage};
 
 pub(super) struct EventAppender {
     event_log: EventLog,
@@ -15,7 +15,7 @@ impl EventAppender {
     pub(super) async fn events(
         &self,
         request: EventsRequest,
-    ) -> std::result::Result<EventBatch, CursorExpired> {
+    ) -> std::result::Result<EventLogPage, CursorExpired> {
         self.event_log
             .events_since_or_wait(request.since, request.wait_ms)
             .await
