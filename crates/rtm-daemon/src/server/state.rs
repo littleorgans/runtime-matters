@@ -1,52 +1,52 @@
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::Result;
 use lilo_rm_core::{
     CaptureError, CaptureRequest, CaptureResponse, EventsRequest, KillByPidRequest,
     KillByPidResponse, KillOutcome, KillRequest, LaunchSpec, Lifecycle, LifecycleLogAvailability,
-    LifecycleState, LogAvailability, LogsUnavailableReason, LostEvidence, NudgeFailureReason,
-    NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeSignal, ShimExit,
-    ShimReady, SpawnRequest, StatusFilter, TerminationEvidence, ValidateTargetOutcome,
+    LostEvidence, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent,
+    RuntimeExit, ShimExit, ShimReady, SpawnRequest, StatusFilter, TerminationEvidence,
     ValidateTargetRequest, ValidateTargetResponse, WatcherCounts,
 };
-use rtm_platform::process_exit::{ProcessExitWatcher, watch_process_exit};
 use rtm_store::LifecycleStore;
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::{
     error::RuntimeFailure,
-    event_channel,
     event_log::{CursorExpired, EventBatch, EventLog},
     runtime_kill,
 };
 
-use super::DaemonConfig;
+use super::{
+    DaemonConfig, events::EventAppender, spawn::SpawnCoordinator, status::StatusReader,
+    termination::TerminationCoordinator, watcher::WatcherCoordinator,
+};
 
 pub(crate) struct ServerState {
     config: DaemonConfig,
     store: LifecycleStore,
     started_instant: Instant,
-    event_log: EventLog,
-    exit_watchers: Mutex<HashMap<Uuid, ProcessExitWatcher>>,
-    pending_launches: Mutex<HashMap<Uuid, LaunchSpec>>,
-    pending_ready: Mutex<HashMap<Uuid, oneshot::Sender<ShimReady>>>,
-    terminated_events: Mutex<HashSet<Uuid>>,
+    spawn: SpawnCoordinator,
+    termination: TerminationCoordinator,
+    watchers: WatcherCoordinator,
+    status: StatusReader,
+    events: EventAppender,
 }
 
 impl ServerState {
     pub(crate) fn new(config: DaemonConfig, store: LifecycleStore) -> Result<Self> {
+        let event_log = EventLog::open(config.data_dir())?;
         Ok(Self {
-            event_log: EventLog::open(config.data_dir())?,
             config,
             store,
             started_instant: Instant::now(),
-            exit_watchers: Mutex::new(HashMap::new()),
-            pending_launches: Mutex::new(HashMap::new()),
-            pending_ready: Mutex::new(HashMap::new()),
-            terminated_events: Mutex::new(HashSet::new()),
+            spawn: SpawnCoordinator::new(),
+            termination: TerminationCoordinator::new(),
+            watchers: WatcherCoordinator::new(),
+            status: StatusReader::new(),
+            events: EventAppender::new(event_log),
         })
     }
 
@@ -67,107 +67,26 @@ impl ServerState {
         request: &SpawnRequest,
         launch: LaunchSpec,
     ) -> Result<oneshot::Receiver<ShimReady>> {
-        if self.store.get(request.session_id).await?.is_some() {
-            return Err(RuntimeFailure::session_already_exists(request.session_id));
-        }
-        self.validate_spawn_target(request).await?;
-
-        let mut lifecycle = Lifecycle::forking(request.session_id, request.runtime.clone());
-        lifecycle.isolation = request.isolation.clone();
-        self.store.insert_forking(&lifecycle).await?;
-        self.pending_launches
-            .lock()
-            .await
-            .insert(request.session_id, launch);
-        match self.begin_ready_wait(request.session_id).await {
-            Ok(receiver) => Ok(receiver),
-            Err(error) => {
-                self.cancel_spawn(request.session_id).await;
-                Err(error)
-            }
-        }
-    }
-
-    async fn validate_spawn_target(&self, request: &SpawnRequest) -> Result<()> {
-        match self.validate_target(&request.target).await?.outcome {
-            ValidateTargetOutcome::Valid => Ok(()),
-            ValidateTargetOutcome::TmuxPaneDead { address } => {
-                Err(RuntimeFailure::tmux_pane_dead(address))
-            }
-            ValidateTargetOutcome::InvalidTarget { message } => {
-                Err(RuntimeFailure::protocol_mismatch(message))
-            }
-            ValidateTargetOutcome::UnsupportedTarget { target } => Err(
-                RuntimeFailure::protocol_mismatch(format!("unsupported target {target}")),
-            ),
-        }
+        self.spawn.begin_spawn(self, request, launch).await
     }
 
     pub(crate) async fn validate_target_request(
         &self,
         request: ValidateTargetRequest,
     ) -> Result<ValidateTargetResponse> {
-        let target = match request.target.parse() {
-            Ok(target) => target,
-            Err(error) => return Ok(ValidateTargetResponse::from_target_parse_error(error)),
-        };
-        self.validate_target(&target).await
-    }
-
-    async fn validate_target(
-        &self,
-        target: &lilo_rm_core::SpawnTarget,
-    ) -> Result<ValidateTargetResponse> {
-        if let Some(address) = target.tmux_address()
-            && !rtm_platform::tmux::TmuxGateway::is_alive(address).await?
-        {
-            return Ok(ValidateTargetResponse::tmux_pane_dead(address.clone()));
-        }
-        Ok(ValidateTargetResponse::valid())
-    }
-
-    async fn begin_ready_wait(&self, session_id: Uuid) -> Result<oneshot::Receiver<ShimReady>> {
-        let (sender, receiver) = oneshot::channel();
-        let previous = self.pending_ready.lock().await.insert(session_id, sender);
-        if previous.is_some() {
-            return Err(RuntimeFailure::protocol_mismatch(format!(
-                "session {session_id} already has a pending shim"
-            )));
-        }
-        Ok(receiver)
+        self.spawn.validate_target_request(request).await
     }
 
     pub(crate) async fn cancel_spawn(&self, session_id: Uuid) {
-        self.pending_launches.lock().await.remove(&session_id);
-        self.pending_ready.lock().await.remove(&session_id);
-        if let Err(error) = self.store.delete(session_id).await {
-            tracing::warn!(%error, %session_id, "failed to delete canceled lifecycle");
-        }
+        self.spawn.cancel_spawn(self, session_id).await;
     }
 
     pub(crate) async fn take_launch_spec(&self, session_id: Uuid) -> Result<LaunchSpec> {
-        self.pending_launches
-            .lock()
-            .await
-            .remove(&session_id)
-            .ok_or_else(|| {
-                RuntimeFailure::protocol_mismatch(format!(
-                    "no pending launch for session {session_id}"
-                ))
-            })
+        self.spawn.take_launch_spec(session_id).await
     }
 
     pub(crate) async fn complete_shim_ready(self: &Arc<Self>, ready: ShimReady) -> Result<()> {
-        let sender = self.pending_ready.lock().await.remove(&ready.session_id);
-        if let Some(sender) = sender {
-            return sender.send(ready).map_err(|ready| {
-                RuntimeFailure::protocol_mismatch(format!(
-                    "spawn waiter dropped for session {}",
-                    ready.session_id
-                ))
-            });
-        }
-        self.record_reconnected_ready(ready).await.map(|_| ())
+        self.spawn.complete_shim_ready(self, ready).await
     }
 
     pub(crate) async fn record_running(
@@ -175,33 +94,7 @@ impl ServerState {
         request: &SpawnRequest,
         ready: ShimReady,
     ) -> Result<(Lifecycle, RuntimeEvent)> {
-        let runtime_pid = ready.runtime_pid;
-        let mut lifecycle = self
-            .store
-            .get(request.session_id)
-            .await?
-            .ok_or_else(|| RuntimeFailure::session_not_found(request.session_id))?;
-        if lifecycle.runtime != request.runtime {
-            return Err(RuntimeFailure::protocol_mismatch(format!(
-                "runtime mismatch for session {}",
-                request.session_id
-            )));
-        }
-        if !lifecycle.mark_running(ready) {
-            return Err(RuntimeFailure::protocol_mismatch(format!(
-                "session {} is not waiting for ShimReady",
-                request.session_id
-            )));
-        }
-        lifecycle.tmux_pane = request.target.tmux_address().cloned();
-        self.populate_log_availability(&mut lifecycle).await;
-        self.store.update_lifecycle(&lifecycle).await?;
-        let event = event_channel::running_event(&lifecycle)?;
-
-        self.start_exit_watcher(request.session_id, runtime_pid)
-            .await?;
-        let event = self.append_event(event).await?;
-        Ok((lifecycle, event))
+        self.spawn.record_running(self, request, ready).await
     }
 
     pub(crate) async fn kill_runtime(&self, request: KillRequest) -> Result<KillOutcome> {
@@ -209,41 +102,7 @@ impl ServerState {
     }
 
     pub(crate) async fn kill_pid(&self, request: KillByPidRequest) -> Result<KillByPidResponse> {
-        let outcome = rtm_platform::signal::send_raw_signal_for_kill(request.pid, request.signal)?;
-        if matches!(outcome, KillOutcome::AlreadyExited) {
-            return Ok(KillByPidResponse {
-                pid: request.pid,
-                signal: request.signal,
-                killed_after_grace: false,
-                outcome,
-            });
-        }
-        let deadline = Instant::now() + Duration::from_secs(request.grace_secs);
-
-        while Instant::now() < deadline {
-            if !rtm_platform::process::pid_alive(request.pid) {
-                return Ok(KillByPidResponse {
-                    pid: request.pid,
-                    signal: request.signal,
-                    killed_after_grace: false,
-                    outcome,
-                });
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-
-        let mut killed_after_grace = false;
-        let kill_signal = rtm_platform::signal::signal_number(RuntimeSignal::Kill);
-        if rtm_platform::process::pid_alive(request.pid) && request.signal != kill_signal {
-            rtm_platform::signal::send_raw_signal(request.pid, kill_signal)?;
-            killed_after_grace = true;
-        }
-        Ok(KillByPidResponse {
-            pid: request.pid,
-            signal: request.signal,
-            killed_after_grace,
-            outcome,
-        })
+        self.termination.kill_pid(request).await
     }
 
     pub(crate) async fn nudge_runtime(&self, request: NudgeRequest) -> Result<NudgeResponse> {
@@ -298,100 +157,37 @@ impl ServerState {
     }
 
     pub(crate) async fn record_shim_exit(&self, exit: ShimExit) -> Result<Option<RuntimeEvent>> {
-        self.record_exited(exit.session_id, exit.exit, TerminationEvidence::ShimExit)
-            .await
-    }
-
-    async fn record_watcher_exit(self: Arc<Self>, session_id: Uuid) -> Result<()> {
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        if self.is_terminal(session_id).await {
-            return Ok(());
-        }
-
-        let evidence = self.watcher_evidence(session_id).await?;
-        match evidence {
-            TerminationEvidence::Lost(lost) => {
-                let _ = self.record_lost(session_id, lost).await?;
-            }
-            TerminationEvidence::ProcessExit => {
-                let _ = self
-                    .record_exited(session_id, RuntimeExit::new(None, None), evidence)
-                    .await?;
-            }
-            TerminationEvidence::ShimExit => {}
-            _ => bail!(
-                "process exit watcher for session {session_id} received unsupported termination evidence variant: {evidence:?}"
-            ),
-        }
-        Ok(())
+        self.termination.record_shim_exit(self, exit).await
     }
 
     pub(crate) async fn status(&self, filter: StatusFilter) -> Vec<Lifecycle> {
-        match self.store.list(&filter).await {
-            Ok(mut rows) => {
-                self.populate_log_availability_for(&mut rows).await;
-                rows
-            }
-            Err(error) => {
-                tracing::warn!(%error, "failed to read lifecycle status");
-                Vec::new()
-            }
-        }
+        self.status.status(&self.store, &self.config, filter).await
     }
 
     pub(crate) async fn log_availability_statuses(&self) -> Vec<LifecycleLogAvailability> {
-        self.status(StatusFilter::empty())
+        self.status
+            .log_availability_statuses(&self.store, &self.config)
             .await
-            .into_iter()
-            .filter_map(|lifecycle| {
-                lifecycle
-                    .log_availability
-                    .map(|log_availability| LifecycleLogAvailability {
-                        session_id: lifecycle.session_id,
-                        log_availability,
-                    })
-            })
-            .collect()
     }
 
-    async fn populate_log_availability_for(&self, lifecycles: &mut [Lifecycle]) {
-        for lifecycle in lifecycles {
-            self.populate_log_availability(lifecycle).await;
-        }
-    }
-
-    async fn populate_log_availability(&self, lifecycle: &mut Lifecycle) {
-        lifecycle.log_availability = Some(match lifecycle.tmux_pane.as_ref() {
-            Some(address) => match rtm_platform::tmux::TmuxGateway::is_alive(address).await {
-                Ok(true) => LogAvailability::TmuxPaneSnapshot,
-                Ok(false) | Err(_) => LogAvailability::Unavailable {
-                    reason: LogsUnavailableReason::PaneUnavailable,
-                },
-            },
-            None => {
-                let paths = self.config.session_log_paths(lifecycle.session_id);
-                LogAvailability::Headless {
-                    stdout_path: paths.stdout_path,
-                    stderr_path: paths.stderr_path,
-                }
-            }
-        });
+    pub(super) async fn populate_log_availability(&self, lifecycle: &mut Lifecycle) {
+        self.status
+            .populate_log_availability(&self.config, lifecycle)
+            .await;
     }
 
     pub(crate) async fn events(
         &self,
         request: EventsRequest,
     ) -> std::result::Result<EventBatch, CursorExpired> {
-        self.event_log
-            .events_since_or_wait(request.since, request.wait_ms)
-            .await
+        self.events.events(request).await
     }
 
     pub(crate) async fn watcher_counts(&self) -> WatcherCounts {
         WatcherCounts {
-            process_exit_watchers: self.exit_watchers.lock().await.len(),
-            shim_sockets: self.pending_ready.lock().await.len(),
-            event_waiters: self.event_log.waiter_count().await,
+            process_exit_watchers: self.watchers.process_exit_watcher_count().await,
+            shim_sockets: self.spawn.pending_shim_socket_count().await,
+            event_waiters: self.events.event_waiter_count().await,
         }
     }
 
@@ -400,68 +196,30 @@ impl ServerState {
         session_id: Uuid,
         runtime_pid: u32,
     ) -> Result<()> {
-        if self.exit_watchers.lock().await.contains_key(&session_id) {
-            return Ok(());
-        }
-        let (watcher, exit_rx) = watch_process_exit(runtime_pid)?;
-        self.exit_watchers.lock().await.insert(session_id, watcher);
-        let state = Arc::clone(self);
-        tokio::spawn(async move {
-            if exit_rx.await.is_ok()
-                && let Err(error) = state.record_watcher_exit(session_id).await
-            {
-                tracing::warn!(%error, %session_id, "process exit watcher failed");
-            }
-        });
-        Ok(())
+        self.watchers
+            .start_exit_watcher(self, session_id, runtime_pid)
+            .await
     }
 
     pub(crate) async fn is_terminal(&self, session_id: Uuid) -> bool {
-        self.store
-            .get(session_id)
+        self.termination.is_terminal(&self.store, session_id).await
+    }
+
+    pub(super) async fn watcher_evidence(&self, session_id: Uuid) -> Result<TerminationEvidence> {
+        self.termination
+            .watcher_evidence(&self.store, session_id)
             .await
-            .ok()
-            .flatten()
-            .is_some_and(|lifecycle| {
-                matches!(
-                    lifecycle.state,
-                    LifecycleState::Exited(_) | LifecycleState::Lost(_)
-                )
-            })
     }
 
-    async fn watcher_evidence(&self, session_id: Uuid) -> Result<TerminationEvidence> {
-        let shim_pid = self
-            .store
-            .get(session_id)
-            .await?
-            .and_then(|lifecycle| lifecycle.shim_pid)
-            .ok_or_else(|| anyhow!("session {session_id} missing shim pid"))?;
-        if rtm_platform::process::pid_alive(shim_pid) {
-            Ok(TerminationEvidence::ProcessExit)
-        } else {
-            Ok(TerminationEvidence::Lost(
-                LostEvidence::ShimDiedBeforeReport,
-            ))
-        }
-    }
-
-    async fn record_exited(
+    pub(super) async fn record_exited(
         &self,
         session_id: Uuid,
         exit: RuntimeExit,
         evidence: TerminationEvidence,
     ) -> Result<Option<RuntimeEvent>> {
-        let mut lifecycle = self
-            .store
-            .get(session_id)
-            .await?
-            .ok_or_else(|| RuntimeFailure::session_not_found(session_id))?;
-        if !lifecycle.mark_exited(exit) {
-            return Ok(None);
-        }
-        self.store.update_lifecycle(&lifecycle).await?;
-        self.finish_terminal(session_id, &lifecycle, evidence).await
+        self.termination
+            .record_exited(self, session_id, exit, evidence)
+            .await
     }
 
     pub(crate) async fn record_lost(
@@ -469,77 +227,16 @@ impl ServerState {
         session_id: Uuid,
         evidence: LostEvidence,
     ) -> Result<Option<RuntimeEvent>> {
-        let mut lifecycle = self
-            .store
-            .get(session_id)
-            .await?
-            .ok_or_else(|| RuntimeFailure::session_not_found(session_id))?;
-        if !lifecycle.mark_lost(evidence) {
-            return Ok(None);
-        }
-        self.store.update_lifecycle(&lifecycle).await?;
-        self.finish_terminal(session_id, &lifecycle, TerminationEvidence::Lost(evidence))
+        self.termination
+            .record_lost(self, session_id, evidence)
             .await
     }
 
-    async fn finish_terminal(
-        &self,
-        session_id: Uuid,
-        lifecycle: &Lifecycle,
-        evidence: TerminationEvidence,
-    ) -> Result<Option<RuntimeEvent>> {
-        self.exit_watchers.lock().await.remove(&session_id);
-        if !self.terminated_events.lock().await.insert(session_id) {
-            return Ok(None);
-        }
-        let event = match evidence {
-            TerminationEvidence::Lost(lost) => event_channel::lost_event(lifecycle, lost),
-            TerminationEvidence::ShimExit | TerminationEvidence::ProcessExit => {
-                event_channel::terminated_event(lifecycle, evidence)
-            }
-            _ => bail!(
-                "recording terminal event for session {session_id} received unsupported termination evidence variant: {evidence:?}"
-            ),
-        };
-        Ok(Some(self.append_event(event).await?))
+    pub(super) async fn remove_watcher(&self, session_id: Uuid) {
+        self.watchers.remove_watcher(session_id).await;
     }
 
-    async fn record_reconnected_ready(
-        self: &Arc<Self>,
-        ready: ShimReady,
-    ) -> Result<Option<RuntimeEvent>> {
-        let runtime_pid = ready.runtime_pid;
-        let mut lifecycle = self
-            .store
-            .get(ready.session_id)
-            .await?
-            .ok_or_else(|| RuntimeFailure::session_not_found(ready.session_id))?;
-        match lifecycle.state {
-            LifecycleState::Forking => {
-                lifecycle.mark_running(ready);
-                self.store.update_lifecycle(&lifecycle).await?;
-                let event = event_channel::running_event(&lifecycle)?;
-                self.start_exit_watcher(lifecycle.session_id, runtime_pid)
-                    .await?;
-                Ok(Some(self.append_event(event).await?))
-            }
-            LifecycleState::Running => {
-                self.start_exit_watcher(lifecycle.session_id, runtime_pid)
-                    .await?;
-                Ok(None)
-            }
-            LifecycleState::Exited(_) | LifecycleState::Lost(_) => {
-                bail!("session {} is already terminal", lifecycle.session_id)
-            }
-            _ => bail!(
-                "reconnecting ShimReady for session {} saw unsupported lifecycle state variant: {:?}",
-                lifecycle.session_id,
-                lifecycle.state
-            ),
-        }
-    }
-
-    async fn append_event(&self, event: RuntimeEvent) -> Result<RuntimeEvent> {
-        self.event_log.append(event).await
+    pub(super) async fn append_event(&self, event: RuntimeEvent) -> Result<RuntimeEvent> {
+        self.events.append_event(event).await
     }
 }
