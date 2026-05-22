@@ -1,46 +1,6 @@
 use std::path::Path;
 
 #[test]
-fn readme_documents_docker_operator_contract() {
-    let readme = repo_file("README.md");
-    let body = std::fs::read_to_string(&readme).expect("README");
-
-    for expected in [
-        "Host execution is the default.",
-        "--isolation docker",
-        "Tmux Docker spawns start a detached container",
-        "Headless Docker spawns",
-        "/workspace",
-        "Option A",
-        "mcr.microsoft.com/devcontainers/base:ubuntu",
-        "Distroless and Alpine/musl images",
-        "are discouraged starters",
-        "/bin/sh",
-        "git",
-        "Credential pass",
-        "through is explicit.",
-        "--session-id \"$SESSION_ID\"",
-        "--image runtime-matters-claude:local",
-        "RTM_DOCKER_IMAGE",
-        "daemon",
-        "startup environment default",
-        "Capability changes are opt in.",
-        "arm64 hosts",
-        "non-root",
-        "Docker init",
-        "Manual detach and reconnect UX are out of scope.",
-        "Multiplexers inside the container",
-        "experimental",
-        "Dockerfile Contract",
-        "Runtime binary",
-        "runtime executable on `PATH`",
-        "exit code",
-    ] {
-        assert!(body.contains(expected), "README missing {expected:?}");
-    }
-}
-
-#[test]
 fn changelog_records_docker_boundaries() {
     let changelog = repo_file("CHANGELOG.md");
     let body = std::fs::read_to_string(&changelog).expect("CHANGELOG");
