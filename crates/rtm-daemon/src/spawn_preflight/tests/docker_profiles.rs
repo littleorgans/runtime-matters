@@ -7,7 +7,7 @@ async fn docker_unavailable_fails_before_lifecycle_insert() {
 
     let error = check_with_docker_inspector(
         &state,
-        &request,
+        &mut request,
         &FakeDockerInspector {
             availability: Err("daemon socket refused"),
             user: Ok(Some("1000")),
@@ -31,10 +31,13 @@ async fn docker_tmux_pattern_a_passes_preflight() {
     let mut request = tmux_request(Uuid::now_v7(), false);
     request.isolation = docker_profile(None);
 
-    let response =
-        check_with_docker_inspector(&state, &request, &FakeDockerInspector::available_non_root())
-            .await
-            .expect("docker tmux target should pass preflight");
+    let response = check_with_docker_inspector(
+        &state,
+        &mut request,
+        &FakeDockerInspector::available_non_root(),
+    )
+    .await
+    .expect("docker tmux target should pass preflight");
 
     assert!(response.is_none(), "tmux Docker attach returned conflict");
 }
@@ -75,7 +78,7 @@ async fn accepted_docker_profiles_probe_daemon_availability() {
 
         let response = check_with_docker_inspector(
             &state,
-            &request,
+            &mut request,
             &FakeDockerInspector::available_non_root(),
         )
         .await

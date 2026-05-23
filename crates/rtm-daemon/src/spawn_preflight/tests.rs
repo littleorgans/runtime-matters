@@ -5,8 +5,9 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use chrono::Utc;
 use lilo_rm_core::{
-    HeadlessSpawnTarget, IsolationPolicy, IsolationProfile, Lifecycle, RuntimeKind,
-    RuntimeResponse, ShimReady, SpawnRequest, SpawnTarget, TmuxSpawnTarget, WatcherCounts,
+    HeadlessSpawnTarget, IsolationPolicy, IsolationProfile, LaunchEnv, LaunchSpec, Lifecycle,
+    MountSpec, RuntimeKind, RuntimeResponse, ShimReady, SpawnRequest, SpawnTarget, TmuxSpawnTarget,
+    WatcherCounts,
 };
 use rtm_store::{LifecycleStore, StoreConfig};
 use uuid::Uuid;
@@ -19,5 +20,6 @@ use crate::server::{DaemonConfig, ServerState};
 include!("tests/helpers.rs");
 include!("tests/conflicts.rs");
 include!("tests/docker_profiles.rs");
+include!("tests/mounts.rs");
 include!("tests/image_user.rs");
 include!("tests/image_availability.rs");

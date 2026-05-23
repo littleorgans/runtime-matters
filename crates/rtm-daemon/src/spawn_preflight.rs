@@ -1,9 +1,13 @@
-use std::sync::Arc;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use lilo_rm_core::{
-    IsolationPolicy, IsolationProfile, KillRequest, RuntimeResponse, RuntimeSignal,
-    SpawnConflictKind, SpawnConflictPayload, SpawnRequest,
+    IsolationPolicy, IsolationProfile, KillRequest, LaunchEnv, MountSpec, RuntimeResponse,
+    RuntimeSignal, SpawnConflictKind, SpawnConflictPayload, SpawnRequest, claude_path_shaped_env,
 };
 
 use crate::server::ServerState;
@@ -14,14 +18,14 @@ use crate::{
 
 pub(crate) async fn check(
     state: &Arc<ServerState>,
-    request: &SpawnRequest,
+    request: &mut SpawnRequest,
 ) -> Result<Option<RuntimeResponse>> {
     check_with_docker_inspector(state, request, &DockerCliInspector).await
 }
 
 async fn check_with_docker_inspector(
     state: &Arc<ServerState>,
-    request: &SpawnRequest,
+    request: &mut SpawnRequest,
     docker: &impl DockerImageInspector,
 ) -> Result<Option<RuntimeResponse>> {
     check_isolation_policy(state, request, docker).await?;
@@ -55,20 +59,23 @@ async fn check_with_docker_inspector(
 
 async fn check_isolation_policy(
     state: &Arc<ServerState>,
-    request: &SpawnRequest,
+    request: &mut SpawnRequest,
     docker: &impl DockerImageInspector,
 ) -> Result<()> {
-    match &request.isolation {
-        IsolationPolicy::Host => Ok(()),
+    match request.isolation.clone() {
+        IsolationPolicy::Host => {
+            warn_host_mounts(request);
+            Ok(())
+        }
         IsolationPolicy::Docker(profile) => {
-            check_docker_profile(state, request, profile, docker).await
+            check_docker_profile(state, request, &profile, docker).await
         }
     }
 }
 
 async fn check_docker_profile(
     state: &Arc<ServerState>,
-    request: &SpawnRequest,
+    request: &mut SpawnRequest,
     profile: &IsolationProfile,
     docker: &impl DockerImageInspector,
 ) -> Result<()> {
@@ -78,6 +85,7 @@ async fn check_docker_profile(
         | Some("own-init")
         | Some("allow-root")
         | Some("arm64-manifest-escape") => {
+            validate_docker_mounts(request)?;
             validate_docker_image_metadata_on_arch(
                 state,
                 request,
@@ -99,6 +107,203 @@ async fn check_docker_profile(
             "is not an accepted Docker profile",
         )),
     }
+}
+
+#[derive(Debug)]
+struct PreflightMount {
+    source: PathBuf,
+    target: String,
+}
+
+fn warn_host_mounts(request: &SpawnRequest) {
+    if !request.mounts.is_empty() {
+        tracing::warn!(
+            %request.session_id,
+            mount_count = request.mounts.len(),
+            "host isolation ignores declared spawn mounts"
+        );
+    }
+}
+
+fn validate_docker_mounts(request: &mut SpawnRequest) -> Result<()> {
+    let cwd_source = canonicalize_cwd(&request.cwd)?;
+    let cwd_target = normalize_container_path(&path_string(&request.cwd))
+        .ok_or_else(|| invalid_container_path("spawn cwd", &path_string(&request.cwd)))?;
+    let mounts = canonicalize_request_mounts(&request.cwd, &mut request.mounts)?;
+
+    reject_duplicate_mount_targets(&mounts)?;
+    reject_cwd_source_overlaps(&cwd_source, &mounts)?;
+    reject_cwd_target_overlaps(&cwd_target, &mounts)?;
+    reject_uncovered_path_envs(&request.env, &mounts)
+}
+
+fn canonicalize_request_mounts(
+    cwd: &Path,
+    mounts: &mut [MountSpec],
+) -> Result<Vec<PreflightMount>> {
+    mounts
+        .iter_mut()
+        .map(|mount| {
+            let source = canonicalize_mount_source(cwd, &mount.source)?;
+            let target =
+                normalize_container_path(&path_string(&mount.target)).ok_or_else(|| {
+                    invalid_container_path("docker mount target", &path_string(&mount.target))
+                })?;
+            mount.source = source.clone();
+            Ok(PreflightMount { source, target })
+        })
+        .collect()
+}
+
+fn reject_duplicate_mount_targets(mounts: &[PreflightMount]) -> Result<()> {
+    let mut counts = BTreeMap::<&str, usize>::new();
+
+    for mount in mounts {
+        *counts.entry(&mount.target).or_default() += 1;
+    }
+
+    for (target, count) in counts {
+        if count > 1 {
+            return Err(RuntimeFailure::protocol_mismatch(format!(
+                "docker mount target {target} is declared more than once"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn reject_cwd_source_overlaps(cwd_source: &Path, mounts: &[PreflightMount]) -> Result<()> {
+    for mount in mounts {
+        if host_paths_overlap(cwd_source, &mount.source) {
+            return Err(RuntimeFailure::protocol_mismatch(format!(
+                "docker mount source {} overlaps the cwd auto-mount source {}",
+                mount.source.display(),
+                cwd_source.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn reject_cwd_target_overlaps(cwd_target: &str, mounts: &[PreflightMount]) -> Result<()> {
+    for mount in mounts {
+        if container_paths_overlap(cwd_target, &mount.target) {
+            return Err(RuntimeFailure::protocol_mismatch(format!(
+                "docker mount target {} overlaps the cwd auto-mount target {cwd_target}",
+                mount.target
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn reject_uncovered_path_envs(env: &[LaunchEnv], mounts: &[PreflightMount]) -> Result<()> {
+    for entry in env.iter().filter_map(path_shaped_env) {
+        for path_value in entry.catalog.path_values(&entry.env.value) {
+            let normalized = normalize_container_path(path_value).ok_or_else(|| {
+                RuntimeFailure::protocol_mismatch(format!(
+                    "path-shaped env {}={} must be an absolute container path",
+                    entry.env.key, entry.env.value
+                ))
+            })?;
+            if !mounts
+                .iter()
+                .any(|mount| container_path_covers(&mount.target, &normalized))
+            {
+                return Err(RuntimeFailure::protocol_mismatch(format!(
+                    "path-shaped env {}={} is not covered by a declared Docker mount target; add --mount {}:{}:ro",
+                    entry.env.key, entry.env.value, path_value, path_value
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+struct PathEnvEntry<'a> {
+    env: &'a LaunchEnv,
+    catalog: &'static lilo_rm_core::PathShapedEnv,
+}
+
+fn path_shaped_env(env: &LaunchEnv) -> Option<PathEnvEntry<'_>> {
+    if !env.key.starts_with("CLAUDE_") {
+        return None;
+    }
+    claude_path_shaped_env(&env.key).map(|catalog| PathEnvEntry { env, catalog })
+}
+
+fn canonicalize_cwd(cwd: &Path) -> Result<PathBuf> {
+    cwd.canonicalize().map_err(|error| {
+        RuntimeFailure::protocol_mismatch(format!(
+            "spawn cwd {} could not be canonicalized for Docker mount preflight: {error}",
+            cwd.display()
+        ))
+    })
+}
+
+fn canonicalize_mount_source(cwd: &Path, source: &Path) -> Result<PathBuf> {
+    let absolute = if source.is_absolute() {
+        source.to_path_buf()
+    } else {
+        cwd.join(source)
+    };
+
+    absolute.canonicalize().map_err(|error| {
+        RuntimeFailure::protocol_mismatch(format!(
+            "docker mount source {} could not be canonicalized relative to cwd {}: {error}",
+            source.display(),
+            cwd.display()
+        ))
+    })
+}
+
+fn invalid_container_path(label: &str, value: &str) -> anyhow::Error {
+    RuntimeFailure::protocol_mismatch(format!(
+        "{label} {value} must be an absolute container path"
+    ))
+}
+
+fn host_paths_overlap(left: &Path, right: &Path) -> bool {
+    left == right || left.starts_with(right) || right.starts_with(left)
+}
+
+fn container_paths_overlap(left: &str, right: &str) -> bool {
+    container_path_covers(left, right) || container_path_covers(right, left)
+}
+
+fn container_path_covers(root: &str, value: &str) -> bool {
+    root == "/"
+        || value == root
+        || value
+            .strip_prefix(root)
+            .is_some_and(|tail| tail.starts_with('/'))
+}
+
+fn normalize_container_path(value: &str) -> Option<String> {
+    if !value.starts_with('/') {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    for part in value.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(part),
+        }
+    }
+
+    Some(if parts.is_empty() {
+        "/".to_owned()
+    } else {
+        format!("/{}", parts.join("/"))
+    })
+}
+
+fn path_string(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 async fn validate_docker_image_metadata_on_arch(

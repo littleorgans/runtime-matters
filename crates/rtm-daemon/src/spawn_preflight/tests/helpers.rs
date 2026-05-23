@@ -151,10 +151,13 @@ async fn assert_docker_profile_rejected(profile: &str, message: &str) {
     let mut request = headless_request(session_id, false);
     request.isolation = docker_profile(Some(profile));
 
-    let error =
-        check_with_docker_inspector(&state, &request, &FakeDockerInspector::available_non_root())
-            .await
-            .expect_err("docker profile should fail preflight");
+    let error = check_with_docker_inspector(
+        &state,
+        &mut request,
+        &FakeDockerInspector::available_non_root(),
+    )
+    .await
+    .expect_err("docker profile should fail preflight");
 
     assert_eq!(error.to_string(), message);
     assert_no_lifecycle_or_waiters(&state, session_id).await;
@@ -168,7 +171,7 @@ async fn assert_docker_image_user_rejected(user: Option<&'static str>) {
 
     let error = check_with_docker_inspector(
         &state,
-        &request,
+        &mut request,
         &FakeDockerInspector {
             availability: Ok(()),
             user: Ok(user),

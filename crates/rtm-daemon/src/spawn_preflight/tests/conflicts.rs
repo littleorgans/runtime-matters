@@ -15,7 +15,8 @@ async fn session_id_conflict_includes_terminal_lifecycle() {
         .await
         .expect("terminal");
 
-    let response = check(&state, &headless_request(session_id, false))
+    let mut request = headless_request(session_id, false);
+    let response = check(&state, &mut request)
         .await
         .expect("preflight")
         .expect("conflict");
@@ -29,7 +30,8 @@ async fn tmux_occupant_conflict_is_typed_without_force() {
     let occupant = Uuid::now_v7();
     insert_running_tmux(&state, occupant, 60_000).await;
 
-    let response = check(&state, &tmux_request(Uuid::now_v7(), false))
+    let mut request = tmux_request(Uuid::now_v7(), false);
+    let response = check(&state, &mut request)
         .await
         .expect("preflight")
         .expect("conflict");
@@ -44,7 +46,8 @@ async fn force_kills_tmux_occupant_and_allows_spawn() {
     let occupant = Uuid::now_v7();
     insert_running_tmux(&state, occupant, child.id()).await;
 
-    let response = check(&state, &tmux_request(Uuid::now_v7(), true))
+    let mut request = tmux_request(Uuid::now_v7(), true);
+    let response = check(&state, &mut request)
         .await
         .expect("preflight");
 

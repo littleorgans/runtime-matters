@@ -17,7 +17,7 @@ async fn root_image_user_is_allowed_by_profile_escape_hatch() {
 
     let response = check_with_docker_inspector(
         &state,
-        &request,
+        &mut request,
         &FakeDockerInspector {
             availability: Ok(()),
             user: Ok(Some("root")),
@@ -41,7 +41,7 @@ async fn root_image_user_is_allowed_by_config_escape_hatch() {
 
     let response = check_with_docker_inspector(
         &state,
-        &request,
+        &mut request,
         &FakeDockerInspector {
             availability: Ok(()),
             user: Ok(Some("0")),

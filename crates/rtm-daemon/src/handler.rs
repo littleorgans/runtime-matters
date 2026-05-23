@@ -100,8 +100,8 @@ fn error_context(rpc: &RuntimeRpc) -> RpcErrorContext {
 
 async fn handle_rpc_result(rpc: RuntimeRpc, state: Arc<ServerState>) -> Result<RuntimeResponse> {
     match rpc {
-        RuntimeRpc::Spawn { request } => {
-            if let Some(conflict) = spawn_preflight::check(&state, &request).await? {
+        RuntimeRpc::Spawn { mut request } => {
+            if let Some(conflict) = spawn_preflight::check(&state, &mut request).await? {
                 return Ok(conflict);
             }
             let launch = rtm_launchers::dispatch(&request.runtime)?.launch_spec(&request)?;

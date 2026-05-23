@@ -7,7 +7,7 @@ async fn image_unavailable_fails_before_lifecycle_insert() {
 
     let error = check_with_docker_inspector(
         &state,
-        &request,
+        &mut request,
         &FakeDockerInspector {
             availability: Ok(()),
             user: Err("pull access denied"),
