@@ -66,7 +66,17 @@ case "${1:-}" in
     printf 'fake-docker\n'
     ;;
   image)
-    printf '"1000"\n'
+    shift
+    [ "${1:-}" = "inspect" ] || exit 23
+    shift
+    shift
+    format=""
+    if [ "${1:-}" = "--format" ]; then format="$2"; fi
+    case "$format" in
+      "{{json .Config.User}}") printf '"1000"\n' ;;
+      "{{json .Architecture}}") printf '"arm64"\n' ;;
+      *) exit 23 ;;
+    esac
     ;;
   manifest)
     printf '{"manifests":[{"platform":{"architecture":"arm64"}}]}\n'

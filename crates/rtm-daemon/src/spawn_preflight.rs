@@ -336,13 +336,15 @@ async fn docker_image_arm64_available(
     docker: &impl DockerImageInspector,
     image: &str,
 ) -> Result<bool> {
-    match docker.arm64_manifest_available(image).await {
-        Ok(available) => Ok(available),
-        Err(manifest_error) => match docker.image_architecture(image).await {
-            Ok(arch) => Ok(arch == "arm64"),
-            Err(local_error) if is_docker_image_unavailable(&local_error) => Err(local_error),
-            Err(_) => Err(manifest_error),
-        },
+    match docker.image_architecture(image).await {
+        Ok(arch) => Ok(arch == "arm64"),
+        Err(local_error) if is_docker_image_unavailable(&local_error) => {
+            match docker.arm64_manifest_available(image).await {
+                Ok(available) => Ok(available),
+                Err(_) => Err(local_error),
+            }
+        }
+        Err(local_error) => Err(local_error),
     }
 }
 

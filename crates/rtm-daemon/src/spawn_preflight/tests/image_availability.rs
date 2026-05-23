@@ -35,14 +35,14 @@ async fn arm64_manifest_absence_fails_before_lifecycle_insert() {
 }
 
 #[tokio::test]
-async fn registry_failure_with_invalid_local_metadata_preserves_metadata_category() {
+async fn local_metadata_failure_returns_local_error_without_manifest_fallback() {
     assert_arm64_manifest_failure_with_architecture(
-        Err("registry authentication required"),
+        Ok(true),
         Err(FakeDockerImageError::MetadataUnavailable(
             "invalid architecture metadata",
         )),
         RuntimeFailure::DockerImageMetadataUnavailable {
-            message: "registry authentication required".to_owned(),
+            message: "invalid architecture metadata".to_owned(),
         },
     )
     .await;
@@ -50,13 +50,13 @@ async fn registry_failure_with_invalid_local_metadata_preserves_metadata_categor
 
 #[tokio::test]
 async fn local_only_arm64_image_passes_on_arm64_host() {
-    assert_arm64_manifest_success(Err("registry authentication required"), Ok("arm64")).await;
+    assert_arm64_manifest_success(Ok(false), Ok("arm64")).await;
 }
 
 #[tokio::test]
 async fn local_only_non_arm64_image_fails_on_arm64_host() {
     assert_arm64_manifest_failure_with_architecture(
-        Err("registry authentication required"),
+        Ok(true),
         Ok("amd64"),
         RuntimeFailure::DockerImageMetadataUnavailable {
             message: "docker image test-agent:latest does not publish an arm64 manifest".to_owned(),

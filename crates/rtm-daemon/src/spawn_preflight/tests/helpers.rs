@@ -271,7 +271,9 @@ async fn assert_arm64_manifest_failure(arm64_manifest: Result<bool, &'static str
             availability: Ok(()),
             user: Ok(Some("1000")),
             arm64_manifest,
-            image_architecture: Ok("arm64"),
+            image_architecture: Err(FakeDockerImageError::Unavailable(
+                "No such image: test-agent:latest",
+            )),
         },
         "aarch64",
     )
