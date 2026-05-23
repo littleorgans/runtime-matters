@@ -17,6 +17,7 @@ pub const RUNTIME_PROTOCOL_CAPABILITIES: &[RuntimeCapability] = &[
     RuntimeCapability::TmuxPaneSnapshot,
     RuntimeCapability::KillOutcomes,
     RuntimeCapability::SpawnConflicts,
+    RuntimeCapability::SpawnRequestMounts,
 ];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -43,6 +44,7 @@ pub fn version_info() -> VersionInfo {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum RuntimeCapability {
     /// Error responses expose stable machine readable codes.
     StructuredProtocolErrors,
@@ -66,6 +68,8 @@ pub enum RuntimeCapability {
     KillOutcomes,
     /// Spawn rejects session reuse and occupied tmux panes with typed conflicts.
     SpawnConflicts,
+    /// Spawn requests can carry declared host to container bind mounts.
+    SpawnRequestMounts,
 }
 
 impl RuntimeCapability {
@@ -82,6 +86,7 @@ impl RuntimeCapability {
             Self::TmuxPaneSnapshot => "tmux_pane_snapshot",
             Self::KillOutcomes => "kill_outcomes",
             Self::SpawnConflicts => "spawn_conflicts",
+            Self::SpawnRequestMounts => "spawn_request_mounts",
         }
     }
 }
@@ -108,6 +113,7 @@ impl FromStr for RuntimeCapability {
             "tmux_pane_snapshot" => Ok(Self::TmuxPaneSnapshot),
             "kill_outcomes" => Ok(Self::KillOutcomes),
             "spawn_conflicts" => Ok(Self::SpawnConflicts),
+            "spawn_request_mounts" => Ok(Self::SpawnRequestMounts),
             other => Err(format!("unknown runtime capability {other}")),
         }
     }
@@ -135,11 +141,22 @@ impl<'de> Deserialize<'de> for RuntimeCapability {
 
 #[cfg(test)]
 mod tests {
-    use super::{RUNTIME_PROTOCOL_VERSION, VersionInfo};
+    use super::{
+        RUNTIME_PROTOCOL_CAPABILITIES, RUNTIME_PROTOCOL_VERSION, RuntimeCapability, VersionInfo,
+    };
 
     #[test]
     fn protocol_version_advertises_v06_spawn_conflict_contract() {
         assert_eq!(RUNTIME_PROTOCOL_VERSION, "0.6");
         assert_eq!(VersionInfo::new("rtm", "git").protocol_version, "0.6");
+    }
+
+    #[test]
+    fn protocol_capabilities_advertise_spawn_request_mounts() {
+        assert!(RUNTIME_PROTOCOL_CAPABILITIES.contains(&RuntimeCapability::SpawnRequestMounts));
+        assert_eq!(
+            RuntimeCapability::SpawnRequestMounts.as_str(),
+            "spawn_request_mounts"
+        );
     }
 }

@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -74,6 +75,14 @@ pub struct TmuxAddressParseError(pub String);
 pub struct SpawnTargetParseError(pub String);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MountSpec {
+    pub source: PathBuf,
+    pub target: PathBuf,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub read_only: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SpawnRequest {
     pub session_id: Uuid,
     pub runtime: RuntimeKind,
@@ -83,7 +92,7 @@ pub struct SpawnRequest {
     pub image: Option<String>,
     #[serde(default)]
     pub env: Vec<LaunchEnv>,
-    pub cwd: std::path::PathBuf,
+    pub cwd: PathBuf,
     pub target: SpawnTarget,
     #[serde(default, skip_serializing_if = "is_false")]
     pub force: bool,
@@ -198,5 +207,27 @@ mod tests {
                 "accepted malformed spawn target {value}"
             );
         }
+    }
+
+    #[test]
+    fn mount_spec_round_trips_bind_paths_and_mode() {
+        let mount = MountSpec {
+            source: "/host/config".into(),
+            target: "/container/config".into(),
+            read_only: true,
+        };
+
+        let value = serde_json::to_value(&mount).expect("serialize");
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "source": "/host/config",
+                "target": "/container/config",
+                "read_only": true
+            })
+        );
+
+        let restored: MountSpec = serde_json::from_value(value).expect("deserialize");
+        assert_eq!(restored, mount);
     }
 }

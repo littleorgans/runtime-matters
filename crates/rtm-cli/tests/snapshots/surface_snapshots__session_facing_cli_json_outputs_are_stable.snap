@@ -87,7 +87,8 @@ expression: snapshot
         "events_long_poll",
         "tmux_pane_snapshot",
         "kill_outcomes",
-        "spawn_conflicts"
+        "spawn_conflicts",
+        "spawn_request_mounts"
       ],
       "git_sha": "[git_sha]",
       "protocol_version": "0.6",
@@ -195,7 +196,8 @@ expression: snapshot
       "events_long_poll",
       "tmux_pane_snapshot",
       "kill_outcomes",
-      "spawn_conflicts"
+      "spawn_conflicts",
+      "spawn_request_mounts"
     ],
     "git_sha": "[git_sha]",
     "protocol_version": "0.6",
