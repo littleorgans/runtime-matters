@@ -129,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn docker_tmux_policy_uses_host_shim_attach_wrapper() {
+    fn docker_tmux_policy_uses_direct_docker_run_for_host_shim() {
         let config = daemon_config();
         let backends = RuntimeBackends::new(&config);
         let mut request = spawn_request();
@@ -142,9 +142,13 @@ mod tests {
             .prepare_launch(&request, launch_spec())
             .expect("prepare launch");
 
-        assert_eq!(launch.argv[0], "/bin/sh");
-        assert!(launch.argv[2].contains("'run'"));
-        assert!(launch.argv[2].contains(" attach "));
+        assert!(launch.argv[0].ends_with("docker"));
+        assert_eq!(launch.argv[1], "run");
+        assert!(launch.argv.contains(&"-i".to_owned()));
+        assert!(launch.argv.contains(&"-t".to_owned()));
+        assert!(launch.argv.contains(&"--sig-proxy=false".to_owned()));
+        assert!(!launch.argv.contains(&"-d".to_owned()));
+        assert!(!launch.argv.iter().any(|arg| arg.contains("attach")));
     }
 
     #[test]

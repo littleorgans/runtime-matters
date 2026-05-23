@@ -58,6 +58,16 @@ set -eu
 state="$(dirname "$0")/fake-docker-state"
 mkdir -p "$state"
 
+stream_container_output() {
+  name="$1"
+  touch "$state/$name.out"
+  tail -n +1 -f "$state/$name.out" &
+  tail_pid="$!"
+  pid="$(cat "$state/$name.pid")"
+  while kill -0 "$pid" 2>/dev/null; do sleep 0.05; done
+  kill "$tail_pid" 2>/dev/null || true
+}
+
 case "${1:-}" in
   --version)
     printf 'Docker version 27.0.0\n'
@@ -86,13 +96,15 @@ case "${1:-}" in
     name=""
     image=""
     env_values=""
+    detached=0
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --name) name="$2"; shift 2 ;;
         --env) env_values="${env_values}${2}
 "; shift 2 ;;
         --label|--mount|--workdir) shift 2 ;;
-        --rm|-d|-i|-t|--init) shift ;;
+        -d) detached=1; shift ;;
+        --rm|-i|-t|--init|--sig-proxy=false) shift ;;
         --*) shift ;;
         *) image="$1"; shift; break ;;
       esac
@@ -112,7 +124,11 @@ EOF
     nohup "$command" "$@" > "$state/$name.out" 2>&1 < /dev/null &
     printf '%s\n' "$!" > "$state/$name.pid"
     printf '%s' "$env_values" > "$state/$name.env"
-    printf '%s\n' "$name"
+    if [ "$detached" = 1 ]; then
+      printf '%s\n' "$name"
+    else
+      stream_container_output "$name"
+    fi
     ;;
   inspect)
     shift
@@ -143,12 +159,7 @@ EOF
       esac
     done
     name="$1"
-    touch "$state/$name.out"
-    tail -n +1 -f "$state/$name.out" &
-    tail_pid="$!"
-    pid="$(cat "$state/$name.pid")"
-    while kill -0 "$pid" 2>/dev/null; do sleep 0.05; done
-    kill "$tail_pid" 2>/dev/null || true
+    stream_container_output "$name"
     ;;
   container)
     name="$3"
