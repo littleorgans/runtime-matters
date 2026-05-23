@@ -1,18 +1,21 @@
 mod common;
 
 use std::io::BufReader;
-use std::os::unix::net::UnixStream;
-use std::time::Duration;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use common::{
     FAKE_RUNTIME_READY, RtmHarness, output_stderr, output_stdout, spawn_ok, spawn_output_ok,
     wait_for_log, wait_for_status,
 };
 use lilo_rm_core::{
-    ErrorCode, HeadlessSpawnTarget, LaunchEnv, NudgeFailureReason, NudgeOutcome, NudgePayload,
-    NudgeRequest, NudgeResponse, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest,
-    SpawnTarget, ValidateTargetOutcome, ValidateTargetPayload, ValidateTargetRequest,
-    ValidateTargetResponse, read_json_line_blocking, write_json_line_blocking,
+    ErrorCode, HeadlessSpawnTarget, IsolationPolicy, IsolationProfile, LaunchEnv, MountSpec,
+    NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeKind,
+    RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget, ValidateTargetOutcome,
+    ValidateTargetPayload, ValidateTargetRequest, ValidateTargetResponse, read_json_line_blocking,
+    write_json_line_blocking,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -192,6 +195,73 @@ fn headless_spawn_env_flag_forwards_caller_explicit_duplicate_and_empty_values()
     assert!(stdout.contains("CLAUDE_CODE_DUP=second\n"), "{stdout}");
     assert!(!stdout.contains("CLAUDE_CODE_DUP=first\n"), "{stdout}");
     assert!(stdout.contains("CLAUDE_CODE_EMPTY=\n"), "{stdout}");
+}
+
+#[test]
+fn docker_spawn_mount_flag_forwards_mounts_in_declaration_order() {
+    let session_id = Uuid::now_v7();
+    let mut command = spawn_capture_command(session_id);
+    command
+        .arg("--isolation")
+        .arg("docker")
+        .arg("--mount")
+        .arg("/host/path:/container/path")
+        .arg("--mount")
+        .arg("/host/readonly:/container/readonly:ro")
+        .arg("--mount")
+        .arg("./local-config:/container/local:rw");
+
+    let (request, _output) = capture_spawn_request(command);
+
+    assert_eq!(request.session_id, session_id);
+    assert_eq!(
+        request.isolation,
+        IsolationPolicy::Docker(IsolationProfile { name: None })
+    );
+    assert_eq!(
+        request.mounts,
+        vec![
+            MountSpec {
+                source: "/host/path".into(),
+                target: "/container/path".into(),
+                read_only: true,
+            },
+            MountSpec {
+                source: "/host/readonly".into(),
+                target: "/container/readonly".into(),
+                read_only: true,
+            },
+            MountSpec {
+                source: "./local-config".into(),
+                target: "/container/local".into(),
+                read_only: false,
+            },
+        ]
+    );
+}
+
+#[test]
+fn docker_spawn_mount_flag_expands_leading_tilde_source() {
+    let session_id = Uuid::now_v7();
+    let mut command = spawn_capture_command(session_id);
+    command
+        .arg("--isolation")
+        .arg("docker")
+        .arg("--mount")
+        .arg("~/foo:/container/path")
+        .env_clear()
+        .env("HOME", "/host/home");
+
+    let (request, _output) = capture_spawn_request(command);
+
+    assert_eq!(
+        request.mounts,
+        vec![MountSpec {
+            source: "/host/home/foo".into(),
+            target: "/container/path".into(),
+            read_only: true,
+        }]
+    );
 }
 
 #[test]
@@ -433,6 +503,67 @@ fn wait_for_log_contains(path: &std::path::Path, expected: &str) -> String {
             path.display()
         )
     })
+}
+
+fn spawn_capture_command(session_id: Uuid) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_rtm"));
+    command
+        .arg("spawn")
+        .arg("--runtime")
+        .arg("claude")
+        .arg("--session-id")
+        .arg(session_id.to_string())
+        .arg("--target")
+        .arg("headless");
+    command
+}
+
+fn capture_spawn_request(mut command: Command) -> (SpawnRequest, std::process::Output) {
+    let temp = tempfile::TempDir::new().expect("temp dir");
+    let socket_path = temp.path().join("rtm.sock");
+    let listener = UnixListener::bind(&socket_path).expect("bind capture socket");
+    listener
+        .set_nonblocking(true)
+        .expect("nonblocking capture socket");
+    let handle = thread::spawn(move || accept_spawn_request(listener));
+
+    let output = command
+        .env("RTM_SOCKET_PATH", &socket_path)
+        .output()
+        .expect("spawn client");
+    let request = handle.join().expect("capture thread");
+    (request, output)
+}
+
+fn accept_spawn_request(listener: UnixListener) -> SpawnRequest {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match listener.accept() {
+            Ok((stream, _addr)) => return read_spawn_request(stream),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                assert!(
+                    Instant::now() <= deadline,
+                    "rtm did not connect to capture socket"
+                );
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => panic!("accept capture socket: {error}"),
+        }
+    }
+}
+
+fn read_spawn_request(stream: UnixStream) -> SpawnRequest {
+    let mut reader = BufReader::new(stream);
+    let rpc: RuntimeRpc = read_json_line_blocking(&mut reader).expect("read captured request");
+    write_json_line_blocking(
+        reader.get_mut(),
+        &RuntimeResponse::error(ErrorCode::SpawnConflict, "captured spawn request"),
+    )
+    .expect("write captured response");
+    let RuntimeRpc::Spawn { request } = rpc else {
+        panic!("unexpected captured rpc: {rpc:?}");
+    };
+    request
 }
 
 fn request_raw(harness: &RtmHarness, rpc: RuntimeRpc) -> RuntimeResponse {
