@@ -15,6 +15,17 @@
 * Docker support covers headless execution and host tmux attach behavior. Multiplexers inside the container, Kubernetes, SandboxClaim, injected sidecars, reconnecting PTY, credential volume management, first class firewall UX, privileged execution, and aggressive capability hardening remain out of scope.
 * `rtm doctor --format json` no longer reports the operator-facing internal jargon key `docker.pattern_e`. There were no other `docker.pattern_*` keys.
 
+## [0.3.0](https://github.com/littleorgans/runtime-matters/compare/v0.2.4...v0.3.0) (2026-05-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* RuntimeCapability adds SpawnRequestMounts, RuntimeCapability is now #[non_exhaustive], and SpawnRequest adds mounts.
+
+### Features
+
+* add Docker mount spec protocol with cwd overlap remap ([#48](https://github.com/littleorgans/runtime-matters/issues/48)) ([b5a2723](https://github.com/littleorgans/runtime-matters/commit/b5a27231e964308538fe7ba5a61c78be7e0c932b))
+
 ## [0.2.4](https://github.com/littleorgans/runtime-matters/compare/v0.2.3...v0.2.4) (2026-05-21)
 
 
