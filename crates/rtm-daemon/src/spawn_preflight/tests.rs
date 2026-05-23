@@ -439,6 +439,7 @@ fn headless_request(session_id: Uuid, force: bool) -> SpawnRequest {
         isolation: Default::default(),
         image: None,
         env: Vec::new(),
+        mounts: Vec::new(),
         cwd: "/tmp".into(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
         force,

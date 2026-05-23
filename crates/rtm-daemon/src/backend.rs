@@ -170,6 +170,7 @@ mod tests {
             isolation: IsolationPolicy::Host,
             image: None,
             env: vec![],
+            mounts: Vec::new(),
             cwd: PathBuf::from("/tmp"),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
             force: false,

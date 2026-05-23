@@ -21,6 +21,7 @@ pub async fn spawn_runtime(
                 isolation: Default::default(),
                 image: None,
                 env,
+                mounts: Vec::new(),
                 cwd,
                 target,
                 force: false,

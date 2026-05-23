@@ -98,6 +98,7 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
                     isolation: Default::default(),
                     image: None,
                     env: vec![LaunchEnv::new("RTM_TEST_STDIO_SENTINELS", "1")],
+                    mounts: Vec::new(),
                     cwd: harness.rtm_home().to_path_buf(),
                     target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
                     force: false,

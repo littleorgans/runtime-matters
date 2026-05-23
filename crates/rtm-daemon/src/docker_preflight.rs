@@ -323,6 +323,7 @@ mod tests {
             isolation: IsolationPolicy::Docker(Default::default()),
             image: None,
             env: Vec::new(),
+            mounts: Vec::new(),
             cwd: "/tmp".into(),
             target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
             force: false,

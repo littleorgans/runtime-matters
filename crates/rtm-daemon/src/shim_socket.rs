@@ -297,6 +297,7 @@ mod tests {
                 isolation: Default::default(),
                 image: None,
                 env: Vec::new(),
+                mounts: Vec::new(),
                 cwd: PathBuf::from("/tmp"),
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {
                     address: address.parse().expect("tmux address"),

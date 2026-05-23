@@ -92,6 +92,8 @@ pub struct SpawnRequest {
     pub image: Option<String>,
     #[serde(default)]
     pub env: Vec<LaunchEnv>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounts: Vec<MountSpec>,
     pub cwd: PathBuf,
     pub target: SpawnTarget,
     #[serde(default, skip_serializing_if = "is_false")]

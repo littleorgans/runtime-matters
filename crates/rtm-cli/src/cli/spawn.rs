@@ -60,6 +60,7 @@ pub async fn run(args: SpawnArgs) -> Result<()> {
             isolation,
             image,
             env,
+            mounts: Vec::new(),
             cwd,
             target,
             force,
