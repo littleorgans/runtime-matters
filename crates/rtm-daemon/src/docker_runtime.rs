@@ -2,7 +2,9 @@ use std::path::Path;
 use std::process::Command as StdCommand;
 
 use anyhow::Result;
-use lilo_rm_core::{IsolationProfile, KillOutcome, LaunchSpec, RuntimeSignal, SpawnTarget};
+use lilo_rm_core::{
+    IsolationProfile, KillOutcome, LaunchSpec, MountSpec, RuntimeSignal, SpawnTarget,
+};
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -14,6 +16,7 @@ pub(crate) fn docker_run_launch(
     profile: &IsolationProfile,
     image: &str,
     launch: &LaunchSpec,
+    mounts: &[MountSpec],
     target: &SpawnTarget,
 ) -> Result<LaunchSpec> {
     docker_argv::docker_run_launch(
@@ -21,6 +24,7 @@ pub(crate) fn docker_run_launch(
         profile,
         image,
         launch,
+        mounts,
         target,
         &docker_command(),
     )

@@ -83,6 +83,7 @@ impl RuntimeBackend for DockerRuntimeBackend<'_> {
             profile,
             self.config.docker_preflight.image_for(request)?,
             &launch,
+            &request.mounts,
             &request.target,
         )
     }
@@ -99,8 +100,8 @@ mod tests {
     use std::path::PathBuf;
 
     use lilo_rm_core::{
-        HeadlessSpawnTarget, IsolationPolicy, IsolationProfile, LaunchEnv, LaunchSpec, RuntimeKind,
-        SpawnRequest, SpawnTarget, TmuxAddress, TmuxSpawnTarget,
+        HeadlessSpawnTarget, IsolationPolicy, IsolationProfile, LaunchEnv, LaunchSpec, MountSpec,
+        RuntimeKind, SpawnRequest, SpawnTarget, TmuxAddress, TmuxSpawnTarget,
     };
     use uuid::Uuid;
 
@@ -144,6 +145,38 @@ mod tests {
         assert_eq!(launch.argv[0], "/bin/sh");
         assert!(launch.argv[2].contains("'run'"));
         assert!(launch.argv[2].contains(" attach "));
+    }
+
+    #[test]
+    fn docker_policy_forwards_request_mounts_to_docker_argv() {
+        let config = daemon_config();
+        let backends = RuntimeBackends::new(&config);
+        let mut request = spawn_request();
+        request.isolation = IsolationPolicy::Docker(IsolationProfile::default());
+        request.mounts = vec![MountSpec {
+            source: "/canonical/host/config".into(),
+            target: "/home/agent/.config".into(),
+            read_only: true,
+        }];
+
+        let launch = backends
+            .prepare_launch(&request, launch_spec())
+            .expect("prepare launch");
+
+        let image_index = launch
+            .argv
+            .iter()
+            .position(|arg| arg == "runtime-matters-agent:latest")
+            .expect("image");
+        let mount_index = launch
+            .argv
+            .iter()
+            .position(|arg| {
+                arg == "type=bind,source=/canonical/host/config,target=/home/agent/.config,readonly"
+            })
+            .expect("declared mount");
+
+        assert!(mount_index < image_index);
     }
 
     fn daemon_config() -> DaemonConfig {

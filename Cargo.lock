@@ -1288,6 +1288,7 @@ version = "0.2.4"
 dependencies = [
  "anyhow",
  "chrono",
+ "insta",
  "lilo-rm-core",
  "rtm-launchers",
  "rtm-paths",

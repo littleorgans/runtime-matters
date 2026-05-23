@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use lilo_rm_core::{IsolationProfile, LaunchEnv, LaunchSpec, SpawnTarget};
+use lilo_rm_core::{IsolationProfile, LaunchEnv, LaunchSpec, MountSpec, SpawnTarget};
 use uuid::Uuid;
 
 const RTM_DOCKER_CONTAINER_PREFIX: &str = "rtm";
@@ -16,6 +16,7 @@ pub(crate) fn docker_run_launch(
     profile: &IsolationProfile,
     image: &str,
     launch: &LaunchSpec,
+    mounts: &[MountSpec],
     target: &SpawnTarget,
     docker_command: &str,
 ) -> Result<LaunchSpec> {
@@ -26,6 +27,7 @@ pub(crate) fn docker_run_launch(
         profile,
         image,
         launch,
+        mounts,
         tmux_target,
         docker_command,
     );
@@ -50,11 +52,12 @@ fn docker_run_argv(
     profile: &IsolationProfile,
     image: &str,
     launch: &LaunchSpec,
+    mounts: &[MountSpec],
     tmux_target: bool,
     docker_command: &str,
 ) -> Vec<String> {
     let cwd = path_arg(&launch.cwd);
-    let mut argv = docker_run_base_argv(session_id, cwd, tmux_target, docker_command);
+    let mut argv = docker_run_base_argv(session_id, cwd, mounts, tmux_target, docker_command);
     if profile.name.as_deref() != Some("own-init") {
         argv.push("--init".to_owned());
     }
@@ -66,9 +69,11 @@ fn docker_run_argv(
 fn docker_run_base_argv(
     session_id: Uuid,
     cwd: String,
+    mounts: &[MountSpec],
     tty: bool,
     docker_command: &str,
 ) -> Vec<String> {
+    let cwd_mount = format!("type=bind,src={cwd},dst={cwd}");
     let mut argv = vec![
         docker_command.to_owned(),
         "run".to_owned(),
@@ -78,10 +83,10 @@ fn docker_run_base_argv(
         "--label".to_owned(),
         format!("{RTM_DOCKER_SESSION_LABEL}={session_id}"),
         "--mount".to_owned(),
-        format!("type=bind,src={cwd},dst={cwd}"),
-        "--workdir".to_owned(),
-        cwd,
+        cwd_mount,
     ];
+    append_mount_args(&mut argv, mounts);
+    argv.extend(["--workdir".to_owned(), cwd]);
     if tty {
         argv.extend(["-d".to_owned(), "-i".to_owned(), "-t".to_owned()]);
     }
@@ -132,6 +137,25 @@ fn append_env_args(argv: &mut Vec<String>, env: &[LaunchEnv]) {
     }
 }
 
+fn append_mount_args(argv: &mut Vec<String>, mounts: &[MountSpec]) {
+    for mount in mounts {
+        argv.push("--mount".to_owned());
+        argv.push(bind_mount_arg(mount));
+    }
+}
+
+fn bind_mount_arg(mount: &MountSpec) -> String {
+    let mut arg = format!(
+        "type=bind,source={},target={}",
+        path_arg(&mount.source),
+        path_arg(&mount.target)
+    );
+    if mount.read_only {
+        arg.push_str(",readonly");
+    }
+    arg
+}
+
 fn path_arg(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
@@ -140,7 +164,9 @@ fn path_arg(path: &Path) -> String {
 mod tests {
     use std::path::PathBuf;
 
-    use lilo_rm_core::{HeadlessSpawnTarget, IsolationProfile, LaunchEnv, LaunchSpec, SpawnTarget};
+    use lilo_rm_core::{
+        HeadlessSpawnTarget, IsolationProfile, LaunchEnv, LaunchSpec, MountSpec, SpawnTarget,
+    };
     use uuid::Uuid;
 
     use super::{container_name, docker_run_launch};
@@ -148,18 +174,17 @@ mod tests {
     #[test]
     fn docker_run_launch_wraps_runtime_without_losing_launcher_env() {
         let session_id = Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
-        let launch = LaunchSpec {
-            argv: vec!["claude".to_owned(), "--print".to_owned()],
-            env: vec![LaunchEnv::new("CLAUDE_CODE", "1")],
-            cwd: PathBuf::from("/workspace/project"),
-            shell_resume: None,
-        };
+        let launch = launch_spec(
+            &["claude", "--print"],
+            vec![LaunchEnv::new("CLAUDE_CODE", "1")],
+        );
 
         let spec = docker_run_launch(
             session_id,
             &IsolationProfile::default(),
             "runtime-matters-agent:latest",
             &launch,
+            &[],
             &SpawnTarget::Headless(HeadlessSpawnTarget {}),
             "docker",
         )
@@ -182,12 +207,7 @@ mod tests {
     #[test]
     fn own_init_profile_does_not_add_docker_init() {
         let session_id = Uuid::nil();
-        let launch = LaunchSpec {
-            argv: vec!["codex".to_owned()],
-            env: vec![LaunchEnv::new("CODEX", "1")],
-            cwd: PathBuf::from("/workspace/project"),
-            shell_resume: None,
-        };
+        let launch = launch_spec(&["codex"], vec![LaunchEnv::new("CODEX", "1")]);
 
         let spec = docker_run_launch(
             session_id,
@@ -196,6 +216,7 @@ mod tests {
             },
             "runtime-matters-agent:latest",
             &launch,
+            &[],
             &SpawnTarget::Headless(HeadlessSpawnTarget {}),
             "docker",
         )
@@ -207,18 +228,17 @@ mod tests {
     #[test]
     fn docker_run_launch_uses_container_command_for_host_resolved_launcher() {
         let host_launcher = "/Users/alphab/.local/bin/claude";
-        let launch = LaunchSpec {
-            argv: vec![host_launcher.to_owned(), "--print".to_owned()],
-            env: vec![LaunchEnv::new("CLAUDE_CODE", "1")],
-            cwd: PathBuf::from("/workspace/project"),
-            shell_resume: None,
-        };
+        let launch = launch_spec(
+            &[host_launcher, "--print"],
+            vec![LaunchEnv::new("CLAUDE_CODE", "1")],
+        );
 
         let spec = docker_run_launch(
             Uuid::nil(),
             &IsolationProfile::default(),
             "runtime-matters-agent:latest",
             &launch,
+            &[],
             &SpawnTarget::Headless(HeadlessSpawnTarget {}),
             "docker",
         )
@@ -247,18 +267,17 @@ mod tests {
     #[test]
     fn tmux_launch_starts_detached_container_and_attaches_without_detach_keys() {
         let session_id = Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap();
-        let launch = LaunchSpec {
-            argv: vec!["claude".to_owned(), "--dangerously-skip".to_owned()],
-            env: vec![LaunchEnv::new("CLAUDE_CODE", "1")],
-            cwd: PathBuf::from("/workspace/project"),
-            shell_resume: None,
-        };
+        let launch = launch_spec(
+            &["claude", "--dangerously-skip"],
+            vec![LaunchEnv::new("CLAUDE_CODE", "1")],
+        );
 
         let spec = docker_run_launch(
             session_id,
             &IsolationProfile::default(),
             "runtime-matters-agent:latest",
             &launch,
+            &[],
             &"tmux:rtm:0.1".parse::<SpawnTarget>().expect("tmux target"),
             "docker",
         )
@@ -276,18 +295,17 @@ mod tests {
 
     #[test]
     fn shell_quote_preserves_single_quotes_in_docker_args() {
-        let launch = LaunchSpec {
-            argv: vec!["claude".to_owned(), "it's-safe".to_owned()],
-            env: vec![LaunchEnv::new("RTM_QUOTE", "it's-safe")],
-            cwd: PathBuf::from("/workspace/project"),
-            shell_resume: None,
-        };
+        let launch = launch_spec(
+            &["claude", "it's-safe"],
+            vec![LaunchEnv::new("RTM_QUOTE", "it's-safe")],
+        );
 
         let spec = docker_run_launch(
             Uuid::nil(),
             &IsolationProfile::default(),
             "runtime-matters-agent:latest",
             &launch,
+            &[],
             &"tmux:rtm:0.1".parse::<SpawnTarget>().expect("tmux target"),
             "docker",
         )
@@ -295,5 +313,66 @@ mod tests {
 
         assert!(spec.argv[2].contains("'RTM_QUOTE=it'\\''s-safe'"));
         assert!(spec.argv[2].contains("'it'\\''s-safe'"));
+    }
+
+    #[test]
+    fn docker_run_launch_emits_declared_mounts_in_order() {
+        let launch = launch_spec(&["claude"], vec![]);
+        let mounts = vec![
+            MountSpec {
+                source: "/canonical/host/claude".into(),
+                target: "/home/agent/.claude".into(),
+                read_only: true,
+            },
+            MountSpec {
+                source: "/canonical/host/cache".into(),
+                target: "/tmp/claude-cache".into(),
+                read_only: false,
+            },
+        ];
+
+        let spec = docker_run_launch(
+            Uuid::nil(),
+            &IsolationProfile::default(),
+            "runtime-matters-agent:latest",
+            &launch,
+            &mounts,
+            &SpawnTarget::Headless(HeadlessSpawnTarget {}),
+            "docker",
+        )
+        .expect("docker launch");
+
+        let cwd_mount_index = spec
+            .argv
+            .iter()
+            .position(|arg| arg == "type=bind,src=/workspace/project,dst=/workspace/project")
+            .expect("cwd mount");
+        let image_index = spec
+            .argv
+            .iter()
+            .position(|arg| arg == "runtime-matters-agent:latest")
+            .expect("image");
+        let declared_mounts = &spec.argv[cwd_mount_index + 1..cwd_mount_index + 5];
+        assert!(cwd_mount_index < image_index);
+        assert_eq!(
+            declared_mounts,
+            [
+                "--mount",
+                "type=bind,source=/canonical/host/claude,target=/home/agent/.claude,readonly",
+                "--mount",
+                "type=bind,source=/canonical/host/cache,target=/tmp/claude-cache",
+            ]
+        );
+        assert!(cwd_mount_index + declared_mounts.len() < image_index);
+        insta::assert_debug_snapshot!(spec.argv);
+    }
+
+    fn launch_spec(argv: &[&str], env: Vec<LaunchEnv>) -> LaunchSpec {
+        LaunchSpec {
+            argv: argv.iter().map(|arg| (*arg).to_owned()).collect(),
+            env,
+            cwd: PathBuf::from("/workspace/project"),
+            shell_resume: None,
+        }
     }
 }
