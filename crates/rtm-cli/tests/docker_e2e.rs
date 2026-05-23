@@ -45,6 +45,47 @@ fn real_docker_spawn_lifecycle_is_opt_in() {
     daemon.stop();
 }
 
+#[test]
+fn real_docker_spawn_remaps_workdir_when_mount_covers_cwd() {
+    if !opted_in() {
+        eprintln!("skipping real Docker E2E; set {E2E_ENV}=1 to run");
+        return;
+    }
+    if !docker_available() {
+        eprintln!("skipping real Docker E2E; docker CLI or daemon is unavailable");
+        return;
+    }
+
+    let session_id = Uuid::now_v7();
+    let container = format!("rtm-{session_id}");
+    let temp = TempDir::new().expect("temp dir");
+    let mount_source = temp.path().join("helioy");
+    let cwd = mount_source.join("littleorgans");
+    std::fs::create_dir_all(&cwd).expect("cwd");
+    let images = DockerImages::new(session_id);
+    let env = RtmEnv::new(temp.path());
+    build_base_image(&images, &workspace_root());
+    build_e2e_image(&images, temp.path());
+
+    let mut daemon = RtmDaemon::start(&env);
+    let _container_guard = ContainerGuard::new(container.clone());
+    spawn_docker_runtime_with_mount(
+        &env,
+        &session_id,
+        &images.e2e,
+        &cwd,
+        &mount_source,
+        "/workspace",
+    );
+
+    wait_for_container(&container);
+    assert_eq!(docker_workdir(&container), "/workspace/littleorgans");
+
+    kill_runtime(&env, &session_id);
+    wait_for_container_absent(&container);
+    daemon.stop();
+}
+
 fn opted_in() -> bool {
     std::env::var(E2E_ENV).as_deref() == Ok("1")
 }
@@ -131,6 +172,40 @@ fn spawn_docker_runtime(env: &RtmEnv, session_id: &Uuid, image: &str, cwd: &Path
     assert_success(output, "rtm spawn docker");
 }
 
+fn spawn_docker_runtime_with_mount(
+    env: &RtmEnv,
+    session_id: &Uuid,
+    image: &str,
+    cwd: &Path,
+    mount_source: &Path,
+    mount_target: &str,
+) {
+    let mount = format!("{}:{mount_target}:rw", mount_source.display());
+    let output = env
+        .rtm_command()
+        .args([
+            "spawn",
+            "--runtime",
+            "claude",
+            "--session-id",
+            &session_id.to_string(),
+            "--target",
+            "headless",
+            "--isolation",
+            "docker",
+            "--image",
+            image,
+            "--env",
+            "CLAUDE_CODE_OAUTH_TOKEN=e2e-token",
+            "--cwd",
+        ])
+        .arg(cwd)
+        .args(["--mount", &mount])
+        .output()
+        .expect("rtm spawn");
+    assert_success(output, "rtm spawn docker with cwd cover");
+}
+
 fn wait_for_container(container: &str) {
     wait_until(Duration::from_secs(30), || {
         container_present(container).then_some(())
@@ -166,6 +241,16 @@ fn docker_top(container: &str) -> String {
         .output()
         .expect("docker top");
     assert_success(output, "docker top")
+}
+
+fn docker_workdir(container: &str) -> String {
+    let output = Command::new("docker")
+        .args(["inspect", "--format"])
+        .arg("{{.Config.WorkingDir}}")
+        .arg(container)
+        .output()
+        .expect("docker inspect");
+    assert_success(output, "docker inspect").trim().to_owned()
 }
 
 fn kill_runtime(env: &RtmEnv, session_id: &Uuid) {

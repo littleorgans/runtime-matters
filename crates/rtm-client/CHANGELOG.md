@@ -2,6 +2,19 @@
 
 All notable changes documented here.
 
+## [0.7.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.6.3...lilo-rm-client-v0.7.0) - 2026-05-23
+
+### Features
+
+- move the client contract to the mount-capable `lilo-rm-core` release
+
+### Breaking Changes
+
+- `RuntimeCapability` adds `SpawnRequestMounts` for spawn request mounts. Downstream exhaustive matches must handle the new variant.
+- `RuntimeCapability` is now `#[non_exhaustive]`. Downstream matches must include a wildcard arm.
+- `SpawnRequest` adds the `mounts` field. Downstream positional construction sites must pass declared mounts or `Vec::new()`.
+- session-matters tracks consumption in ALP-2798.
+
 ## [0.6.2](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.6.1...lilo-rm-client-v0.6.2) - 2026-05-21
 
 ### Miscellaneous

@@ -124,9 +124,13 @@ attaches the existing host tmux pane to it. Closing the pane ends the
 attach path; the container stays managed by the Docker backend until
 runtime exit or an explicit kill.
 
-`/workspace` is the canonical workspace path inside the container. The
-backend bind mounts the spawn cwd at `/workspace` and sets it as the
-container workdir.
+Docker spawns keep the requested cwd as the container workdir. The backend
+bind mounts the spawn cwd at the same absolute path inside the container and
+passes that same path as `--workdir` by default. An explicit `--mount` whose
+host source equals the spawn cwd or is its ancestor suppresses that automatic
+cwd bind. In that case `--workdir` is remapped under the explicit mount target.
+When multiple explicit mounts cover the cwd, the longest unique source prefix
+wins; equal longest matches are rejected.
 
 ### Image Contract
 
@@ -152,7 +156,9 @@ Images used with `rtm` must satisfy this contract:
 - Runtime binary: install the runtime executable on `PATH`. `rtm` passes
   the runtime command directly (for example `claude`) and does not inject
   it into the image.
-- Workspace: create `/workspace` and make it writable by the runtime user.
+- Working directory: support arbitrary absolute workdir paths selected by
+  `rtm spawn --cwd`. `rtm` mounts the selected host cwd at the same
+  container path and starts the runtime there.
 - Tools: include `git` and `/bin/sh`; prefer `/bin/bash`.
 - Exit codes: the runtime command exit code is the container exit code. Do
   not mask failures in shell wrappers.
@@ -171,19 +177,86 @@ startup environment default used only when a Docker spawn omits `--image`.
 
 ### Credentials
 
-Credential pass through is explicit. The daemon does not mount host
-credential directories. Operators pass environment variables through the
-spawn request and add explicit bind mounts in their own image or daemon
-profile configuration when a deployment owns that risk.
+Credential pass through is explicit. The daemon does not infer bind mounts
+from host paths in environment variables, and it does not rewrite
+environment values.
 
-```toml
-# Example operator profile fragment
-[docker.credentials]
-env = ["ANTHROPIC_API_KEY"]
-mounts = [
-  { source = "/secure/agent-credentials", target = "/run/agent-credentials", readonly = true },
-]
+The default Claude credential path inside the example image is
+`/home/rtm/.claude`. The common case needs no environment variable. Mount the
+chosen host config directory at that default container path:
+
+```bash
+rtm spawn \
+  --runtime claude \
+  --session-id 018f6e28-0000-7000-8000-000000000201 \
+  --target headless \
+  --isolation docker \
+  --mount ~/.claude:/home/rtm/.claude:ro
 ```
+
+No `CLAUDE_CONFIG_DIR` is needed because the container default already points
+at `/home/rtm/.claude`.
+
+#### Swapping Configs
+
+Use the mount source as the swap point. Multiple host config directories can
+target the same container path, so the runtime sees one stable location while
+the caller chooses the credential profile:
+
+```bash
+# Personal profile
+rtm spawn \
+  --runtime claude \
+  --session-id 018f6e28-0000-7000-8000-000000000202 \
+  --target headless \
+  --isolation docker \
+  --mount ~/.claude:/home/rtm/.claude:ro
+
+# Sandboxed profile
+rtm spawn \
+  --runtime claude \
+  --session-id 018f6e28-0000-7000-8000-000000000203 \
+  --target headless \
+  --isolation docker \
+  --mount ~/.claude-sandbox:/home/rtm/.claude:ro
+
+# Project profile
+rtm spawn \
+  --runtime claude \
+  --session-id 018f6e28-0000-7000-8000-000000000204 \
+  --target headless \
+  --isolation docker \
+  --mount ./.rtm/claude-config:/home/rtm/.claude:ro
+
+# Ephemeral profile
+rtm spawn \
+  --runtime claude \
+  --session-id 018f6e28-0000-7000-8000-000000000205 \
+  --target headless \
+  --isolation docker \
+  --mount /tmp/rtm-claude-config:/home/rtm/.claude:ro
+```
+
+#### Path Shaped Env Escape Hatch
+
+Use a path shaped `CLAUDE_*` environment variable only when the runtime must
+read a non default container path. The env value must be the exact container
+path, and a declared mount must target that same path:
+
+```bash
+rtm spawn \
+  --runtime claude \
+  --session-id 018f6e28-0000-7000-8000-000000000206 \
+  --target headless \
+  --isolation docker \
+  --env CLAUDE_CONFIG_DIR=/run/claude-config \
+  --mount /secure/claude-config:/run/claude-config:ro
+```
+
+Preflight rejects path shaped `CLAUDE_*` env values that are not covered by a
+matching mount target and reports the `--mount HOST:CONTAINER[:ro|:rw]`
+shape to add. The host source is always explicit in `--mount`; the env value
+is never treated as a host path by itself.
 
 ## Events Contract
 

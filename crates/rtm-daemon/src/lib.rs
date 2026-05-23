@@ -1,5 +1,6 @@
 mod backend;
 mod docker_argv;
+mod docker_mount_plan;
 pub mod docker_preflight;
 mod docker_runtime;
 mod doctor;

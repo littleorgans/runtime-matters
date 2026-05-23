@@ -11,7 +11,7 @@ pub use lifecycle::{
 pub use nudge::{NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse};
 pub use runtime::{RuntimeKind, RuntimeSignal, RuntimeSignalParseError};
 pub use spawn::{
-    HeadlessSpawnTarget, KillRequest, SpawnRequest, SpawnTarget, SpawnTargetParseError,
+    HeadlessSpawnTarget, KillRequest, MountSpec, SpawnRequest, SpawnTarget, SpawnTargetParseError,
     TmuxAddress, TmuxAddressParseError, TmuxSpawnTarget,
 };
 pub use validate_target::{ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse};

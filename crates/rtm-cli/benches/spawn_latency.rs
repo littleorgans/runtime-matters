@@ -30,6 +30,7 @@ fn main() {
                         isolation: Default::default(),
                         image: None,
                         env: Vec::new(),
+                        mounts: Vec::new(),
                         cwd: harness.rtm_home().to_path_buf(),
                         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
                         force: false,

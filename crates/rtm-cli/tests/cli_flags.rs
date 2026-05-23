@@ -38,6 +38,12 @@ fn spawn_help_documents_cwd_flag() {
     );
     assert!(stdout.contains("--image <IMAGE>"), "{stdout}");
     assert!(stdout.contains("--env <KEY[=VALUE]>"), "{stdout}");
+    assert!(
+        stdout.contains("--mount <HOST:CONTAINER[:ro|:rw]>"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("defaults to :ro"), "{stdout}");
+    assert!(stdout.contains("rejects --isolation host"), "{stdout}");
 }
 
 #[test]
@@ -91,18 +97,8 @@ fn spawn_cwd_flag_rejects_file_path_before_daemon_request() {
 
 #[test]
 fn spawn_isolation_flag_rejects_invalid_policy_before_daemon_request() {
-    let output = Command::new(env!("CARGO_BIN_EXE_rtm"))
-        .args([
-            "spawn",
-            "--runtime",
-            "claude",
-            "--session-id",
-            &Uuid::now_v7().to_string(),
-            "--target",
-            "headless",
-            "--isolation",
-            "sandbox",
-        ])
+    let output = spawn_command()
+        .args(["--isolation", "sandbox"])
         .output()
         .expect("rtm spawn");
 
@@ -117,18 +113,8 @@ fn spawn_isolation_flag_rejects_invalid_policy_before_daemon_request() {
 #[test]
 fn spawn_env_flag_rejects_missing_caller_env_before_daemon_request() {
     let key = format!("RTM_TEST_MISSING_{}", Uuid::now_v7().simple());
-    let output = Command::new(env!("CARGO_BIN_EXE_rtm"))
-        .args([
-            "spawn",
-            "--runtime",
-            "claude",
-            "--session-id",
-            &Uuid::now_v7().to_string(),
-            "--target",
-            "headless",
-            "--env",
-            &key,
-        ])
+    let output = spawn_command()
+        .args(["--env", &key])
         .env_remove(&key)
         .output()
         .expect("rtm spawn");
@@ -141,18 +127,79 @@ fn spawn_env_flag_rejects_missing_caller_env_before_daemon_request() {
     );
 }
 
+#[test]
+fn spawn_mount_flag_rejects_host_isolation_before_daemon_request() {
+    let output = spawn_with_mount("/host:/container");
+
+    assert!(!output.status.success(), "spawn unexpectedly succeeded");
+    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+    assert!(
+        stderr.contains("--mount is docker-only and cannot be used with --isolation host"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn spawn_mount_flag_rejects_malformed_values_before_daemon_request() {
+    for (value, expected) in [
+        ("/host", "mount value is missing ':'"),
+        (":/container", "mount host source cannot be empty"),
+        ("/host:", "mount container target cannot be empty"),
+        (
+            "/host:/container:bogus",
+            "unknown mount access mode bogus; expected ro or rw",
+        ),
+    ] {
+        let output = spawn_with_mount(value);
+
+        assert!(
+            !output.status.success(),
+            "spawn unexpectedly succeeded for {value}"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+        assert!(stderr.contains(expected), "{stderr}");
+    }
+}
+
+#[test]
+fn spawn_mount_flag_rejects_tilde_source_when_home_is_unset() {
+    let output = spawn_command()
+        .args(["--isolation", "docker", "--mount", "~/foo:/container/path"])
+        .env_remove("HOME")
+        .output()
+        .expect("rtm spawn");
+
+    assert!(!output.status.success(), "spawn unexpectedly succeeded");
+    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+    assert!(
+        stderr.contains("mount source uses '~' but HOME is not set"),
+        "{stderr}"
+    );
+}
+
+fn spawn_command() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_rtm"));
+    command
+        .arg("spawn")
+        .arg("--runtime")
+        .arg("claude")
+        .arg("--session-id")
+        .arg(Uuid::now_v7().to_string())
+        .arg("--target")
+        .arg("headless");
+    command
+}
+
+fn spawn_with_mount(value: &str) -> std::process::Output {
+    spawn_command()
+        .args(["--mount", value])
+        .output()
+        .expect("rtm spawn")
+}
+
 fn spawn_with_cwd(path: &std::path::Path) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_rtm"))
-        .args([
-            "spawn",
-            "--runtime",
-            "claude",
-            "--session-id",
-            &Uuid::now_v7().to_string(),
-            "--target",
-            "headless",
-            "--cwd",
-        ])
+    spawn_command()
+        .arg("--cwd")
         .arg(path)
         .output()
         .expect("rtm spawn")

@@ -197,6 +197,7 @@ fn spawn_request() -> SpawnRequest {
         isolation: Default::default(),
         image: None,
         env: Vec::new(),
+        mounts: Vec::new(),
         cwd: "/tmp/rtm".into(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
         force: false,

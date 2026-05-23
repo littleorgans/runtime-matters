@@ -51,6 +51,7 @@ fn launcher_status(launcher: &'static dyn lilo_rm_core::RuntimeLauncher) -> Laun
         isolation: Default::default(),
         image: None,
         env: Vec::new(),
+        mounts: Vec::new(),
         cwd: lilo_rm_core::launcher_probe_cwd(),
         target: SpawnTarget::Headless(HeadlessSpawnTarget {}),
         force: false,

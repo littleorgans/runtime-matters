@@ -1,27 +1,32 @@
-use std::sync::Arc;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use lilo_rm_core::{
-    IsolationPolicy, IsolationProfile, KillRequest, RuntimeResponse, RuntimeSignal,
-    SpawnConflictKind, SpawnConflictPayload, SpawnRequest,
+    IsolationPolicy, IsolationProfile, KillRequest, LaunchEnv, MountSpec, RuntimeResponse,
+    RuntimeSignal, SpawnConflictKind, SpawnConflictPayload, SpawnRequest, claude_path_shaped_env,
 };
 
 use crate::server::ServerState;
 use crate::{
+    docker_mount_plan::{self, DockerMount, container_path_covers, normalize_container_path},
     docker_preflight::{DockerCliInspector, DockerImageInspector},
     error::RuntimeFailure,
 };
 
 pub(crate) async fn check(
     state: &Arc<ServerState>,
-    request: &SpawnRequest,
+    request: &mut SpawnRequest,
 ) -> Result<Option<RuntimeResponse>> {
     check_with_docker_inspector(state, request, &DockerCliInspector).await
 }
 
 async fn check_with_docker_inspector(
     state: &Arc<ServerState>,
-    request: &SpawnRequest,
+    request: &mut SpawnRequest,
     docker: &impl DockerImageInspector,
 ) -> Result<Option<RuntimeResponse>> {
     check_isolation_policy(state, request, docker).await?;
@@ -55,20 +60,23 @@ async fn check_with_docker_inspector(
 
 async fn check_isolation_policy(
     state: &Arc<ServerState>,
-    request: &SpawnRequest,
+    request: &mut SpawnRequest,
     docker: &impl DockerImageInspector,
 ) -> Result<()> {
-    match &request.isolation {
-        IsolationPolicy::Host => Ok(()),
+    match request.isolation.clone() {
+        IsolationPolicy::Host => {
+            warn_host_mounts(request);
+            Ok(())
+        }
         IsolationPolicy::Docker(profile) => {
-            check_docker_profile(state, request, profile, docker).await
+            check_docker_profile(state, request, &profile, docker).await
         }
     }
 }
 
 async fn check_docker_profile(
     state: &Arc<ServerState>,
-    request: &SpawnRequest,
+    request: &mut SpawnRequest,
     profile: &IsolationProfile,
     docker: &impl DockerImageInspector,
 ) -> Result<()> {
@@ -78,6 +86,7 @@ async fn check_docker_profile(
         | Some("own-init")
         | Some("allow-root")
         | Some("arm64-manifest-escape") => {
+            validate_docker_mounts(request)?;
             validate_docker_image_metadata_on_arch(
                 state,
                 request,
@@ -99,6 +108,114 @@ async fn check_docker_profile(
             "is not an accepted Docker profile",
         )),
     }
+}
+
+fn warn_host_mounts(request: &SpawnRequest) {
+    if !request.mounts.is_empty() {
+        tracing::warn!(
+            %request.session_id,
+            mount_count = request.mounts.len(),
+            "host isolation ignores declared spawn mounts"
+        );
+    }
+}
+
+fn validate_docker_mounts(request: &mut SpawnRequest) -> Result<()> {
+    let cwd_source = canonicalize_cwd(&request.cwd)?;
+    request.cwd = cwd_source.clone();
+    let mounts = canonicalize_request_mounts(&request.cwd, &mut request.mounts)?;
+
+    reject_duplicate_mount_targets(&mounts)?;
+    docker_mount_plan::validate_cwd_mount_plan(&cwd_source, &mounts)?;
+    reject_uncovered_path_envs(&request.env, &mounts)
+}
+
+fn canonicalize_request_mounts(cwd: &Path, mounts: &mut [MountSpec]) -> Result<Vec<DockerMount>> {
+    mounts
+        .iter_mut()
+        .map(|mount| {
+            let source = canonicalize_mount_source(cwd, &mount.source)?;
+            mount.source = source.clone();
+            DockerMount::new(source, &mount.target)
+        })
+        .collect()
+}
+
+fn reject_duplicate_mount_targets(mounts: &[DockerMount]) -> Result<()> {
+    let mut counts = BTreeMap::<&str, usize>::new();
+
+    for mount in mounts {
+        *counts.entry(&mount.target).or_default() += 1;
+    }
+
+    for (target, count) in counts {
+        if count > 1 {
+            return Err(RuntimeFailure::protocol_mismatch(format!(
+                "docker mount target {target} is declared more than once"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn reject_uncovered_path_envs(env: &[LaunchEnv], mounts: &[DockerMount]) -> Result<()> {
+    for entry in env.iter().filter_map(path_shaped_env) {
+        for path_value in entry.catalog.path_values(&entry.env.value) {
+            let normalized = normalize_container_path(path_value).ok_or_else(|| {
+                RuntimeFailure::protocol_mismatch(format!(
+                    "path-shaped env {}={} must be an absolute container path",
+                    entry.env.key, entry.env.value
+                ))
+            })?;
+            if !mounts
+                .iter()
+                .any(|mount| container_path_covers(&mount.target, &normalized))
+            {
+                return Err(RuntimeFailure::protocol_mismatch(format!(
+                    "path-shaped env {}={} is not covered by a declared Docker mount target; add --mount {}:{}:ro",
+                    entry.env.key, entry.env.value, path_value, path_value
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+struct PathEnvEntry<'a> {
+    env: &'a LaunchEnv,
+    catalog: &'static lilo_rm_core::PathShapedEnv,
+}
+
+fn path_shaped_env(env: &LaunchEnv) -> Option<PathEnvEntry<'_>> {
+    if !env.key.starts_with("CLAUDE_") {
+        return None;
+    }
+    claude_path_shaped_env(&env.key).map(|catalog| PathEnvEntry { env, catalog })
+}
+
+fn canonicalize_cwd(cwd: &Path) -> Result<PathBuf> {
+    cwd.canonicalize().map_err(|error| {
+        RuntimeFailure::protocol_mismatch(format!(
+            "spawn cwd {} could not be canonicalized for Docker mount preflight: {error}",
+            cwd.display()
+        ))
+    })
+}
+
+fn canonicalize_mount_source(cwd: &Path, source: &Path) -> Result<PathBuf> {
+    let absolute = if source.is_absolute() {
+        source.to_path_buf()
+    } else {
+        cwd.join(source)
+    };
+
+    absolute.canonicalize().map_err(|error| {
+        RuntimeFailure::protocol_mismatch(format!(
+            "docker mount source {} could not be canonicalized relative to cwd {}: {error}",
+            source.display(),
+            cwd.display()
+        ))
+    })
 }
 
 async fn validate_docker_image_metadata_on_arch(
@@ -131,13 +248,15 @@ async fn docker_image_arm64_available(
     docker: &impl DockerImageInspector,
     image: &str,
 ) -> Result<bool> {
-    match docker.arm64_manifest_available(image).await {
-        Ok(available) => Ok(available),
-        Err(manifest_error) => match docker.image_architecture(image).await {
-            Ok(arch) => Ok(arch == "arm64"),
-            Err(local_error) if is_docker_image_unavailable(&local_error) => Err(local_error),
-            Err(_) => Err(manifest_error),
-        },
+    match docker.image_architecture(image).await {
+        Ok(arch) => Ok(arch == "arm64"),
+        Err(local_error) if is_docker_image_unavailable(&local_error) => {
+            match docker.arm64_manifest_available(image).await {
+                Ok(available) => Ok(available),
+                Err(_) => Err(local_error),
+            }
+        }
+        Err(local_error) => Err(local_error),
     }
 }
 

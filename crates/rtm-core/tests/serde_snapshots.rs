@@ -4,11 +4,11 @@ use lilo_rm_core::{
     CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
     DoctorPayload, ErrorCode, ErrorPayload, EventsPayload, EventsRequest, IsolationPolicy,
     IsolationProfile, KillByPidRequest, KillRequest, Lifecycle, LogAvailability,
-    LogsUnavailableReason, LostEvidence, McpBridgeRequest, NudgeFailureReason, NudgeOutcome,
-    NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeKind,
-    RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchPayload, ShimLaunchRequest,
-    SpawnConflictKind, SpawnConflictPayload, SpawnRequest, SpawnTarget, SpawnedPayload,
-    StatusRequest, TerminationEvidence, TmuxSpawnTarget, ValidateTargetOutcome,
+    LogsUnavailableReason, LostEvidence, McpBridgeRequest, MountSpec, NudgeFailureReason,
+    NudgeOutcome, NudgePayload, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit,
+    RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal, ShimExit, ShimLaunchPayload,
+    ShimLaunchRequest, SpawnConflictKind, SpawnConflictPayload, SpawnRequest, SpawnTarget,
+    SpawnedPayload, StatusRequest, TerminationEvidence, TmuxSpawnTarget, ValidateTargetOutcome,
     ValidateTargetPayload, ValidateTargetRequest, ValidateTargetResponse, VersionPayload,
 };
 use serde_json::json;
@@ -29,6 +29,7 @@ fn runtime_rpc_json_shapes_are_stable() {
                 isolation: Default::default(),
                 image: None,
                 env: Vec::new(),
+                mounts: Vec::new(),
                 cwd: "/tmp/rtm".into(),
                 target: SpawnTarget::Tmux(TmuxSpawnTarget {
                     address: "rtm:0.1".parse().expect("address"),
@@ -352,6 +353,7 @@ fn spawn_request_json_defaults_omitted_isolation_to_host() {
     .expect("spawn request");
 
     assert_eq!(request.isolation, IsolationPolicy::Host);
+    assert!(request.mounts.is_empty());
 }
 
 #[test]
@@ -369,6 +371,7 @@ fn spawn_request_json_round_trips_explicit_isolation_policies() {
             isolation,
             image: None,
             env: Vec::new(),
+            mounts: Vec::new(),
             cwd: "/tmp/rtm".into(),
             target: SpawnTarget::Headless(lilo_rm_core::HeadlessSpawnTarget {}),
             force: false,
@@ -379,6 +382,33 @@ fn spawn_request_json_round_trips_explicit_isolation_policies() {
 
         assert_eq!(actual, request);
     }
+}
+
+#[test]
+fn spawn_request_json_round_trips_mounts() {
+    let request = SpawnRequest {
+        session_id: session_id(),
+        runtime: RuntimeKind::Claude,
+        isolation: IsolationPolicy::Docker(IsolationProfile { name: None }),
+        image: Some("runtime-matters-agent:latest".to_owned()),
+        env: Vec::new(),
+        mounts: vec![MountSpec {
+            source: "/host/claude-config".into(),
+            target: "/container/claude-config".into(),
+            read_only: true,
+        }],
+        cwd: "/tmp/rtm".into(),
+        target: SpawnTarget::Headless(lilo_rm_core::HeadlessSpawnTarget {}),
+        force: false,
+        shell_resume: None,
+    };
+
+    insta::assert_json_snapshot!(request);
+
+    let json = serde_json::to_value(&request).expect("serialize");
+    let actual: SpawnRequest = serde_json::from_value(json).expect("deserialize");
+
+    assert_eq!(actual, request);
 }
 
 #[test]

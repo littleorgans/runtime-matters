@@ -22,6 +22,7 @@ pub mod error;
 pub mod isolation;
 pub mod launcher;
 pub mod mcp;
+pub mod path_shaped_envs;
 pub mod proto;
 pub mod spawn_context;
 pub mod tool_contracts;
@@ -47,6 +48,9 @@ pub use mcp::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION, McpBridgeRequest,
     McpBridgeResponse, json_rpc_error, json_rpc_failure, json_rpc_result, tool_error, tool_success,
 };
+pub use path_shaped_envs::{
+    CLAUDE_PATH_SHAPED_ENVS, PathShapedEnv, PathValueShape, claude_path_shaped_env,
+};
 pub use proto::{
     CapturePayload, CursorExpiredPayload, DoctorPayload, EVENT_LOG_RETENTION_MIN_AGE_SECS,
     EVENT_LOG_RETENTION_MIN_EVENTS, EVENT_WAIT_MAX_MS, ErrorPayload, EventBatch, EventCursor,
@@ -62,11 +66,12 @@ pub use spawn_context::{
     launcher_probe_cwd,
 };
 pub use types::{
-    HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, NudgeFailureReason,
-    NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit, RuntimeKind,
-    RuntimeSignal, RuntimeSignalParseError, ShimExit, ShimLaunchRequest, ShimReady, SpawnRequest,
-    SpawnTarget, SpawnTargetParseError, TerminationEvidence, TmuxAddress, TmuxAddressParseError,
-    TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse,
+    HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, MountSpec,
+    NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit,
+    RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit, ShimLaunchRequest, ShimReady,
+    SpawnRequest, SpawnTarget, SpawnTargetParseError, TerminationEvidence, TmuxAddress,
+    TmuxAddressParseError, TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetRequest,
+    ValidateTargetResponse,
 };
 pub use version::{
     RUNTIME_PROTOCOL_CAPABILITIES, RUNTIME_PROTOCOL_VERSION, RuntimeCapability, VersionInfo,

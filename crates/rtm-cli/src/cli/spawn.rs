@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use lilo_rm_client::RuntimeClient;
 use lilo_rm_core::{
-    IsolationPolicy, LaunchEnv, RuntimeKind, RuntimeResponse, SpawnRequest, SpawnTarget,
+    IsolationPolicy, LaunchEnv, MountSpec, RuntimeKind, RuntimeResponse, SpawnRequest, SpawnTarget,
     upsert_launch_env,
 };
 use std::path::{Path, PathBuf};
@@ -28,6 +28,13 @@ pub struct SpawnArgs {
     cwd: Option<PathBuf>,
     #[arg(long = "env", value_name = "KEY[=VALUE]")]
     env: Vec<String>,
+    #[arg(
+        long = "mount",
+        value_name = "HOST:CONTAINER[:ro|:rw]",
+        value_parser = parse_mount_spec,
+        help = "Docker-only bind mount; defaults to :ro and rejects --isolation host"
+    )]
+    mounts: Vec<MountSpec>,
     /// Pre-empt a live runtime that already occupies the requested tmux pane.
     ///
     /// Does not override session id reuse conflicts.
@@ -45,8 +52,10 @@ pub async fn run(args: SpawnArgs) -> Result<()> {
         image,
         cwd,
         env,
+        mounts,
         force,
     } = args;
+    reject_host_mounts(&isolation, &mounts)?;
     let cwd = spawn_cwd(cwd)?;
     let socket_path = crate::shared::socket_path()?;
     let env = spawn_env(&isolation, env)?;
@@ -60,6 +69,7 @@ pub async fn run(args: SpawnArgs) -> Result<()> {
             isolation,
             image,
             env,
+            mounts,
             cwd,
             target,
             force,
@@ -69,6 +79,63 @@ pub async fn run(args: SpawnArgs) -> Result<()> {
 
     output::emit(&output, &RuntimeResponse::Spawned(payload))?;
     Ok(())
+}
+
+fn reject_host_mounts(isolation: &IsolationPolicy, mounts: &[MountSpec]) -> Result<()> {
+    if isolation.is_host() && !mounts.is_empty() {
+        bail!("--mount is docker-only and cannot be used with --isolation host");
+    }
+    Ok(())
+}
+
+fn parse_mount_spec(value: &str) -> std::result::Result<MountSpec, String> {
+    let mut parts = value.split(':');
+    let source = parts.next().unwrap_or_default();
+    let Some(target) = parts.next() else {
+        return Err(
+            "mount value is missing ':' between host source and container target".to_owned(),
+        );
+    };
+    let mode = parts.next();
+    if let Some(extra) = parts.next() {
+        return Err(format!(
+            "unknown mount access mode {extra}; expected ro or rw"
+        ));
+    }
+    if source.is_empty() {
+        return Err("mount host source cannot be empty".to_owned());
+    }
+    if target.is_empty() {
+        return Err("mount container target cannot be empty".to_owned());
+    }
+    let read_only = match mode {
+        None | Some("ro") => true,
+        Some("rw") => false,
+        Some(other) => {
+            return Err(format!(
+                "unknown mount access mode {other}; expected ro or rw"
+            ));
+        }
+    };
+    Ok(MountSpec {
+        source: expand_mount_source(source)?,
+        target: PathBuf::from(target),
+        read_only,
+    })
+}
+
+fn expand_mount_source(source: &str) -> std::result::Result<PathBuf, String> {
+    if !source.starts_with('~') {
+        return Ok(PathBuf::from(source));
+    }
+    let home = std::env::var_os("HOME")
+        .ok_or_else(|| "mount source uses '~' but HOME is not set".to_owned())?;
+    let home = PathBuf::from(home);
+    if source == "~" {
+        return Ok(home);
+    }
+    let rest = source.strip_prefix("~/").unwrap_or(&source[1..]);
+    Ok(home.join(rest))
 }
 
 fn spawn_env(isolation: &IsolationPolicy, overrides: Vec<String>) -> Result<Vec<LaunchEnv>> {
