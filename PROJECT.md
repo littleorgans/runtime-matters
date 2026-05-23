@@ -126,8 +126,11 @@ runtime exit or an explicit kill.
 
 Docker spawns keep the requested cwd as the container workdir. The backend
 bind mounts the spawn cwd at the same absolute path inside the container and
-passes that same path as `--workdir`. The daemon does not remap the working
-tree to a fixed container path.
+passes that same path as `--workdir` by default. An explicit `--mount` whose
+host source equals the spawn cwd or is its ancestor suppresses that automatic
+cwd bind. In that case `--workdir` is remapped under the explicit mount target.
+When multiple explicit mounts cover the cwd, the longest unique source prefix
+wins; equal longest matches are rejected.
 
 ### Image Contract
 

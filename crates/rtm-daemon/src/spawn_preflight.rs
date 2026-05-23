@@ -12,6 +12,7 @@ use lilo_rm_core::{
 
 use crate::server::ServerState;
 use crate::{
+    docker_mount_plan::{self, DockerMount, container_path_covers, normalize_container_path},
     docker_preflight::{DockerCliInspector, DockerImageInspector},
     error::RuntimeFailure,
 };
@@ -109,12 +110,6 @@ async fn check_docker_profile(
     }
 }
 
-#[derive(Debug)]
-struct PreflightMount {
-    source: PathBuf,
-    target: String,
-}
-
 fn warn_host_mounts(request: &SpawnRequest) {
     if !request.mounts.is_empty() {
         tracing::warn!(
@@ -127,35 +122,26 @@ fn warn_host_mounts(request: &SpawnRequest) {
 
 fn validate_docker_mounts(request: &mut SpawnRequest) -> Result<()> {
     let cwd_source = canonicalize_cwd(&request.cwd)?;
-    let cwd_target = normalize_container_path(&path_string(&request.cwd))
-        .ok_or_else(|| invalid_container_path("spawn cwd", &path_string(&request.cwd)))?;
+    request.cwd = cwd_source.clone();
     let mounts = canonicalize_request_mounts(&request.cwd, &mut request.mounts)?;
 
     reject_duplicate_mount_targets(&mounts)?;
-    reject_cwd_source_overlaps(&cwd_source, &mounts)?;
-    reject_cwd_target_overlaps(&cwd_target, &mounts)?;
+    docker_mount_plan::validate_cwd_mount_plan(&cwd_source, &mounts)?;
     reject_uncovered_path_envs(&request.env, &mounts)
 }
 
-fn canonicalize_request_mounts(
-    cwd: &Path,
-    mounts: &mut [MountSpec],
-) -> Result<Vec<PreflightMount>> {
+fn canonicalize_request_mounts(cwd: &Path, mounts: &mut [MountSpec]) -> Result<Vec<DockerMount>> {
     mounts
         .iter_mut()
         .map(|mount| {
             let source = canonicalize_mount_source(cwd, &mount.source)?;
-            let target =
-                normalize_container_path(&path_string(&mount.target)).ok_or_else(|| {
-                    invalid_container_path("docker mount target", &path_string(&mount.target))
-                })?;
             mount.source = source.clone();
-            Ok(PreflightMount { source, target })
+            DockerMount::new(source, &mount.target)
         })
         .collect()
 }
 
-fn reject_duplicate_mount_targets(mounts: &[PreflightMount]) -> Result<()> {
+fn reject_duplicate_mount_targets(mounts: &[DockerMount]) -> Result<()> {
     let mut counts = BTreeMap::<&str, usize>::new();
 
     for mount in mounts {
@@ -172,32 +158,7 @@ fn reject_duplicate_mount_targets(mounts: &[PreflightMount]) -> Result<()> {
     Ok(())
 }
 
-fn reject_cwd_source_overlaps(cwd_source: &Path, mounts: &[PreflightMount]) -> Result<()> {
-    for mount in mounts {
-        if host_paths_overlap(cwd_source, &mount.source) {
-            return Err(RuntimeFailure::protocol_mismatch(format!(
-                "docker mount source {} overlaps the cwd auto-mount source {}",
-                mount.source.display(),
-                cwd_source.display()
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn reject_cwd_target_overlaps(cwd_target: &str, mounts: &[PreflightMount]) -> Result<()> {
-    for mount in mounts {
-        if container_paths_overlap(cwd_target, &mount.target) {
-            return Err(RuntimeFailure::protocol_mismatch(format!(
-                "docker mount target {} overlaps the cwd auto-mount target {cwd_target}",
-                mount.target
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn reject_uncovered_path_envs(env: &[LaunchEnv], mounts: &[PreflightMount]) -> Result<()> {
+fn reject_uncovered_path_envs(env: &[LaunchEnv], mounts: &[DockerMount]) -> Result<()> {
     for entry in env.iter().filter_map(path_shaped_env) {
         for path_value in entry.catalog.path_values(&entry.env.value) {
             let normalized = normalize_container_path(path_value).ok_or_else(|| {
@@ -255,55 +216,6 @@ fn canonicalize_mount_source(cwd: &Path, source: &Path) -> Result<PathBuf> {
             cwd.display()
         ))
     })
-}
-
-fn invalid_container_path(label: &str, value: &str) -> anyhow::Error {
-    RuntimeFailure::protocol_mismatch(format!(
-        "{label} {value} must be an absolute container path"
-    ))
-}
-
-fn host_paths_overlap(left: &Path, right: &Path) -> bool {
-    left == right || left.starts_with(right) || right.starts_with(left)
-}
-
-fn container_paths_overlap(left: &str, right: &str) -> bool {
-    container_path_covers(left, right) || container_path_covers(right, left)
-}
-
-fn container_path_covers(root: &str, value: &str) -> bool {
-    root == "/"
-        || value == root
-        || value
-            .strip_prefix(root)
-            .is_some_and(|tail| tail.starts_with('/'))
-}
-
-fn normalize_container_path(value: &str) -> Option<String> {
-    if !value.starts_with('/') {
-        return None;
-    }
-
-    let mut parts = Vec::new();
-    for part in value.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop();
-            }
-            _ => parts.push(part),
-        }
-    }
-
-    Some(if parts.is_empty() {
-        "/".to_owned()
-    } else {
-        format!("/{}", parts.join("/"))
-    })
-}
-
-fn path_string(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
 }
 
 async fn validate_docker_image_metadata_on_arch(

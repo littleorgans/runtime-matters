@@ -4,6 +4,8 @@ use anyhow::Result;
 use lilo_rm_core::{IsolationProfile, LaunchEnv, LaunchSpec, MountSpec, SpawnTarget};
 use uuid::Uuid;
 
+use crate::docker_mount_plan;
+
 const RTM_DOCKER_CONTAINER_PREFIX: &str = "rtm";
 const RTM_DOCKER_SESSION_LABEL: &str = "io.helioy.runtime-matters.session";
 
@@ -30,7 +32,7 @@ pub(crate) fn docker_run_launch(
         mounts,
         tmux_target,
         docker_command,
-    );
+    )?;
     argv.push(container_command(command));
     argv.extend(launch.argv.iter().skip(1).cloned());
 
@@ -50,25 +52,26 @@ fn docker_run_argv(
     mounts: &[MountSpec],
     tmux_target: bool,
     docker_command: &str,
-) -> Vec<String> {
-    let cwd = path_arg(&launch.cwd);
-    let mut argv = docker_run_base_argv(session_id, cwd, mounts, tmux_target, docker_command);
+) -> Result<Vec<String>> {
+    let mut argv =
+        docker_run_base_argv(session_id, &launch.cwd, mounts, tmux_target, docker_command)?;
     if profile.name.as_deref() != Some("own-init") {
         argv.push("--init".to_owned());
     }
     append_env_args(&mut argv, &launch.env);
     argv.push(image.to_owned());
-    argv
+    Ok(argv)
 }
 
 fn docker_run_base_argv(
     session_id: Uuid,
-    cwd: String,
+    cwd: &Path,
     mounts: &[MountSpec],
     tty: bool,
     docker_command: &str,
-) -> Vec<String> {
-    let cwd_mount = format!("type=bind,src={cwd},dst={cwd}");
+) -> Result<Vec<String>> {
+    let cwd_plan = docker_mount_plan::plan_cwd_mount(cwd, mounts)?;
+    let cwd = path_arg(cwd);
     let mut argv = vec![
         docker_command.to_owned(),
         "run".to_owned(),
@@ -77,11 +80,13 @@ fn docker_run_base_argv(
         container_name(session_id),
         "--label".to_owned(),
         format!("{RTM_DOCKER_SESSION_LABEL}={session_id}"),
-        "--mount".to_owned(),
-        cwd_mount,
     ];
+    if cwd_plan.auto_mount_cwd {
+        argv.push("--mount".to_owned());
+        argv.push(format!("type=bind,src={cwd},dst={cwd}"));
+    }
     append_mount_args(&mut argv, mounts);
-    argv.extend(["--workdir".to_owned(), cwd]);
+    argv.extend(["--workdir".to_owned(), cwd_plan.workdir]);
     if tty {
         argv.extend([
             "-i".to_owned(),
@@ -89,7 +94,7 @@ fn docker_run_base_argv(
             "--sig-proxy=false".to_owned(),
         ]);
     }
-    argv
+    Ok(argv)
 }
 
 fn container_command(command: &str) -> String {
@@ -349,6 +354,168 @@ mod tests {
         );
         assert!(cwd_mount_index + declared_mounts.len() < image_index);
         insta::assert_debug_snapshot!(spec.argv);
+    }
+
+    #[test]
+    fn explicit_mount_equal_to_cwd_suppresses_cwd_auto_mount() {
+        let launch = launch_spec(&["claude"], vec![]);
+        let mounts = vec![MountSpec {
+            source: "/workspace/project".into(),
+            target: "/project".into(),
+            read_only: false,
+        }];
+
+        let spec = docker_run_launch(
+            Uuid::nil(),
+            &IsolationProfile::default(),
+            "runtime-matters-agent:latest",
+            &launch,
+            &mounts,
+            &SpawnTarget::Headless(HeadlessSpawnTarget {}),
+            "docker",
+        )
+        .expect("docker launch");
+
+        assert!(
+            !spec
+                .argv
+                .contains(&"type=bind,src=/workspace/project,dst=/workspace/project".to_owned())
+        );
+        assert!(
+            spec.argv
+                .contains(&"type=bind,source=/workspace/project,target=/project".to_owned())
+        );
+        assert_eq!(workdir(&spec.argv), "/project");
+    }
+
+    #[test]
+    fn explicit_mount_ancestor_of_cwd_remaps_workdir() {
+        let launch = launch_spec(&["claude"], vec![]);
+        let mounts = vec![MountSpec {
+            source: "/workspace".into(),
+            target: "/container-workspace".into(),
+            read_only: false,
+        }];
+
+        let spec = docker_run_launch(
+            Uuid::nil(),
+            &IsolationProfile::default(),
+            "runtime-matters-agent:latest",
+            &launch,
+            &mounts,
+            &SpawnTarget::Headless(HeadlessSpawnTarget {}),
+            "docker",
+        )
+        .expect("docker launch");
+
+        assert!(
+            !spec
+                .argv
+                .contains(&"type=bind,src=/workspace/project,dst=/workspace/project".to_owned())
+        );
+        assert_eq!(workdir(&spec.argv), "/container-workspace/project");
+    }
+
+    #[test]
+    fn explicit_mount_descendant_of_cwd_is_rejected() {
+        let launch = launch_spec(&["claude"], vec![]);
+        let mounts = vec![MountSpec {
+            source: "/workspace/project/config".into(),
+            target: "/config".into(),
+            read_only: false,
+        }];
+
+        let error = docker_run_launch(
+            Uuid::nil(),
+            &IsolationProfile::default(),
+            "runtime-matters-agent:latest",
+            &launch,
+            &mounts,
+            &SpawnTarget::Headless(HeadlessSpawnTarget {}),
+            "docker",
+        )
+        .expect_err("descendant source should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("overlaps the cwd auto-mount source"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn multiple_cwd_covers_use_longest_source_prefix() {
+        let mut launch = launch_spec(&["claude"], vec![]);
+        launch.cwd = PathBuf::from("/workspace/project/subdir");
+        let mounts = vec![
+            MountSpec {
+                source: "/workspace".into(),
+                target: "/root".into(),
+                read_only: false,
+            },
+            MountSpec {
+                source: "/workspace/project".into(),
+                target: "/project".into(),
+                read_only: false,
+            },
+        ];
+
+        let spec = docker_run_launch(
+            Uuid::nil(),
+            &IsolationProfile::default(),
+            "runtime-matters-agent:latest",
+            &launch,
+            &mounts,
+            &SpawnTarget::Headless(HeadlessSpawnTarget {}),
+            "docker",
+        )
+        .expect("docker launch");
+
+        assert_eq!(workdir(&spec.argv), "/project/subdir");
+    }
+
+    #[test]
+    fn multiple_cwd_covers_with_equal_precedence_are_rejected() {
+        let launch = launch_spec(&["claude"], vec![]);
+        let mounts = vec![
+            MountSpec {
+                source: "/workspace".into(),
+                target: "/one".into(),
+                read_only: false,
+            },
+            MountSpec {
+                source: "/workspace".into(),
+                target: "/two".into(),
+                read_only: false,
+            },
+        ];
+
+        let error = docker_run_launch(
+            Uuid::nil(),
+            &IsolationProfile::default(),
+            "runtime-matters-agent:latest",
+            &launch,
+            &mounts,
+            &SpawnTarget::Headless(HeadlessSpawnTarget {}),
+            "docker",
+        )
+        .expect_err("equal cover precedence should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("multiple docker mount sources cover spawn cwd"),
+            "{error}"
+        );
+    }
+
+    fn workdir(argv: &[String]) -> &str {
+        let index = argv
+            .iter()
+            .position(|arg| arg == "--workdir")
+            .expect("workdir flag");
+        &argv[index + 1]
     }
 
     fn launch_spec(argv: &[&str], env: Vec<LaunchEnv>) -> LaunchSpec {

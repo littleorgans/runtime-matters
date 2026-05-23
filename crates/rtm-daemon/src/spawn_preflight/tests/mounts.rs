@@ -140,7 +140,7 @@ async fn docker_duplicate_mount_targets_are_rejected_after_normalization() {
 }
 
 #[tokio::test]
-async fn docker_mount_source_overlapping_cwd_auto_mount_is_rejected() {
+async fn docker_mount_source_descendant_of_cwd_is_rejected() {
     let layout = MountLayout::new();
     let state = test_state().await;
     let nested = layout.cwd.join("config");
@@ -163,10 +163,89 @@ async fn docker_mount_source_overlapping_cwd_auto_mount_is_rejected() {
 }
 
 #[tokio::test]
+async fn docker_mount_source_equal_to_cwd_suppresses_cwd_auto_mount() {
+    let layout = MountLayout::new();
+    let state = test_state().await;
+    let mut request = docker_request(&layout.cwd);
+    request.mounts.push(bind_mount(&layout.cwd, "/project"));
+
+    let response = check_with_docker_inspector(
+        &state,
+        &mut request,
+        &FakeDockerInspector::available_non_root(),
+    )
+    .await
+    .expect("cwd cover should pass");
+
+    assert!(response.is_none(), "preflight returned conflict");
+
+    let launch = RuntimeBackends::new(state.config())
+        .prepare_launch(&request, launch_spec(&request.cwd))
+        .expect("prepare launch");
+
+    assert!(!launch.argv.contains(&cwd_auto_mount_arg(&request.cwd)));
+    assert_eq!(workdir(&launch.argv), "/project");
+}
+
+#[tokio::test]
+async fn docker_mount_source_ancestor_of_cwd_remaps_workdir() {
+    let layout = MountLayout::new();
+    let state = test_state().await;
+    let root = layout.temp.path().join("repo");
+    let cwd = root.join("littleorgans");
+    std::fs::create_dir_all(&cwd).expect("cwd");
+    let mut request = docker_request(&cwd);
+    request.mounts.push(bind_mount(&root, "/workspace"));
+
+    let response = check_with_docker_inspector(
+        &state,
+        &mut request,
+        &FakeDockerInspector::available_non_root(),
+    )
+    .await
+    .expect("ancestor cover should pass");
+
+    assert!(response.is_none(), "preflight returned conflict");
+
+    let launch = RuntimeBackends::new(state.config())
+        .prepare_launch(&request, launch_spec(&request.cwd))
+        .expect("prepare launch");
+
+    assert!(!launch.argv.contains(&cwd_auto_mount_arg(&request.cwd)));
+    assert_eq!(workdir(&launch.argv), "/workspace/littleorgans");
+}
+
+#[tokio::test]
+async fn docker_multiple_cwd_covers_with_equal_precedence_are_rejected() {
+    let layout = MountLayout::new();
+    let state = test_state().await;
+    let mut request = docker_request(&layout.cwd);
+    request.mounts = vec![
+        bind_mount(&layout.cwd, "/one"),
+        bind_mount(&layout.cwd, "/two"),
+    ];
+
+    let error = check_with_docker_inspector(
+        &state,
+        &mut request,
+        &FakeDockerInspector::available_non_root(),
+    )
+    .await
+    .expect_err("equal precedence covers should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("multiple docker mount sources cover spawn cwd"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
 async fn docker_mount_target_overlapping_cwd_auto_mount_is_rejected() {
     let layout = MountLayout::new();
     let state = test_state().await;
-    let target = layout.cwd.join("config");
+    let target = layout.cwd.canonicalize().expect("canonical cwd").join("config");
     let mut request = docker_request(&layout.cwd);
     request.mounts.push(bind_mount(&layout.config, &path_text(&target)));
 
@@ -203,6 +282,38 @@ async fn docker_container_paths_are_normalized_without_host_filesystem_lookup() 
     .expect("container target comparison should be lexical");
 
     assert!(response.is_none(), "preflight returned conflict");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn docker_cwd_cover_uses_canonical_cwd_for_argv() {
+    let layout = MountLayout::new();
+    let state = test_state().await;
+    let real_root = layout.temp.path().join("real-root");
+    let real_cwd = real_root.join("project");
+    std::fs::create_dir_all(&real_cwd).expect("real cwd");
+    let link_root = layout.temp.path().join("link-root");
+    std::os::unix::fs::symlink(&real_root, &link_root).expect("symlink root");
+    let mut request = docker_request(&link_root.join("project"));
+    request.mounts.push(bind_mount(&real_root, "/workspace"));
+
+    check_with_docker_inspector(
+        &state,
+        &mut request,
+        &FakeDockerInspector::available_non_root(),
+    )
+    .await
+    .expect("preflight");
+
+    let canonical_cwd = real_cwd.canonicalize().expect("canonical cwd");
+    assert_eq!(request.cwd, canonical_cwd);
+
+    let launch = RuntimeBackends::new(state.config())
+        .prepare_launch(&request, launch_spec(&request.cwd))
+        .expect("prepare launch");
+
+    assert!(!launch.argv.contains(&cwd_auto_mount_arg(&canonical_cwd)));
+    assert_eq!(workdir(&launch.argv), "/workspace/project");
 }
 
 #[cfg(unix)]
@@ -303,4 +414,17 @@ fn launch_spec(cwd: &Path) -> LaunchSpec {
 
 fn path_text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+fn cwd_auto_mount_arg(cwd: &Path) -> String {
+    let cwd = path_text(cwd);
+    format!("type=bind,src={cwd},dst={cwd}")
+}
+
+fn workdir(argv: &[String]) -> &str {
+    let index = argv
+        .iter()
+        .position(|arg| arg == "--workdir")
+        .expect("workdir flag");
+    &argv[index + 1]
 }
