@@ -2,6 +2,12 @@
 
 All notable changes documented here.
 
+## [0.7.1](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.7.0...lilo-rm-core-v0.7.1) - 2026-05-24
+
+### Features
+
+- *(rtm-core)* expose MountSpec parser to consumers ([#50](https://github.com/littleorgans/runtime-matters/pull/50))
+
 ## [0.7.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.6.3...lilo-rm-core-v0.7.0) - 2026-05-23
 
 ### Features
