@@ -67,11 +67,11 @@ pub use spawn_context::{
 };
 pub use types::{
     HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, MountSpec,
-    NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit,
-    RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit, ShimLaunchRequest, ShimReady,
-    SpawnRequest, SpawnTarget, SpawnTargetParseError, TerminationEvidence, TmuxAddress,
-    TmuxAddressParseError, TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetRequest,
-    ValidateTargetResponse,
+    MountSpecParseError, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse,
+    RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit,
+    ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, SpawnTargetParseError,
+    TerminationEvidence, TmuxAddress, TmuxAddressParseError, TmuxSpawnTarget,
+    ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse, expand_mount_source,
 };
 pub use version::{
     RUNTIME_PROTOCOL_CAPABILITIES, RUNTIME_PROTOCOL_VERSION, RuntimeCapability, VersionInfo,
