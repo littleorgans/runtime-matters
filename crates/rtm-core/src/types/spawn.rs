@@ -74,12 +74,133 @@ pub struct TmuxAddressParseError(pub String);
 #[error("invalid spawn target {0}; expected headless or tmux:<session>:<window>.<pane>")]
 pub struct SpawnTargetParseError(pub String);
 
+/// Shared mount shape for spawn requests.
+///
+/// See this type's [`std::str::FromStr`] implementation for accepted syntax,
+/// access mode defaults, and host source expansion behavior.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MountSpec {
+    /// Host source path after parser expansion.
     pub source: PathBuf,
+    /// Container target path. The parser keeps this path literal.
     pub target: PathBuf,
+    /// Whether the mount is read only. The parser defaults this to `true`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub read_only: bool,
+}
+
+/// Error returned when a mount value cannot be parsed.
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum MountSpecParseError {
+    /// The value did not contain the required separator between host source and
+    /// container target.
+    #[error("mount value is missing ':' between host source and container target")]
+    MissingSeparator,
+    /// The host source field was empty.
+    #[error("mount host source cannot be empty")]
+    EmptySource,
+    /// The container target field was empty.
+    #[error("mount container target cannot be empty")]
+    EmptyTarget,
+    /// The access mode was neither `ro` nor `rw`, or another colon separated
+    /// field followed the mode.
+    #[error("unknown mount access mode {mode}; expected ro or rw")]
+    UnknownMode { mode: String },
+    /// The host source requested home expansion, but `HOME` was not set.
+    #[error("mount source uses '~' but HOME is not set")]
+    MissingHome,
+}
+
+/// Parses the public mount syntax used by CLI consumers.
+///
+/// Accepted values use `HOST:CONTAINER[:ro|:rw]`. The first field is the host
+/// source, the second is the container target, and the optional third field is
+/// the access mode. When the access mode is omitted, the mount is read only.
+/// `ro` maps to [`MountSpec::read_only`] as `true`; `rw` maps to `false`.
+///
+/// Source paths are expanded only for the host side. A source of `~` expands to
+/// `$HOME`, and `~/sub` expands below `$HOME`. A source that starts with another
+/// tilde form, such as `~foo`, is joined to `$HOME` after dropping the leading
+/// `~`; this existing fallback is preserved for compatibility. Container
+/// targets are kept literal, so a target starting with `~` is not expanded.
+///
+/// Values with four or more colon separated fields are rejected as
+/// [`MountSpecParseError::UnknownMode`]. This parser only decodes the shared
+/// mount shape. Host isolation checks, such as rejecting paths outside an
+/// allowed workspace, are enforced by CLI consumers before spawn submission.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// use lilo_rm_core::MountSpec;
+///
+/// let mount = "/host/config:/container/config:rw"
+///     .parse::<MountSpec>()
+///     .expect("mount spec should parse");
+///
+/// assert_eq!(mount.source, PathBuf::from("/host/config"));
+/// assert_eq!(mount.target, PathBuf::from("/container/config"));
+/// assert!(!mount.read_only);
+/// ```
+impl FromStr for MountSpec {
+    type Err = MountSpecParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let mut parts = value.split(':');
+        let source = parts.next().unwrap_or_default();
+        let Some(target) = parts.next() else {
+            return Err(MountSpecParseError::MissingSeparator);
+        };
+        let mode = parts.next();
+        if let Some(extra) = parts.next() {
+            return Err(MountSpecParseError::UnknownMode {
+                mode: extra.to_owned(),
+            });
+        }
+        if source.is_empty() {
+            return Err(MountSpecParseError::EmptySource);
+        }
+        if target.is_empty() {
+            return Err(MountSpecParseError::EmptyTarget);
+        }
+        let read_only = match mode {
+            None | Some("ro") => true,
+            Some("rw") => false,
+            Some(other) => {
+                return Err(MountSpecParseError::UnknownMode {
+                    mode: other.to_owned(),
+                });
+            }
+        };
+
+        Ok(Self {
+            source: expand_mount_source(source)?,
+            target: PathBuf::from(target),
+            read_only,
+        })
+    }
+}
+
+/// Expands the host source field for a [`MountSpec`] parser input.
+///
+/// This helper follows the host source expansion behavior described on the
+/// [`std::str::FromStr`] implementation for [`MountSpec`]. It does not handle
+/// container targets because those remain literal.
+pub fn expand_mount_source(source: &str) -> Result<PathBuf, MountSpecParseError> {
+    if !source.starts_with('~') {
+        return Ok(PathBuf::from(source));
+    }
+
+    let home = std::env::var_os("HOME").ok_or(MountSpecParseError::MissingHome)?;
+    let home = PathBuf::from(home);
+    if source == "~" {
+        return Ok(home);
+    }
+
+    let rest = source.strip_prefix("~/").unwrap_or(&source[1..]);
+    Ok(home.join(rest))
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -231,5 +352,115 @@ mod tests {
 
         let restored: MountSpec = serde_json::from_value(value).expect("deserialize");
         assert_eq!(restored, mount);
+    }
+
+    #[test]
+    fn mount_spec_parses_default_read_only() {
+        let mount: MountSpec = "/host/config:/container/config".parse().expect("mount");
+
+        assert_eq!(mount.source, PathBuf::from("/host/config"));
+        assert_eq!(mount.target, PathBuf::from("/container/config"));
+        assert!(mount.read_only);
+    }
+
+    #[test]
+    fn mount_spec_parses_explicit_read_only() {
+        let mount: MountSpec = "/host/config:/container/config:ro".parse().expect("mount");
+
+        assert_eq!(mount.source, PathBuf::from("/host/config"));
+        assert_eq!(mount.target, PathBuf::from("/container/config"));
+        assert!(mount.read_only);
+    }
+
+    #[test]
+    fn mount_spec_parses_explicit_read_write() {
+        let mount: MountSpec = "/host/config:/container/config:rw".parse().expect("mount");
+
+        assert_eq!(mount.source, PathBuf::from("/host/config"));
+        assert_eq!(mount.target, PathBuf::from("/container/config"));
+        assert!(!mount.read_only);
+    }
+
+    #[test]
+    fn mount_source_expands_tilde() {
+        let home = std::env::var_os("HOME").expect("HOME");
+
+        assert_eq!(
+            expand_mount_source("~").expect("source"),
+            PathBuf::from(home)
+        );
+    }
+
+    #[test]
+    fn mount_source_expands_tilde_subpath() {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME"));
+
+        assert_eq!(
+            expand_mount_source("~/config").expect("source"),
+            home.join("config")
+        );
+    }
+
+    #[test]
+    fn mount_source_expands_tilde_prefix() {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME"));
+
+        assert_eq!(
+            expand_mount_source("~foo").expect("source"),
+            home.join("foo")
+        );
+    }
+
+    #[test]
+    fn mount_spec_rejects_missing_separator() {
+        let error = "missing-separator"
+            .parse::<MountSpec>()
+            .expect_err("mount without separator");
+
+        assert_eq!(
+            error.to_string(),
+            "mount value is missing ':' between host source and container target"
+        );
+    }
+
+    #[test]
+    fn mount_spec_rejects_empty_parts() {
+        let empty_source = ":/container".parse::<MountSpec>().expect_err("source");
+        let empty_target = "/host:".parse::<MountSpec>().expect_err("target");
+
+        assert_eq!(
+            empty_source.to_string(),
+            "mount host source cannot be empty"
+        );
+        assert_eq!(
+            empty_target.to_string(),
+            "mount container target cannot be empty"
+        );
+    }
+
+    #[test]
+    fn mount_spec_rejects_unknown_modes() {
+        let unknown = "/host:/container:bad"
+            .parse::<MountSpec>()
+            .expect_err("unknown mode");
+        let overflow = "/host:/container:ro:extra"
+            .parse::<MountSpec>()
+            .expect_err("extra mode");
+
+        assert_eq!(
+            unknown.to_string(),
+            "unknown mount access mode bad; expected ro or rw"
+        );
+        assert_eq!(
+            overflow.to_string(),
+            "unknown mount access mode extra; expected ro or rw"
+        );
+    }
+
+    #[test]
+    fn mount_spec_parse_error_supports_cli_value_parser_bounds() {
+        fn assert_bounds<T: std::error::Error + Send + Sync + 'static>() {}
+
+        assert_bounds::<MountSpecParseError>();
     }
 }

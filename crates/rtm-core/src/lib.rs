@@ -7,13 +7,13 @@
 //! ## Events contract
 //!
 //! v0.4 events use [`RuntimeRpc::Events`] and
-//! [`RuntimeResponse::Events`](RuntimeResponse::Events).
+//! [`RuntimeResponse::Events`].
 //! The daemon appends lifecycle observations to a durable JSONL log in global
 //! order. Clients pass the returned cursor as `since` to resume without
 //! duplicate delivery after client or daemon restarts.
 //!
 //! If a cursor is older than the retained log floor, rtmd returns
-//! [`RuntimeResponse::CursorExpired`](RuntimeResponse::CursorExpired).
+//! [`RuntimeResponse::CursorExpired`].
 
 pub mod admin;
 pub mod capture;
@@ -67,11 +67,11 @@ pub use spawn_context::{
 };
 pub use types::{
     HeadlessSpawnTarget, KillRequest, Lifecycle, LifecycleState, LostEvidence, MountSpec,
-    NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeExit,
-    RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit, ShimLaunchRequest, ShimReady,
-    SpawnRequest, SpawnTarget, SpawnTargetParseError, TerminationEvidence, TmuxAddress,
-    TmuxAddressParseError, TmuxSpawnTarget, ValidateTargetOutcome, ValidateTargetRequest,
-    ValidateTargetResponse,
+    MountSpecParseError, NudgeFailureReason, NudgeOutcome, NudgeRequest, NudgeResponse,
+    RuntimeEvent, RuntimeExit, RuntimeKind, RuntimeSignal, RuntimeSignalParseError, ShimExit,
+    ShimLaunchRequest, ShimReady, SpawnRequest, SpawnTarget, SpawnTargetParseError,
+    TerminationEvidence, TmuxAddress, TmuxAddressParseError, TmuxSpawnTarget,
+    ValidateTargetOutcome, ValidateTargetRequest, ValidateTargetResponse, expand_mount_source,
 };
 pub use version::{
     RUNTIME_PROTOCOL_CAPABILITIES, RUNTIME_PROTOCOL_VERSION, RuntimeCapability, VersionInfo,
