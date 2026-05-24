@@ -74,28 +74,76 @@ pub struct TmuxAddressParseError(pub String);
 #[error("invalid spawn target {0}; expected headless or tmux:<session>:<window>.<pane>")]
 pub struct SpawnTargetParseError(pub String);
 
+/// Shared mount shape for spawn requests.
+///
+/// See this type's [`std::str::FromStr`] implementation for accepted syntax,
+/// access mode defaults, and host source expansion behavior.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MountSpec {
+    /// Host source path after parser expansion.
     pub source: PathBuf,
+    /// Container target path. The parser keeps this path literal.
     pub target: PathBuf,
+    /// Whether the mount is read only. The parser defaults this to `true`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub read_only: bool,
 }
 
+/// Error returned when a mount value cannot be parsed.
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum MountSpecParseError {
+    /// The value did not contain the required separator between host source and
+    /// container target.
     #[error("mount value is missing ':' between host source and container target")]
     MissingSeparator,
+    /// The host source field was empty.
     #[error("mount host source cannot be empty")]
     EmptySource,
+    /// The container target field was empty.
     #[error("mount container target cannot be empty")]
     EmptyTarget,
+    /// The access mode was neither `ro` nor `rw`, or another colon separated
+    /// field followed the mode.
     #[error("unknown mount access mode {mode}; expected ro or rw")]
     UnknownMode { mode: String },
+    /// The host source requested home expansion, but `HOME` was not set.
     #[error("mount source uses '~' but HOME is not set")]
     MissingHome,
 }
 
+/// Parses the public mount syntax used by CLI consumers.
+///
+/// Accepted values use `HOST:CONTAINER[:ro|:rw]`. The first field is the host
+/// source, the second is the container target, and the optional third field is
+/// the access mode. When the access mode is omitted, the mount is read only.
+/// `ro` maps to [`MountSpec::read_only`] as `true`; `rw` maps to `false`.
+///
+/// Source paths are expanded only for the host side. A source of `~` expands to
+/// `$HOME`, and `~/sub` expands below `$HOME`. A source that starts with another
+/// tilde form, such as `~foo`, is joined to `$HOME` after dropping the leading
+/// `~`; this existing fallback is preserved for compatibility. Container
+/// targets are kept literal, so a target starting with `~` is not expanded.
+///
+/// Values with four or more colon separated fields are rejected as
+/// [`MountSpecParseError::UnknownMode`]. This parser only decodes the shared
+/// mount shape. Host isolation checks, such as rejecting paths outside an
+/// allowed workspace, are enforced by CLI consumers before spawn submission.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// use lilo_rm_core::MountSpec;
+///
+/// let mount = "/host/config:/container/config:rw"
+///     .parse::<MountSpec>()
+///     .expect("mount spec should parse");
+///
+/// assert_eq!(mount.source, PathBuf::from("/host/config"));
+/// assert_eq!(mount.target, PathBuf::from("/container/config"));
+/// assert!(!mount.read_only);
+/// ```
 impl FromStr for MountSpec {
     type Err = MountSpecParseError;
 
@@ -135,6 +183,11 @@ impl FromStr for MountSpec {
     }
 }
 
+/// Expands the host source field for a [`MountSpec`] parser input.
+///
+/// This helper follows the host source expansion behavior described on the
+/// [`std::str::FromStr`] implementation for [`MountSpec`]. It does not handle
+/// container targets because those remain literal.
 pub fn expand_mount_source(source: &str) -> Result<PathBuf, MountSpecParseError> {
     if !source.starts_with('~') {
         return Ok(PathBuf::from(source));

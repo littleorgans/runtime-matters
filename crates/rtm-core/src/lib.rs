@@ -7,13 +7,13 @@
 //! ## Events contract
 //!
 //! v0.4 events use [`RuntimeRpc::Events`] and
-//! [`RuntimeResponse::Events`](RuntimeResponse::Events).
+//! [`RuntimeResponse::Events`].
 //! The daemon appends lifecycle observations to a durable JSONL log in global
 //! order. Clients pass the returned cursor as `since` to resume without
 //! duplicate delivery after client or daemon restarts.
 //!
 //! If a cursor is older than the retained log floor, rtmd returns
-//! [`RuntimeResponse::CursorExpired`](RuntimeResponse::CursorExpired).
+//! [`RuntimeResponse::CursorExpired`].
 
 pub mod admin;
 pub mod capture;
