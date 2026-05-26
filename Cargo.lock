@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "lilo-rm-client"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "lilo-rm-core",
  "rtm-daemon",
@@ -854,7 +854,7 @@ dependencies = [
 
 [[package]]
 name = "lilo-rm-core"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "chrono",
  "insta",
