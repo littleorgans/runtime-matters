@@ -4,7 +4,7 @@ use anyhow::Result;
 use chrono::{Duration, Utc};
 use lilo_rm_core::{
     DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorResponse, HeadlessSpawnTarget,
-    LauncherStatus, SpawnRequest, SpawnTarget, TmuxStatus,
+    IsolationPolicy, LauncherStatus, SpawnRequest, SpawnTarget, TmuxStatus,
 };
 use tokio::process::Command;
 use uuid::Uuid;
@@ -48,7 +48,7 @@ fn launcher_status(launcher: &'static dyn lilo_rm_core::RuntimeLauncher) -> Laun
     let request = SpawnRequest {
         session_id: Uuid::nil(),
         runtime: runtime.clone(),
-        isolation: Default::default(),
+        isolation: IsolationPolicy::default(),
         image: None,
         env: Vec::new(),
         mounts: Vec::new(),

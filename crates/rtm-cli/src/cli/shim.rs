@@ -119,8 +119,8 @@ fn shell_resume_command(resume: &ShellResume) -> Result<Command> {
 ///
 /// `env_clear()` is called first so the runtime starts from an empty env,
 /// then `launch.env` is layered on top. Without this, the runtime would
-/// inherit the shim's bootstrap env (RTM_SOCKET_PATH) and the daemon's
-/// process env, defeating the denylist applied at capture time. LaunchSpec.env
+/// inherit the shim's bootstrap env (`RTM_SOCKET_PATH`) and the daemon's
+/// process env, defeating the denylist applied at capture time. `LaunchSpec.env`
 /// is the authoritative source of truth for the runtime.
 fn apply_launch_env_cwd(command: &mut Command, launch: &LaunchSpec) {
     command.env_clear();

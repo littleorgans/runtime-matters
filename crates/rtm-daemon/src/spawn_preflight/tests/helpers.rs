@@ -24,8 +24,7 @@ enum FakeDockerImageError {
 
 impl DockerImageInspector for FakeDockerInspector {
     async fn ensure_available(&self) -> Result<()> {
-        self.availability
-            .map_err(|message| RuntimeFailure::docker_unavailable(message))
+        self.availability.map_err(RuntimeFailure::docker_unavailable)
     }
 
     async fn image_user(&self, _image: &str) -> Result<Option<String>> {
@@ -115,7 +114,7 @@ fn headless_request(session_id: Uuid, force: bool) -> SpawnRequest {
     SpawnRequest {
         session_id,
         runtime: RuntimeKind::Claude,
-        isolation: Default::default(),
+        isolation: IsolationPolicy::default(),
         image: None,
         env: Vec::new(),
         mounts: Vec::new(),
@@ -248,7 +247,7 @@ async fn assert_arm64_manifest_failure_with_architecture(
     .await
     .expect_err("arm64 image should fail preflight");
 
-    assert_runtime_failure(error, expected);
+    assert_runtime_failure(&error, expected);
     assert_no_lifecycle_or_waiters(&state, session_id).await;
 }
 
@@ -284,7 +283,7 @@ async fn assert_arm64_manifest_failure(arm64_manifest: Result<bool, &'static str
     assert_no_lifecycle_or_waiters(&state, session_id).await;
 }
 
-fn assert_runtime_failure(error: anyhow::Error, expected: RuntimeFailure) {
+fn assert_runtime_failure(error: &anyhow::Error, expected: RuntimeFailure) {
     let failure = error
         .downcast_ref::<RuntimeFailure>()
         .expect("runtime failure category");

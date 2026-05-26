@@ -13,7 +13,7 @@ impl TmuxGateway {
         if !output.status.success() {
             return Ok(None);
         }
-        Ok(Some(stdout(output).trim().to_owned()))
+        Ok(Some(stdout(&output).trim().to_owned()))
     }
 
     pub async fn nudge(tmux_pane: &TmuxAddress, content: &str) -> Result<bool> {
@@ -32,11 +32,11 @@ impl TmuxGateway {
         argv: &[String],
         env: &[LaunchEnv],
     ) -> Result<()> {
-        let args = build_respawn_pane_args(tmux_pane, argv, env)?;
-        let output = tmux_output_owned(args)
+        let respawn_args = build_respawn_pane_args(tmux_pane, argv, env)?;
+        let output = tmux_output_owned(respawn_args)
             .await?
             .context("tmux is not installed")?;
-        ensure_success(output, "tmux respawn-pane").map(|_| ())
+        ensure_success(&output, "tmux respawn-pane").map(|_| ())
     }
 
     pub async fn is_alive(tmux_pane: &TmuxAddress) -> Result<bool> {
@@ -52,7 +52,7 @@ impl TmuxGateway {
         let panes = tmux_output(["list-panes", "-t", &target, "-F", "#S:#I.#P"])
             .await?
             .context("tmux is not installed")?;
-        ensure_success(panes, "tmux list-panes")
+        ensure_success(&panes, "tmux list-panes")
             .map(|stdout| stdout.lines().any(|line| line.trim() == target))
     }
 
@@ -65,7 +65,7 @@ impl TmuxGateway {
             .ok_or(CaptureError::TmuxNotAvailable)?;
         if !content_output.status.success() {
             return Err(CaptureError::CapturePaneFailed {
-                stderr: stderr(content_output),
+                stderr: stderr(&content_output),
             });
         }
         let history_output = tmux_history_output(tmux_pane)
@@ -73,11 +73,11 @@ impl TmuxGateway {
             .ok_or(CaptureError::TmuxNotAvailable)?;
         if !history_output.status.success() {
             return Err(CaptureError::CapturePaneFailed {
-                stderr: stderr(history_output),
+                stderr: stderr(&history_output),
             });
         }
-        let content = stdout(content_output);
-        let pane_history_lines = parse_history_lines(&stdout(history_output))?;
+        let content = stdout(&content_output);
+        let pane_history_lines = parse_history_lines(&stdout(&history_output))?;
         let scrollback_lines_included = content.lines().count().try_into().unwrap_or(u32::MAX);
         Ok(PaneSnapshot {
             content,
@@ -138,7 +138,7 @@ async fn send_keys(target: &str, trailing: &[String]) -> Result<()> {
     let output = tmux_output_owned(args)
         .await?
         .context("tmux is not installed")?;
-    ensure_success(output, "tmux send-keys").map(|_| ())
+    ensure_success(&output, "tmux send-keys").map(|_| ())
 }
 
 async fn tmux_output_owned(args: Vec<String>) -> Result<Option<std::process::Output>> {
@@ -149,19 +149,18 @@ async fn tmux_output_owned(args: Vec<String>) -> Result<Option<std::process::Out
     }
 }
 
-fn ensure_success(output: std::process::Output, label: &'static str) -> Result<String> {
+fn ensure_success(output: &std::process::Output, label: &'static str) -> Result<String> {
     if output.status.success() {
         return Ok(stdout(output));
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    bail!("{label} failed: {}", stderr.trim())
+    bail!("{label} failed: {}", stderr(output))
 }
 
-fn stdout(output: std::process::Output) -> String {
+fn stdout(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
-fn stderr(output: std::process::Output) -> String {
+fn stderr(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stderr).trim().to_owned()
 }
 
@@ -206,19 +205,19 @@ fn build_respawn_pane_args(
     if argv.is_empty() {
         bail!("tmux respawn-pane requires argv");
     }
-    let mut args = vec![
+    let mut respawn_args = vec![
         "respawn-pane".to_owned(),
         "-k".to_owned(),
         "-t".to_owned(),
         tmux_pane.to_string(),
     ];
     for entry in env {
-        args.push("-e".to_owned());
-        args.push(format!("{}={}", entry.key, entry.value));
+        respawn_args.push("-e".to_owned());
+        respawn_args.push(format!("{}={}", entry.key, entry.value));
     }
-    args.push("--".to_owned());
-    args.extend(argv.iter().cloned());
-    Ok(args)
+    respawn_args.push("--".to_owned());
+    respawn_args.extend(argv.iter().cloned());
+    Ok(respawn_args)
 }
 
 #[cfg(test)]
@@ -232,11 +231,11 @@ mod tests {
     #[test]
     fn respawn_pane_args_only_carry_provided_env() {
         let env = vec![LaunchEnv::new("RTM_SOCKET_PATH", "/tmp/rtm.sock")];
-        let argv = vec!["rtm".to_owned(), "__shim".to_owned()];
-        let args = build_respawn_pane_args(&pane(), &argv, &env).expect("args");
+        let command_argv = vec!["rtm".to_owned(), "__shim".to_owned()];
+        let respawn_args = build_respawn_pane_args(&pane(), &command_argv, &env).expect("args");
 
         let mut e_flags = Vec::new();
-        let mut iter = args.iter();
+        let mut iter = respawn_args.iter();
         while let Some(arg) = iter.next() {
             if arg == "-e" {
                 e_flags.push(iter.next().expect("paired -e value").clone());
@@ -251,10 +250,10 @@ mod tests {
         // Runtime env (secrets, PATH, etc.) must travel over the post-spawn UDS
         // ShimLaunch handoff, never via tmux's -e flag or argv.
         let env = vec![LaunchEnv::new("RTM_SOCKET_PATH", "/tmp/rtm.sock")];
-        let argv = vec!["rtm".to_owned(), "__shim".to_owned()];
-        let args = build_respawn_pane_args(&pane(), &argv, &env).expect("args");
+        let command_argv = vec!["rtm".to_owned(), "__shim".to_owned()];
+        let respawn_args = build_respawn_pane_args(&pane(), &command_argv, &env).expect("args");
 
-        let e_values: Vec<&str> = args
+        let e_values: Vec<&str> = respawn_args
             .windows(2)
             .filter(|pair| pair[0] == "-e")
             .map(|pair| pair[1].as_str())

@@ -24,14 +24,14 @@ pub async fn run(args: EventsArgs) -> Result<()> {
         EventBatch::Events { events, cursor } => {
             output::emit(&args.output, &EventsPayload { events, cursor })?;
         }
-        EventBatch::CursorExpired { oldest } => emit_cursor_expired(args.output, oldest)?,
+        EventBatch::CursorExpired { oldest } => emit_cursor_expired(&args.output, oldest)?,
         _ => bail!("unexpected events batch"),
     }
     Ok(())
 }
 
 fn emit_cursor_expired(
-    args: output::OutputArgs,
+    args: &output::OutputArgs,
     latest_cursor: lilo_rm_core::EventCursor,
 ) -> Result<()> {
     match args.format {

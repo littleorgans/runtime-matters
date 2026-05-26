@@ -144,7 +144,7 @@ async fn run_periodic_with_config<P>(
             std::cmp::min(next_deadline, Instant::now() + config.resume_poll_interval);
         tokio::select! {
             _ = shutdown_rx.recv() => break,
-            _ = sleep_until(poll_deadline) => {
+            () = sleep_until(poll_deadline) => {
                 let now = Instant::now();
                 let wall_now = Utc::now();
                 let resumed = wall_now - last_wall_tick > config.resume_gap_threshold;

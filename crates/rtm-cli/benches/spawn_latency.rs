@@ -4,7 +4,8 @@ mod common;
 use std::time::{Duration, Instant};
 
 use lilo_rm_core::{
-    HeadlessSpawnTarget, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget,
+    HeadlessSpawnTarget, IsolationPolicy, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest,
+    SpawnTarget,
 };
 use uuid::Uuid;
 
@@ -27,7 +28,7 @@ fn main() {
                     request: SpawnRequest {
                         session_id,
                         runtime: RuntimeKind::Claude,
-                        isolation: Default::default(),
+                        isolation: IsolationPolicy::default(),
                         image: None,
                         env: Vec::new(),
                         mounts: Vec::new(),

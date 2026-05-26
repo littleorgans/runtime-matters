@@ -12,9 +12,10 @@ pub fn output_stderr(output: Output) -> String {
 
 pub fn parse_runtime_pid(stdout: &str) -> u32 {
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(stdout) {
-        return value["payload"]["lifecycle"]["runtime_pid"]
-            .as_u64()
-            .expect("runtime pid in spawn json") as u32;
+        return json_u32(
+            &value["payload"]["lifecycle"]["runtime_pid"],
+            "runtime pid in spawn json",
+        );
     }
     stdout
         .split("runtime_pid=")
@@ -27,7 +28,7 @@ pub fn parse_runtime_pid(stdout: &str) -> u32 {
 pub fn parse_status_pid(stdout: &str) -> u32 {
     stdout.trim().parse().unwrap_or_else(|_| {
         let value: serde_json::Value = serde_json::from_str(stdout).expect("status json");
-        value[0]["runtime_pid"].as_u64().expect("status pid") as u32
+        json_u32(&value[0]["runtime_pid"], "status pid")
     })
 }
 
@@ -52,7 +53,11 @@ pub fn status_pid(harness: &RtmHarness, session_id: &str, field: &str) -> u32 {
 
 pub fn status_json_pid(stdout: &str, field: &str) -> u32 {
     let value: serde_json::Value = serde_json::from_str(stdout).expect("status json");
-    value[0][field].as_u64().expect("status pid field") as u32
+    json_u32(&value[0][field], "status pid field")
+}
+
+fn json_u32(value: &serde_json::Value, message: &str) -> u32 {
+    u32::try_from(value.as_u64().expect(message)).expect(message)
 }
 
 fn status_pid_field(field: &str) -> &str {

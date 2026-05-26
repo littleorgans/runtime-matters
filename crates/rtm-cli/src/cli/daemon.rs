@@ -20,7 +20,7 @@ impl DaemonCommand {
                 rtm_daemon::run_daemon(config).await
             }
             Self::Stop => stop().await,
-            Self::Status => status().await,
+            Self::Status => status(),
             Self::Logs => {
                 println!("daemon logs are not persisted in pass 1");
                 Ok(())
@@ -41,7 +41,7 @@ async fn stop() -> Result<()> {
     }
 }
 
-async fn status() -> Result<()> {
+fn status() -> Result<()> {
     let socket_path = crate::shared::socket_path()?;
     if socket_path.exists() {
         println!("rtmd socket present at {}", socket_path.display());

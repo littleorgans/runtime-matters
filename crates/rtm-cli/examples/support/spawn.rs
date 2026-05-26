@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use lilo_rm_core::{RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget};
+use lilo_rm_core::{
+    IsolationPolicy, RuntimeKind, RuntimeResponse, RuntimeRpc, SpawnRequest, SpawnTarget,
+};
 use uuid::Uuid;
 
 pub async fn spawn_runtime(
@@ -18,7 +20,7 @@ pub async fn spawn_runtime(
             request: SpawnRequest {
                 session_id,
                 runtime,
-                isolation: Default::default(),
+                isolation: IsolationPolicy::default(),
                 image: None,
                 env,
                 mounts: Vec::new(),

@@ -208,10 +208,9 @@ impl ClientError {
     pub const fn code(&self) -> ErrorCode {
         match self {
             Self::DaemonUnavailable { .. } => ErrorCode::RuntimeUnavailable,
-            Self::Protocol { .. } => ErrorCode::ProtocolMismatch,
+            Self::Protocol { .. } | Self::UnexpectedResponse { .. } => ErrorCode::ProtocolMismatch,
             Self::ErrorResponse { code, .. } => *code,
             Self::SpawnConflict(_) => ErrorCode::SpawnConflict,
-            Self::UnexpectedResponse { .. } => ErrorCode::ProtocolMismatch,
         }
     }
 }

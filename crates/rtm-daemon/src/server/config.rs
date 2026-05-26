@@ -50,7 +50,6 @@ impl DaemonConfig {
         self.store
             .db_path
             .parent()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| self.log_root.clone())
+            .map_or_else(|| self.log_root.clone(), PathBuf::from)
     }
 }

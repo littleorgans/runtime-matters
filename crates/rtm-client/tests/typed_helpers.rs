@@ -4,12 +4,12 @@ use lilo_rm_client::{ClientError, RuntimeClient, request};
 use lilo_rm_core::{
     CaptureError, CapturePayload, CaptureRequest, CaptureResponse, CursorExpiredPayload,
     DockerIsolationStatus, DockerReadiness, DockerStatus, DoctorPayload, DoctorResponse, ErrorCode,
-    EventBatch, EventsPayload, EventsRequest, HeadlessSpawnTarget, KillByPidPayload,
-    KillByPidRequest, KillByPidResponse, KillOutcome, KillRequest, KilledPayload, Lifecycle,
-    LifecycleCounts, MigrationState, NudgeFailureReason, NudgeOutcome, NudgePayload, NudgeRequest,
-    NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, RuntimeRpc, RuntimeSignal,
-    SpawnConflictKind, SpawnConflictPayload, SpawnRequest, SpawnTarget, SpawnedPayload,
-    StatusFilter, StatusPayload, ValidateTargetPayload, ValidateTargetRequest,
+    EventBatch, EventsPayload, EventsRequest, HeadlessSpawnTarget, IsolationPolicy,
+    KillByPidPayload, KillByPidRequest, KillByPidResponse, KillOutcome, KillRequest, KilledPayload,
+    Lifecycle, LifecycleCounts, MigrationState, NudgeFailureReason, NudgeOutcome, NudgePayload,
+    NudgeRequest, NudgeResponse, RuntimeEvent, RuntimeKind, RuntimeResponse, RuntimeRpc,
+    RuntimeSignal, SpawnConflictKind, SpawnConflictPayload, SpawnRequest, SpawnTarget,
+    SpawnedPayload, StatusFilter, StatusPayload, ValidateTargetPayload, ValidateTargetRequest,
     ValidateTargetResponse, VersionInfo, VersionPayload, WatcherCounts, read_json_line,
     write_json_line,
 };
@@ -24,7 +24,7 @@ fn temp_socket_path() -> (tempfile::TempDir, PathBuf) {
     (tempdir, socket_path)
 }
 
-async fn mock_response(
+fn mock_response(
     expected_rpc: RuntimeRpc,
     response: RuntimeResponse,
 ) -> (RuntimeClient, JoinHandle<()>) {
@@ -67,8 +67,7 @@ async fn daemon_error_response_preserves_code() {
     let (client, server) = mock_response(
         RuntimeRpc::Version,
         RuntimeResponse::error(ErrorCode::SessionNotFound, "missing session"),
-    )
-    .await;
+    );
 
     let error = client
         .request(RuntimeRpc::Version)
@@ -90,8 +89,7 @@ async fn spawn_conflict_maps_to_typed_client_error() {
             request: spawn_request(),
         },
         RuntimeResponse::SpawnConflict(payload.clone()),
-    )
-    .await;
+    );
 
     let error = client
         .spawn(spawn_request())
@@ -112,7 +110,7 @@ macro_rules! typed_helper_tests {
 
             #[tokio::test]
             async fn happy_path_returns_typed_value() {
-                let (client, server) = mock_response($rpc, $ok).await;
+                let (client, server) = mock_response($rpc, $ok);
                 let actual = client.$method($($arg),*)
                     .await
                     .expect("typed helper should succeed");
@@ -125,8 +123,7 @@ macro_rules! typed_helper_tests {
                 let (client, server) = mock_response(
                     $rpc,
                     RuntimeResponse::error(ErrorCode::SessionNotFound, "missing session"),
-                )
-                .await;
+                );
                 let error = client.$method($($arg),*)
                     .await
                     .expect_err("daemon error should fail");
@@ -136,7 +133,7 @@ macro_rules! typed_helper_tests {
 
             #[tokio::test]
             async fn unexpected_variant_reports_expected_and_got() {
-                let (client, server) = mock_response($rpc, unexpected_for($expected)).await;
+                let (client, server) = mock_response($rpc, unexpected_for($expected));
                 let error = client.$method($($arg),*)
                     .await
                     .expect_err("unexpected response should fail");
@@ -194,7 +191,7 @@ fn spawn_request() -> SpawnRequest {
     SpawnRequest {
         session_id: session_id(),
         runtime: RuntimeKind::Claude,
-        isolation: Default::default(),
+        isolation: IsolationPolicy::default(),
         image: None,
         env: Vec::new(),
         mounts: Vec::new(),
@@ -396,8 +393,7 @@ async fn nudge_helper_preserves_unsupported_headless_outcome() {
             request: nudge_request(),
         },
         RuntimeResponse::Nudge(unsupported_nudge_payload()),
-    )
-    .await;
+    );
 
     let actual = client
         .nudge(nudge_request())
@@ -422,8 +418,7 @@ async fn nudge_helper_preserves_tmux_pane_dead_outcome() {
         RuntimeResponse::Nudge(NudgePayload {
             response: nudge_response(NudgeOutcome::Failed(NudgeFailureReason::TmuxPaneDead)),
         }),
-    )
-    .await;
+    );
 
     let actual = client
         .nudge(nudge_request())
@@ -446,8 +441,7 @@ async fn nudge_helper_preserves_terminal_session_outcome() {
         RuntimeResponse::Nudge(NudgePayload {
             response: nudge_response(NudgeOutcome::Failed(NudgeFailureReason::SessionEnded)),
         }),
-    )
-    .await;
+    );
 
     let actual = client
         .nudge(nudge_request())
@@ -534,8 +528,7 @@ async fn events_helper_returns_cursor_expired_batch() {
             },
         },
         RuntimeResponse::CursorExpired(CursorExpiredPayload { oldest: 9 }),
-    )
-    .await;
+    );
 
     let actual = client
         .events(EventsRequest {

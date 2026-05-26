@@ -82,31 +82,37 @@ impl RuntimePathEnv {
         }
     }
 
+    #[must_use]
     pub fn socket_path(mut self, value: impl Into<OsString>) -> Self {
         self.socket_path = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn db_path(mut self, value: impl Into<OsString>) -> Self {
         self.db_path = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn rtm_home(mut self, value: impl Into<OsString>) -> Self {
         self.rtm_home = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn shim_path(mut self, value: impl Into<OsString>) -> Self {
         self.shim_path = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn xdg_runtime_dir(mut self, value: impl Into<OsString>) -> Self {
         self.xdg_runtime_dir = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn home(mut self, value: impl Into<OsString>) -> Self {
         self.home = Some(value.into());
         self

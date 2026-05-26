@@ -25,8 +25,7 @@ impl ProcessProbe for FakeProbe {
             .start_times
             .get(&pid)
             .copied()
-            .map(ProcessStartTime::Known)
-            .unwrap_or(ProcessStartTime::Unsupported))
+            .map_or(ProcessStartTime::Unsupported, ProcessStartTime::Known))
     }
 }
 
@@ -303,6 +302,6 @@ fn test_config(root: &Path) -> DaemonConfig {
             db_path: root.join("rtm-test.sqlite"),
         },
         reconcile: ReconcileConfig::default(),
-        docker_preflight: Default::default(),
+        docker_preflight: crate::docker_preflight::DockerPreflightConfig::default(),
     }
 }

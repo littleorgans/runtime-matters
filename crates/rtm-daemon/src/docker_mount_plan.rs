@@ -48,18 +48,17 @@ pub(crate) fn validate_cwd_mount_plan(
     let cwd_target = normalize_container_path(&path_string(cwd_source))
         .ok_or_else(|| invalid_container_path("spawn cwd", &path_string(cwd_source)))?;
 
-    match cover {
-        Some(cover) => Ok(CwdMountPlan {
+    if let Some(cover) = cover {
+        Ok(CwdMountPlan {
             auto_mount_cwd: false,
             workdir: remap_cwd_workdir(&cover, cwd_source)?,
-        }),
-        None => {
-            reject_cwd_target_overlaps(&cwd_target, mounts)?;
-            Ok(CwdMountPlan {
-                auto_mount_cwd: true,
-                workdir: cwd_target,
-            })
-        }
+        })
+    } else {
+        reject_cwd_target_overlaps(&cwd_target, mounts)?;
+        Ok(CwdMountPlan {
+            auto_mount_cwd: true,
+            workdir: cwd_target,
+        })
     }
 }
 

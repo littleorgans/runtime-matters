@@ -51,16 +51,16 @@ fn main() -> Result<()> {
     let app_footprint_kib = footprints.iter().map(|sample| sample.app_kib).sum::<u64>();
     println!("sessions={}", args.sessions);
     println!("combined_rss_kib={rss_kib}");
-    println!("combined_rss_mib={:.2}", rss_kib as f64 / 1024.0);
+    println!("combined_rss_mib={}", format_kib_as_mib(rss_kib));
     println!("combined_footprint_kib={footprint_kib}");
     println!(
-        "combined_footprint_mib={:.2}",
-        footprint_kib as f64 / 1024.0
+        "combined_footprint_mib={}",
+        format_kib_as_mib(footprint_kib)
     );
     println!("combined_app_footprint_kib={app_footprint_kib}");
     println!(
-        "combined_app_footprint_mib={:.2}",
-        app_footprint_kib as f64 / 1024.0
+        "combined_app_footprint_mib={}",
+        format_kib_as_mib(app_footprint_kib)
     );
     assert!(
         app_footprint_kib < APP_FOOTPRINT_LIMIT_KIB,
@@ -148,14 +148,43 @@ fn parse_category_kib(stdout: &str, category: &str) -> Option<u64> {
 
 fn parse_kib(text: &str) -> Option<u64> {
     let mut fields = text.split_whitespace();
-    let amount = fields.next()?.parse::<f64>().ok()?;
+    let amount = fields.next()?;
     let unit = fields.next()?;
     match unit {
-        "B" => (amount / 1024.0).ceil() as u64,
-        "KB" => amount.ceil() as u64,
-        "MB" => (amount * 1024.0).ceil() as u64,
-        "GB" => (amount * 1024.0 * 1024.0).ceil() as u64,
-        _ => return None,
+        "B" => parse_decimal_ceil_scaled(amount, 1, 1024),
+        "KB" => parse_decimal_ceil_scaled(amount, 1, 1),
+        "MB" => parse_decimal_ceil_scaled(amount, 1024, 1),
+        "GB" => parse_decimal_ceil_scaled(amount, 1024 * 1024, 1),
+        _ => None,
     }
-    .into()
+}
+
+fn format_kib_as_mib(kib: u64) -> String {
+    let hundredths = kib.saturating_mul(100).saturating_add(512) / 1024;
+    format!("{}.{:02}", hundredths / 100, hundredths % 100)
+}
+
+fn parse_decimal_ceil_scaled(text: &str, numerator: u64, denominator: u64) -> Option<u64> {
+    let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+    let whole = parse_decimal_digits(whole)?;
+    let fraction_denominator = 10_u64.checked_pow(fraction.len().try_into().ok()?)?;
+    let fraction = if fraction.is_empty() {
+        0
+    } else {
+        parse_decimal_digits(fraction)?
+    };
+    let decimal_numerator = whole
+        .checked_mul(fraction_denominator)?
+        .checked_add(fraction)?;
+    let scaled_denominator = fraction_denominator.checked_mul(denominator)?;
+    decimal_numerator
+        .checked_mul(numerator)?
+        .checked_add(scaled_denominator.checked_sub(1)?)?
+        .checked_div(scaled_denominator)
+}
+
+fn parse_decimal_digits(text: &str) -> Option<u64> {
+    (!text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| text.parse().ok())
+        .flatten()
 }

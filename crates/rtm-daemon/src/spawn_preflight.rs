@@ -81,11 +81,7 @@ async fn check_docker_profile(
     docker: &impl DockerImageInspector,
 ) -> Result<()> {
     match profile.name.as_deref() {
-        None
-        | Some("default")
-        | Some("own-init")
-        | Some("allow-root")
-        | Some("arm64-manifest-escape") => {
+        None | Some("default" | "own-init" | "allow-root" | "arm64-manifest-escape") => {
             validate_docker_mounts(request)?;
             validate_docker_image_metadata_on_arch(
                 state,
@@ -96,7 +92,7 @@ async fn check_docker_profile(
             )
             .await
         }
-        Some("pattern-e") | Some("tmux-primary") => Err(unsupported_docker_behavior(
+        Some("pattern-e" | "tmux-primary") => Err(unsupported_docker_behavior(
             "requests a multiplexer inside the container",
         )),
         Some("privileged") => Err(unsupported_docker_profile(
@@ -122,7 +118,7 @@ fn warn_host_mounts(request: &SpawnRequest) {
 
 fn validate_docker_mounts(request: &mut SpawnRequest) -> Result<()> {
     let cwd_source = canonicalize_cwd(&request.cwd)?;
-    request.cwd = cwd_source.clone();
+    request.cwd.clone_from(&cwd_source);
     let mounts = canonicalize_request_mounts(&request.cwd, &mut request.mounts)?;
 
     reject_duplicate_mount_targets(&mounts)?;
@@ -135,7 +131,7 @@ fn canonicalize_request_mounts(cwd: &Path, mounts: &mut [MountSpec]) -> Result<V
         .iter_mut()
         .map(|mount| {
             let source = canonicalize_mount_source(cwd, &mount.source)?;
-            mount.source = source.clone();
+            mount.source.clone_from(&source);
             DockerMount::new(source, &mount.target)
         })
         .collect()

@@ -54,12 +54,12 @@ impl LifecycleStore {
         }
         let encoded = EncodedLifecycle::from_lifecycle(lifecycle)?;
         sqlx::query(
-            r#"
+            r"
             INSERT INTO lifecycle (
                 session_id, runtime, isolation, state, shim_pid, runtime_pid, start_time,
                 tmux_pane, exit_code, exit_signal, lost_evidence, spawned_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(encoded.session_id)
         .bind(encoded.runtime)
@@ -83,7 +83,7 @@ impl LifecycleStore {
     pub async fn update_lifecycle(&self, lifecycle: &Lifecycle) -> Result<()> {
         let encoded = EncodedLifecycle::from_lifecycle(lifecycle)?;
         let result = sqlx::query(
-            r#"
+            r"
             UPDATE lifecycle
             SET runtime = ?,
                 isolation = ?,
@@ -97,7 +97,7 @@ impl LifecycleStore {
                 lost_evidence = ?,
                 updated_at = ?
             WHERE session_id = ?
-            "#,
+            ",
         )
         .bind(encoded.runtime)
         .bind(encoded.isolation)
@@ -131,12 +131,12 @@ impl LifecycleStore {
 
     pub async fn get(&self, session_id: Uuid) -> Result<Option<Lifecycle>> {
         let row = sqlx::query_as::<_, LifecycleRow>(
-            r#"
+            r"
             SELECT session_id, runtime, isolation, state, shim_pid, runtime_pid, start_time,
                    tmux_pane, exit_code, exit_signal, lost_evidence
             FROM lifecycle
             WHERE session_id = ?
-            "#,
+            ",
         )
         .bind(session_id.to_string())
         .fetch_optional(&self.pool)
@@ -148,11 +148,11 @@ impl LifecycleStore {
     pub async fn list(&self, filter: &StatusFilter) -> Result<Vec<Lifecycle>> {
         let session_ids = filter.requested_session_ids();
         let mut query = QueryBuilder::<Sqlite>::new(
-            r#"
+            r"
             SELECT session_id, runtime, isolation, state, shim_pid, runtime_pid, start_time,
                    tmux_pane, exit_code, exit_signal, lost_evidence
             FROM lifecycle
-            "#,
+            ",
         );
         let mut has_where = false;
         if !session_ids.is_empty() {
@@ -194,13 +194,13 @@ impl LifecycleStore {
 
     pub async fn running(&self) -> Result<Vec<Lifecycle>> {
         let rows = sqlx::query_as::<_, LifecycleRow>(
-            r#"
+            r"
             SELECT session_id, runtime, isolation, state, shim_pid, runtime_pid, start_time,
                    tmux_pane, exit_code, exit_signal, lost_evidence
             FROM lifecycle
             WHERE state = 'Running'
             ORDER BY spawned_at
-            "#,
+            ",
         )
         .fetch_all(&self.pool)
         .await
@@ -213,14 +213,14 @@ impl LifecycleStore {
         tmux_pane: &lilo_rm_core::TmuxAddress,
     ) -> Result<Option<Lifecycle>> {
         let row = sqlx::query_as::<_, LifecycleRow>(
-            r#"
+            r"
             SELECT session_id, runtime, isolation, state, shim_pid, runtime_pid, start_time,
                    tmux_pane, exit_code, exit_signal, lost_evidence
             FROM lifecycle
             WHERE state = 'Running' AND tmux_pane = ?
             ORDER BY spawned_at
             LIMIT 1
-            "#,
+            ",
         )
         .bind(encode_tmux_pane(Some(tmux_pane))?)
         .fetch_optional(&self.pool)
@@ -231,11 +231,11 @@ impl LifecycleStore {
 
     pub async fn lifecycle_counts(&self) -> Result<LifecycleCounts> {
         let rows = sqlx::query_as::<_, StateCountRow>(
-            r#"
+            r"
             SELECT state, COUNT(*) AS count
             FROM lifecycle
             GROUP BY state
-            "#,
+            ",
         )
         .fetch_all(&self.pool)
         .await
@@ -257,12 +257,12 @@ impl LifecycleStore {
 
     pub async fn recent_lost_since(&self, since: DateTime<Utc>) -> Result<Vec<RecentLostEvent>> {
         let rows = sqlx::query_as::<_, RecentLostRow>(
-            r#"
+            r"
             SELECT session_id, lost_evidence, updated_at
             FROM lifecycle
             WHERE state = 'Lost' AND updated_at >= ?
             ORDER BY updated_at DESC, session_id
-            "#,
+            ",
         )
         .bind(since.to_rfc3339())
         .fetch_all(&self.pool)
@@ -274,13 +274,13 @@ impl LifecycleStore {
     pub async fn record_probe_sweep(&self, swept_at: DateTime<Utc>) -> Result<()> {
         let value = swept_at.to_rfc3339();
         sqlx::query(
-            r#"
+            r"
             INSERT INTO rtm_metadata (key, value, updated_at)
             VALUES (?, ?, ?)
             ON CONFLICT(key) DO UPDATE SET
                 value = excluded.value,
                 updated_at = excluded.updated_at
-            "#,
+            ",
         )
         .bind(LAST_PROBE_SWEEP_KEY)
         .bind(value.clone())
@@ -293,11 +293,11 @@ impl LifecycleStore {
 
     pub async fn last_probe_sweep(&self) -> Result<Option<DateTime<Utc>>> {
         let value = sqlx::query_scalar::<_, String>(
-            r#"
+            r"
             SELECT value
             FROM rtm_metadata
             WHERE key = ?
-            "#,
+            ",
         )
         .bind(LAST_PROBE_SWEEP_KEY)
         .fetch_optional(&self.pool)
@@ -309,12 +309,12 @@ impl LifecycleStore {
     pub async fn migration_state(&self) -> Result<MigrationState> {
         let known = schema::known_migrations();
         let applied_versions = sqlx::query_scalar::<_, i64>(
-            r#"
+            r"
             SELECT version
             FROM _sqlx_migrations
             WHERE success = 1
             ORDER BY version
-            "#,
+            ",
         )
         .fetch_all(&self.pool)
         .await
