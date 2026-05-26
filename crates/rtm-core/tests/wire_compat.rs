@@ -62,11 +62,18 @@ fn runtime_response_v0_5_wire_fixtures_round_trip() {
 fn assert_fixture_set() {
     let actual = fs::read_dir(fixture_dir())
         .expect("fixture dir")
-        .map(|entry| {
-            let entry = entry.expect("fixture entry");
-            entry.file_name().to_string_lossy().into_owned()
+        .map(|entry| entry.expect("fixture entry").path())
+        .filter(|path| {
+            path.extension()
+                .and_then(std::ffi::OsStr::to_str)
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
         })
-        .filter(|name| name.ends_with(".json"))
+        .map(|path| {
+            path.file_name()
+                .expect("fixture file name")
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect::<BTreeSet<_>>();
     let expected = FIXTURES
         .iter()
@@ -76,9 +83,16 @@ fn assert_fixture_set() {
     assert_eq!(actual, expected);
 }
 
-fn expected_responses() -> [(&'static str, RuntimeResponse); 17] {
+fn expected_responses() -> Vec<(&'static str, RuntimeResponse)> {
     let session_id = session_id();
-    [
+    let mut responses = expected_control_responses(session_id);
+    responses.extend(expected_runtime_responses(session_id));
+    responses.extend(expected_metadata_responses());
+    responses
+}
+
+fn expected_control_responses(_session_id: uuid::Uuid) -> Vec<(&'static str, RuntimeResponse)> {
+    vec![
         ("ack.json", RuntimeResponse::Ack),
         (
             "capture.json",
@@ -134,9 +148,7 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 17] {
             "mcp_bridge.json",
             RuntimeResponse::McpBridge(McpBridgePayload {
                 response: McpBridgeResponse {
-                    line: Some(
-                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}".to_owned(),
-                    ),
+                    line: Some("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}".to_owned()),
                 },
             }),
         ),
@@ -149,6 +161,11 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 17] {
                 },
             }),
         ),
+    ]
+}
+
+fn expected_runtime_responses(session_id: uuid::Uuid) -> Vec<(&'static str, RuntimeResponse)> {
+    vec![
         (
             "shim_launch.json",
             RuntimeResponse::ShimLaunch(ShimLaunchPayload {
@@ -188,6 +205,11 @@ fn expected_responses() -> [(&'static str, RuntimeResponse); 17] {
                 },
             }),
         ),
+    ]
+}
+
+fn expected_metadata_responses() -> Vec<(&'static str, RuntimeResponse)> {
+    vec![
         (
             "version.json",
             RuntimeResponse::Version(VersionPayload {

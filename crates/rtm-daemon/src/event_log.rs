@@ -67,10 +67,7 @@ impl EventLog {
         }
         recover_partial_tail(&path)?;
         let events = read_entries(&path)?;
-        let next_seq = events
-            .last()
-            .map(|entry| entry.seq.saturating_add(1))
-            .unwrap_or(1);
+        let next_seq = events.last().map_or(1, |entry| entry.seq.saturating_add(1));
         let file = open_append_file(&path)?;
         Ok(Self {
             path,
@@ -128,7 +125,7 @@ impl EventLog {
             .collect();
         Ok(EventLogPage {
             events,
-            cursor: inner.events.last().map(|entry| entry.seq).unwrap_or(cursor),
+            cursor: inner.events.last().map_or(cursor, |entry| entry.seq),
         })
     }
 
@@ -158,7 +155,7 @@ impl EventLog {
         }
     }
 
-    pub(crate) async fn waiter_count(&self) -> usize {
+    pub(crate) fn waiter_count(&self) -> usize {
         self.waiter_count.load(Ordering::SeqCst)
     }
 
@@ -390,7 +387,7 @@ mod tests {
     async fn compaction_requires_age_and_count() {
         let temp = TempDir::new().expect("temp");
         let log = EventLog::open(temp.path()).expect("open");
-        let old_ms = (Utc::now() - chrono::Duration::days(8)).timestamp_millis() as u64;
+        let old_ms = old_timestamp_ms();
         for _ in 0..=EVENT_LOG_RETENTION_MIN_EVENTS {
             log.append_with_ts(running_event(), old_ms)
                 .await
@@ -418,7 +415,7 @@ mod tests {
     async fn compaction_does_not_truncate_for_age_alone() {
         let temp = TempDir::new().expect("temp");
         let log = EventLog::open(temp.path()).expect("open");
-        let old_ms = (Utc::now() - chrono::Duration::days(8)).timestamp_millis() as u64;
+        let old_ms = old_timestamp_ms();
         let event_count = EVENT_LOG_RETENTION_MIN_EVENTS - 1;
         for _ in 0..event_count {
             log.append_with_ts(running_event(), old_ms)
@@ -437,6 +434,11 @@ mod tests {
 
         assert_eq!(batch.events.len(), event_count);
         assert_eq!(batch.cursor, event_count as EventCursor);
+    }
+
+    fn old_timestamp_ms() -> u64 {
+        u64::try_from((Utc::now() - chrono::Duration::days(8)).timestamp_millis())
+            .expect("test timestamp is after Unix epoch")
     }
 
     fn running_event() -> RuntimeEvent {

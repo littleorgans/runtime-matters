@@ -20,9 +20,12 @@ pub fn send_raw_signal_for_kill(pid: u32, signal: i32) -> Result<KillOutcome> {
 }
 
 fn send_raw_signal_result(pid: u32, signal: i32, already_exited_ok: bool) -> Result<KillOutcome> {
+    let platform_pid = crate::process::platform_pid(pid)
+        .with_context(|| format!("pid {pid} exceeds platform pid range"))?;
+
     // SAFETY: kill is called with a process id supplied by rtmd state and a
     // signal number supplied by the admin surface.
-    let result = unsafe { libc::kill(pid as libc::pid_t, signal) };
+    let result = unsafe { libc::kill(platform_pid, signal) };
     if result == 0 {
         return Ok(KillOutcome::Signalled);
     }

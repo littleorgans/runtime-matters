@@ -115,8 +115,7 @@ impl CliOutput for DoctorResponse {
             f,
             "last probe sweep      {}",
             self.last_probe_sweep
-                .map(|time| time.to_rfc3339())
-                .unwrap_or_else(|| "never".to_owned())
+                .map_or_else(|| "never".to_owned(), |time| time.to_rfc3339())
         )?;
         print_recent_lost(f, self)
     }
@@ -138,13 +137,11 @@ impl CliOutput for Vec<Lifecycle> {
                 display_optional_u32(lifecycle.runtime_pid),
                 lifecycle
                     .start_time
-                    .map(|time| time.to_rfc3339())
-                    .unwrap_or_else(|| "-".to_owned()),
+                    .map_or_else(|| "-".to_owned(), |time| time.to_rfc3339()),
                 lifecycle
                     .tmux_pane
                     .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "-".to_owned()),
+                    .map_or_else(|| "-".to_owned(), ToString::to_string),
                 format_log_availability(lifecycle.log_availability.as_ref())
             )?;
         }
@@ -185,8 +182,7 @@ impl CliOutput for Vec<RuntimeEvent> {
                     evidence,
                 } => writeln!(
                     f,
-                    "runtime event=Lost session_id={} evidence={}",
-                    session_id, evidence
+                    "runtime event=Lost session_id={session_id} evidence={evidence}"
                 )?,
             }
         }
@@ -331,14 +327,12 @@ fn format_readiness(readiness: &crate::DockerReadiness) -> String {
         return readiness
             .detail
             .as_deref()
-            .map(|detail| format!("ready ({detail})"))
-            .unwrap_or_else(|| "ready".to_owned());
+            .map_or_else(|| "ready".to_owned(), |detail| format!("ready ({detail})"));
     }
-    readiness
-        .error
-        .as_deref()
-        .map(|error| format!("unavailable ({error})"))
-        .unwrap_or_else(|| "unavailable".to_owned())
+    readiness.error.as_deref().map_or_else(
+        || "unavailable".to_owned(),
+        |error| format!("unavailable ({error})"),
+    )
 }
 
 fn format_log_availability(value: Option<&LogAvailability>) -> String {
@@ -366,19 +360,13 @@ fn event_name(event: &RuntimeEvent) -> &'static str {
 }
 
 fn display_optional_u32(value: Option<u32>) -> String {
-    value
-        .map(|inner| inner.to_string())
-        .unwrap_or_else(|| "-".to_owned())
+    value.map_or_else(|| "-".to_owned(), |inner| inner.to_string())
 }
 
 fn display_optional_i32(value: Option<i32>) -> String {
-    value
-        .map(|inner| inner.to_string())
-        .unwrap_or_else(|| "-".to_owned())
+    value.map_or_else(|| "-".to_owned(), |inner| inner.to_string())
 }
 
 fn display_optional_path(value: Option<&Path>) -> String {
-    value
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "-".to_owned())
+    value.map_or_else(|| "-".to_owned(), |path| path.display().to_string())
 }

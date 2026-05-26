@@ -64,20 +64,20 @@ impl StatusReader {
         config: &DaemonConfig,
         lifecycle: &mut Lifecycle,
     ) {
-        lifecycle.log_availability = Some(match lifecycle.tmux_pane.as_ref() {
-            Some(address) => match rtm_platform::tmux::TmuxGateway::is_alive(address).await {
+        let log_availability = if let Some(address) = lifecycle.tmux_pane.as_ref() {
+            match rtm_platform::tmux::TmuxGateway::is_alive(address).await {
                 Ok(true) => LogAvailability::TmuxPaneSnapshot,
                 Ok(false) | Err(_) => LogAvailability::Unavailable {
                     reason: LogsUnavailableReason::PaneUnavailable,
                 },
-            },
-            None => {
-                let paths = config.session_log_paths(lifecycle.session_id);
-                LogAvailability::Headless {
-                    stdout_path: paths.stdout_path,
-                    stderr_path: paths.stderr_path,
-                }
             }
-        });
+        } else {
+            let paths = config.session_log_paths(lifecycle.session_id);
+            LogAvailability::Headless {
+                stdout_path: paths.stdout_path,
+                stderr_path: paths.stderr_path,
+            }
+        };
+        lifecycle.log_availability = Some(log_availability);
     }
 }

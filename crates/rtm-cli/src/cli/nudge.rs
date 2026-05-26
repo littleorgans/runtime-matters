@@ -30,7 +30,7 @@ pub async fn run(args: NudgeArgs) -> Result<()> {
 
     match response {
         RuntimeResponse::Nudge(payload) if payload.response.delivered => {
-            output::emit(&args.output, &payload.response)?
+            output::emit(&args.output, &payload.response)?;
         }
         RuntimeResponse::Nudge(payload) => match payload.response.outcome {
             NudgeOutcome::Unsupported(reason) => bail!(

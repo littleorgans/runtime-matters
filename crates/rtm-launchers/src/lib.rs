@@ -6,8 +6,8 @@ use std::sync::OnceLock;
 pub use claude::ClaudeLauncher;
 pub use codex::CodexLauncher;
 use lilo_rm_core::{
-    HeadlessSpawnTarget, LaunchEnv, LauncherError, RuntimeKind, RuntimeLauncher, SpawnRequest,
-    SpawnTarget, upsert_launch_env,
+    HeadlessSpawnTarget, IsolationPolicy, LaunchEnv, LauncherError, RuntimeKind, RuntimeLauncher,
+    SpawnRequest, SpawnTarget, upsert_launch_env,
 };
 
 static CLAUDE: ClaudeLauncher = ClaudeLauncher;
@@ -32,7 +32,7 @@ pub fn warm_registry() -> Result<(), LauncherError> {
         let request = SpawnRequest {
             session_id: uuid::Uuid::nil(),
             runtime: launcher.kind(),
-            isolation: Default::default(),
+            isolation: IsolationPolicy::default(),
             image: None,
             env: Vec::new(),
             mounts: Vec::new(),

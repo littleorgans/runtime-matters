@@ -100,10 +100,10 @@ fn docker_run_base_argv(
 fn container_command(command: &str) -> String {
     let path = Path::new(command);
     if path.is_absolute() {
-        return path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| command.to_owned());
+        return path.file_name().map_or_else(
+            || command.to_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        );
     }
     command.to_owned()
 }

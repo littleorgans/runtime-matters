@@ -33,9 +33,9 @@ async fn main() -> Result<()> {
 }
 
 fn event_count(events: &EventBatch) -> usize {
-    match events {
-        EventBatch::Events { events, .. } => events.len(),
-        EventBatch::CursorExpired { .. } => 0,
-        _ => 0,
+    if let EventBatch::Events { events, .. } = events {
+        events.len()
+    } else {
+        0
     }
 }

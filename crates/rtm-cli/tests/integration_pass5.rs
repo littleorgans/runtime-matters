@@ -330,7 +330,7 @@ fn wait_for_interrupt_recovery(
         let stdout = output_stdout(output);
         let exited = stdout.contains("\"exited\"");
         let pane_alive = tmux_session.pane_alive(expected_pane);
-        last_status = stdout.clone();
+        last_status.clone_from(&stdout);
         last_pane_alive = pane_alive;
         (exited && pane_alive).then_some(stdout)
     })

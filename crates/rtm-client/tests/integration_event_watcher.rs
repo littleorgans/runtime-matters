@@ -8,7 +8,9 @@ use lilo_rm_core::{
     EventBatch, EventsRequest, ProtocolError, RUNTIME_PROTOCOL_VERSION, RuntimeResponse,
     RuntimeRpc, VersionInfo, VersionPayload, read_json_line, write_json_line,
 };
-use rtm_daemon::{DaemonConfig, ReconcileConfig, run_daemon};
+use rtm_daemon::{
+    DaemonConfig, ReconcileConfig, docker_preflight::DockerPreflightConfig, run_daemon,
+};
 use rtm_store::StoreConfig;
 use serde_json::json;
 use tokio::io::BufReader;
@@ -35,7 +37,7 @@ impl TestDaemon {
                 db_path: tempdir.path().join("rtm.sqlite"),
             },
             reconcile: ReconcileConfig::default(),
-            docker_preflight: Default::default(),
+            docker_preflight: DockerPreflightConfig::default(),
         };
         let task = tokio::spawn(async move {
             run_daemon(config).await.expect("daemon run");
@@ -84,7 +86,7 @@ async fn wait_for_socket(socket_path: &Path) {
 
 #[tokio::test]
 async fn connect_rejects_protocol_mismatch() {
-    let (client, server) = mock_version_client("0.3").await;
+    let (client, server) = mock_version_client("0.3");
 
     let error = EventWatcher::builder()
         .connect(client)
@@ -105,7 +107,7 @@ async fn connect_rejects_protocol_mismatch() {
 
 #[tokio::test]
 async fn connect_accepts_matching_protocol() {
-    let (client, server) = mock_version_client(RUNTIME_PROTOCOL_VERSION).await;
+    let (client, server) = mock_version_client(RUNTIME_PROTOCOL_VERSION);
 
     let watcher = EventWatcher::builder()
         .since(7)
@@ -208,13 +210,13 @@ async fn seek_repositions_next_request() {
     daemon.stop().await;
 }
 
-async fn mock_version_client(protocol_version: &str) -> (RuntimeClient, JoinHandle<()>) {
+fn mock_version_client(protocol_version: &str) -> (RuntimeClient, JoinHandle<()>) {
     let tempdir = tempfile::tempdir().expect("tempdir");
     let socket_path = tempdir.path().join("rtmd.sock");
     let listener = UnixListener::bind(&socket_path).expect("bind test socket");
     let client = RuntimeClient::new(socket_path);
     let mut version = VersionInfo::new("0.6.0", "test-sha");
-    version.protocol_version = protocol_version.to_owned();
+    protocol_version.clone_into(&mut version.protocol_version);
     let server = tokio::spawn(async move {
         let _tempdir = tempdir;
         let (stream, _) = listener.accept().await.expect("accept client");

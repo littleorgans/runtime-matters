@@ -1,4 +1,6 @@
-use lilo_rm_core::{HeadlessSpawnTarget, RuntimeKind, RuntimeLauncher, SpawnRequest, SpawnTarget};
+use lilo_rm_core::{
+    HeadlessSpawnTarget, IsolationPolicy, RuntimeKind, RuntimeLauncher, SpawnRequest, SpawnTarget,
+};
 use uuid::Uuid;
 
 #[test]
@@ -10,9 +12,8 @@ fn registered_launchers_return_argv_and_env() {
 
 #[test]
 fn unknown_runtime_kind_is_not_registered() {
-    let error = match rtm_launchers::dispatch(&RuntimeKind::Other("nonexistent".to_owned())) {
-        Ok(_) => panic!("unknown launcher resolved"),
-        Err(error) => error,
+    let Err(error) = rtm_launchers::dispatch(&RuntimeKind::Other("nonexistent".to_owned())) else {
+        panic!("unknown launcher resolved");
     };
 
     assert_eq!(
@@ -25,7 +26,7 @@ fn assert_launcher_conforms(launcher: &'static dyn RuntimeLauncher) {
     let request = SpawnRequest {
         session_id: Uuid::now_v7(),
         runtime: launcher.kind(),
-        isolation: Default::default(),
+        isolation: IsolationPolicy::default(),
         image: None,
         env: Vec::new(),
         mounts: Vec::new(),

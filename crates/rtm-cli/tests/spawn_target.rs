@@ -33,7 +33,7 @@ fn explicit_headless_spawn_records_no_tmux_pane_and_rejects_nudge() {
 
     let response = request_raw(
         &harness,
-        RuntimeRpc::Nudge {
+        &RuntimeRpc::Nudge {
             request: NudgeRequest {
                 session_id: session_id.parse().expect("session id"),
                 content: "headless".to_owned(),
@@ -68,7 +68,7 @@ fn missing_session_nudge_uses_structured_error_code() {
 
     let response = request_raw(
         &harness,
-        RuntimeRpc::Nudge {
+        &RuntimeRpc::Nudge {
             request: NudgeRequest {
                 session_id,
                 content: "missing".to_owned(),
@@ -98,7 +98,7 @@ fn headless_spawn_pipes_stdout_and_stderr_to_session_logs() {
                 request: SpawnRequest {
                     session_id,
                     runtime: RuntimeKind::Claude,
-                    isolation: Default::default(),
+                    isolation: IsolationPolicy::default(),
                     image: None,
                     env: vec![LaunchEnv::new("RTM_TEST_STDIO_SENTINELS", "1")],
                     mounts: Vec::new(),
@@ -469,7 +469,7 @@ fn validate_target_rpc_checks_tmux_liveness_when_available() {
 fn validate_target(harness: &RtmHarness, target: &str) -> RuntimeResponse {
     request_raw(
         harness,
-        RuntimeRpc::ValidateTarget {
+        &RuntimeRpc::ValidateTarget {
             request: ValidateTargetRequest {
                 target: target.to_owned(),
             },
@@ -525,7 +525,7 @@ fn capture_spawn_request(mut command: Command) -> (SpawnRequest, std::process::O
     listener
         .set_nonblocking(true)
         .expect("nonblocking capture socket");
-    let handle = thread::spawn(move || accept_spawn_request(listener));
+    let handle = thread::spawn(move || accept_spawn_request(&listener));
 
     let output = command
         .env("RTM_SOCKET_PATH", &socket_path)
@@ -535,7 +535,7 @@ fn capture_spawn_request(mut command: Command) -> (SpawnRequest, std::process::O
     (request, output)
 }
 
-fn accept_spawn_request(listener: UnixListener) -> SpawnRequest {
+fn accept_spawn_request(listener: &UnixListener) -> SpawnRequest {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         match listener.accept() {
@@ -566,9 +566,9 @@ fn read_spawn_request(stream: UnixStream) -> SpawnRequest {
     request
 }
 
-fn request_raw(harness: &RtmHarness, rpc: RuntimeRpc) -> RuntimeResponse {
+fn request_raw(harness: &RtmHarness, rpc: &RuntimeRpc) -> RuntimeResponse {
     let mut stream = UnixStream::connect(harness.socket_path()).expect("connect daemon");
-    write_json_line_blocking(&mut stream, &rpc).expect("write request");
+    write_json_line_blocking(&mut stream, rpc).expect("write request");
     let mut reader = BufReader::new(stream);
     read_json_line_blocking(&mut reader).expect("read response")
 }

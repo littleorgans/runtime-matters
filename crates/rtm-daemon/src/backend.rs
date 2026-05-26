@@ -191,7 +191,7 @@ mod tests {
             store: rtm_store::StoreConfig {
                 db_path: PathBuf::from("/tmp/rtm.db"),
             },
-            reconcile: Default::default(),
+            reconcile: crate::reconcile::ReconcileConfig::default(),
             docker_preflight: DockerPreflightConfig::new(
                 "runtime-matters-agent:latest",
                 false,

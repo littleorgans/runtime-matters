@@ -30,7 +30,7 @@ pub async fn launch_shim(
     match &request.target {
         SpawnTarget::Tmux(target) => launch_tmux_shim(config, request, target, &env)
             .await
-            .map(|_| None),
+            .map(|()| None),
         SpawnTarget::Headless(_) => launch_headless_shim(config, request, &env).await.map(Some),
     }
 }
@@ -177,7 +177,7 @@ pub async fn send_ready(socket_path: &std::path::Path, ready: ShimReady) -> Resu
 }
 
 pub fn send_ready_blocking(socket_path: &std::path::Path, ready: ShimReady) -> Result<()> {
-    send_shim_rpc_blocking(socket_path, RuntimeRpc::ShimReady { ready }, "ShimReady")
+    send_shim_rpc_blocking(socket_path, &RuntimeRpc::ShimReady { ready }, "ShimReady")
 }
 
 pub async fn send_exit(socket_path: &std::path::Path, exit: ShimExit) -> Result<()> {
@@ -185,7 +185,7 @@ pub async fn send_exit(socket_path: &std::path::Path, exit: ShimExit) -> Result<
 }
 
 pub fn send_exit_blocking(socket_path: &std::path::Path, exit: ShimExit) -> Result<()> {
-    send_shim_rpc_blocking(socket_path, RuntimeRpc::ShimExit { exit }, "ShimExit")
+    send_shim_rpc_blocking(socket_path, &RuntimeRpc::ShimExit { exit }, "ShimExit")
 }
 
 async fn send_shim_rpc(
@@ -205,7 +205,7 @@ async fn send_shim_rpc(
 
 fn send_shim_rpc_blocking(
     socket_path: &std::path::Path,
-    rpc: RuntimeRpc,
+    rpc: &RuntimeRpc,
     label: &'static str,
 ) -> Result<()> {
     let mut stream = StdUnixStream::connect(socket_path)
@@ -251,7 +251,7 @@ mod tests {
                 db_path: PathBuf::from("/tmp/rtm.db"),
             },
             reconcile: ReconcileConfig::default(),
-            docker_preflight: Default::default(),
+            docker_preflight: crate::docker_preflight::DockerPreflightConfig::default(),
         }
     }
 
@@ -289,12 +289,12 @@ mod tests {
         let address = tmux_session.pane();
         tmux_session.kill();
 
-        let error = match launch_shim(
+        let Err(error) = launch_shim(
             &test_config(),
             &SpawnRequest {
                 session_id: uuid::Uuid::now_v7(),
                 runtime: RuntimeKind::Claude,
-                isolation: Default::default(),
+                isolation: lilo_rm_core::IsolationPolicy::default(),
                 image: None,
                 env: Vec::new(),
                 mounts: Vec::new(),
@@ -307,12 +307,11 @@ mod tests {
             },
         )
         .await
-        {
-            Ok(_) => panic!("dead pane should fail launch"),
-            Err(error) => error,
+        else {
+            panic!("dead pane should fail launch");
         };
 
-        let RuntimeResponse::Error(payload) = rpc_error_response(RpcErrorContext::Spawn, error)
+        let RuntimeResponse::Error(payload) = rpc_error_response(RpcErrorContext::Spawn, &error)
         else {
             panic!("expected error response");
         };

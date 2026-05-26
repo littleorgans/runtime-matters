@@ -25,4 +25,5 @@ with a cursor.
 reports socket readiness, paths, Docker availability, and manifest
 validation capability.
 
-See [PROJECT.md](./PROJECT.md) for more.
+See [PROJECT.md](./PROJECT.md) for design intent and contracts, and
+[MAP.md](./MAP.md) for code structure, diagrams, and onboarding routes.

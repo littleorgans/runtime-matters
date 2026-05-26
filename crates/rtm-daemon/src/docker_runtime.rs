@@ -36,8 +36,10 @@ fn docker_command() -> String {
         .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
         .map(|dir| dir.join("docker"))
         .find(|path| is_executable(path))
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "docker".to_owned())
+        .map_or_else(
+            || "docker".to_owned(),
+            |path| path.to_string_lossy().into_owned(),
+        )
 }
 
 fn is_executable(path: &Path) -> bool {

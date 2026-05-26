@@ -183,7 +183,7 @@ impl TestState {
                 log_root: temp.path().join("logs"),
                 store: store_config,
                 reconcile: reconcile::ReconcileConfig::default(),
-                docker_preflight: Default::default(),
+                docker_preflight: crate::docker_preflight::DockerPreflightConfig::default(),
             },
             store,
         )

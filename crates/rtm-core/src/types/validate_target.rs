@@ -21,7 +21,7 @@ impl ValidateTargetResponse {
         }
     }
 
-    pub fn invalid_target(error: SpawnTargetParseError) -> Self {
+    pub fn invalid_target(error: &SpawnTargetParseError) -> Self {
         Self {
             valid: false,
             outcome: ValidateTargetOutcome::InvalidTarget {
@@ -50,7 +50,7 @@ impl ValidateTargetResponse {
         if is_unsupported_target(&error.0) {
             Self::unsupported_target(error.0)
         } else {
-            Self::invalid_target(error)
+            Self::invalid_target(&error)
         }
     }
 }

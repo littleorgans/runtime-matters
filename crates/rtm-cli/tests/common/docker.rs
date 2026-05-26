@@ -1,3 +1,4 @@
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use uuid::Uuid;
@@ -8,7 +9,6 @@ pub fn write_fake_cli(dir: &Path) {
     let path = dir.join("docker");
     std::fs::write(&path, FAKE_DOCKER).expect("fake docker");
     let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
-    use std::os::unix::fs::PermissionsExt;
     permissions.set_mode(0o755);
     std::fs::set_permissions(&path, permissions).expect("permissions");
 }

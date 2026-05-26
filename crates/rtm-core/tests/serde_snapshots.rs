@@ -26,7 +26,7 @@ fn runtime_rpc_json_shapes_are_stable() {
             request: SpawnRequest {
                 session_id,
                 runtime: RuntimeKind::Claude,
-                isolation: Default::default(),
+                isolation: IsolationPolicy::default(),
                 image: None,
                 env: Vec::new(),
                 mounts: Vec::new(),
@@ -137,7 +137,19 @@ fn runtime_response_json_shapes_are_stable() {
     let session_id = session_id();
     let lifecycle = headless_lifecycle(session_id);
     let tmux_lifecycle = tmux_lifecycle(session_id);
-    let responses = vec![
+    let mut responses = spawned_response_cases(session_id, lifecycle, tmux_lifecycle);
+    responses.extend(validate_target_response_cases());
+    responses.extend(other_response_cases(session_id));
+
+    insta::assert_json_snapshot!(responses);
+}
+
+fn spawned_response_cases(
+    session_id: uuid::Uuid,
+    lifecycle: Lifecycle,
+    tmux_lifecycle: Lifecycle,
+) -> Vec<RuntimeResponse> {
+    vec![
         RuntimeResponse::Spawned(SpawnedPayload {
             lifecycle,
             event: RuntimeEvent::Running {
@@ -168,6 +180,11 @@ fn runtime_response_json_shapes_are_stable() {
             kind: SpawnConflictKind::TmuxPaneOccupancy,
             lifecycle: tmux_lifecycle,
         }),
+    ]
+}
+
+fn validate_target_response_cases() -> Vec<RuntimeResponse> {
+    vec![
         RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::valid(),
         }),
@@ -188,6 +205,11 @@ fn runtime_response_json_shapes_are_stable() {
         RuntimeResponse::ValidateTarget(ValidateTargetPayload {
             response: ValidateTargetResponse::unsupported_target("ssh:remote"),
         }),
+    ]
+}
+
+fn other_response_cases(session_id: uuid::Uuid) -> Vec<RuntimeResponse> {
+    vec![
         RuntimeResponse::ShimLaunch(ShimLaunchPayload {
             launch: launch_spec(),
         }),
@@ -235,9 +257,7 @@ fn runtime_response_json_shapes_are_stable() {
             }],
             cursor: 8,
         }),
-    ];
-
-    insta::assert_json_snapshot!(responses);
+    ]
 }
 
 #[test]

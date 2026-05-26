@@ -25,7 +25,7 @@ impl EventAppender {
         self.event_log.append(event).await
     }
 
-    pub(super) async fn event_waiter_count(&self) -> usize {
-        self.event_log.waiter_count().await
+    pub(super) fn event_waiter_count(&self) -> usize {
+        self.event_log.waiter_count()
     }
 }
