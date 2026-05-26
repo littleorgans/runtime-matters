@@ -2,6 +2,12 @@
 
 All notable changes documented here.
 
+## [0.7.2](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.7.1...lilo-rm-core-v0.7.2) - 2026-05-26
+
+### Refactoring
+
+- *(internal)* align with strict rust conventions ([#54](https://github.com/littleorgans/runtime-matters/pull/54))
+
 ## [0.7.1](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-core-v0.7.0...lilo-rm-core-v0.7.1) - 2026-05-24
 
 ### Features
