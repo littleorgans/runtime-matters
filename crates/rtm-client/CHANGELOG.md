@@ -2,6 +2,12 @@
 
 All notable changes documented here.
 
+## [0.7.2](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.7.1...lilo-rm-client-v0.7.2) - 2026-05-26
+
+### Refactoring
+
+- *(internal)* align with strict rust conventions ([#54](https://github.com/littleorgans/runtime-matters/pull/54))
+
 ## [0.7.0](https://github.com/littleorgans/runtime-matters/compare/lilo-rm-client-v0.6.3...lilo-rm-client-v0.7.0) - 2026-05-23
 
 ### Features

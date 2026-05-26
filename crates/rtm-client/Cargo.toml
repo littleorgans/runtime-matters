@@ -2,7 +2,7 @@
 name = "lilo-rm-client"
 description = "Runtime Matters client shell for the public rtmd Unix socket contract"
 readme = "README.md"
-version = "0.7.1"
+version = "0.7.2"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
