@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 mod common;
 
 use std::fs::{OpenOptions, create_dir_all};

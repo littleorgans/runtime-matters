@@ -48,18 +48,17 @@ pub(crate) fn validate_cwd_mount_plan(
     let cwd_target = normalize_container_path(&path_string(cwd_source))
         .ok_or_else(|| invalid_container_path("spawn cwd", &path_string(cwd_source)))?;
 
-    match cover {
-        Some(cover) => Ok(CwdMountPlan {
+    if let Some(cover) = cover {
+        Ok(CwdMountPlan {
             auto_mount_cwd: false,
             workdir: remap_cwd_workdir(&cover, cwd_source)?,
-        }),
-        None => {
-            reject_cwd_target_overlaps(&cwd_target, mounts)?;
-            Ok(CwdMountPlan {
-                auto_mount_cwd: true,
-                workdir: cwd_target,
-            })
-        }
+        })
+    } else {
+        reject_cwd_target_overlaps(&cwd_target, mounts)?;
+        Ok(CwdMountPlan {
+            auto_mount_cwd: true,
+            workdir: cwd_target,
+        })
     }
 }
 
@@ -87,7 +86,11 @@ pub(crate) fn select_cwd_cover(
         }
 
         if length == selected_len {
-            let previous = selected.expect("selected mount");
+            let Some(previous) = selected else {
+                selected = Some(mount);
+                selected_len = length;
+                continue;
+            };
             return Err(RuntimeFailure::protocol_mismatch(format!(
                 "multiple docker mount sources cover spawn cwd {} with equal precedence: {} and {}",
                 cwd_source.display(),

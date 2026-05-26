@@ -26,11 +26,11 @@ pub async fn launch_shim(
     config: &DaemonConfig,
     request: &SpawnRequest,
 ) -> Result<Option<HeadlessLogPaths>> {
-    let env = shim_env(config);
+    let env = shim_env(config)?;
     match &request.target {
         SpawnTarget::Tmux(target) => launch_tmux_shim(config, request, target, &env)
             .await
-            .map(|_| None),
+            .map(|()| None),
         SpawnTarget::Headless(_) => launch_headless_shim(config, request, &env).await.map(Some),
     }
 }
@@ -136,14 +136,14 @@ fn shim_argv(config: &DaemonConfig, request: &SpawnRequest) -> Vec<String> {
 ///
 /// Adding entries here is a deliberate widening of the bootstrap surface and
 /// must be paired with a documented justification.
-fn shim_env(config: &DaemonConfig) -> Vec<LaunchEnv> {
+fn shim_env(config: &DaemonConfig) -> Result<Vec<LaunchEnv>> {
     let socket_path = config
         .socket_path()
-        .expect("headless shim transport requires a Unix socket endpoint");
-    vec![LaunchEnv {
+        .context("headless shim transport requires a Unix socket endpoint")?;
+    Ok(vec![LaunchEnv {
         key: "RTM_SOCKET_PATH".to_owned(),
         value: socket_path.to_string_lossy().into_owned(),
-    }]
+    }])
 }
 
 pub async fn request_launch(
@@ -177,7 +177,7 @@ pub async fn send_ready(socket_path: &std::path::Path, ready: ShimReady) -> Resu
 }
 
 pub fn send_ready_blocking(socket_path: &std::path::Path, ready: ShimReady) -> Result<()> {
-    send_shim_rpc_blocking(socket_path, RuntimeRpc::ShimReady { ready }, "ShimReady")
+    send_shim_rpc_blocking(socket_path, &RuntimeRpc::ShimReady { ready }, "ShimReady")
 }
 
 pub async fn send_exit(socket_path: &std::path::Path, exit: ShimExit) -> Result<()> {
@@ -185,7 +185,7 @@ pub async fn send_exit(socket_path: &std::path::Path, exit: ShimExit) -> Result<
 }
 
 pub fn send_exit_blocking(socket_path: &std::path::Path, exit: ShimExit) -> Result<()> {
-    send_shim_rpc_blocking(socket_path, RuntimeRpc::ShimExit { exit }, "ShimExit")
+    send_shim_rpc_blocking(socket_path, &RuntimeRpc::ShimExit { exit }, "ShimExit")
 }
 
 async fn send_shim_rpc(
@@ -205,7 +205,7 @@ async fn send_shim_rpc(
 
 fn send_shim_rpc_blocking(
     socket_path: &std::path::Path,
-    rpc: RuntimeRpc,
+    rpc: &RuntimeRpc,
     label: &'static str,
 ) -> Result<()> {
     let mut stream = StdUnixStream::connect(socket_path)
@@ -251,7 +251,7 @@ mod tests {
                 db_path: PathBuf::from("/tmp/rtm.db"),
             },
             reconcile: ReconcileConfig::default(),
-            docker_preflight: Default::default(),
+            docker_preflight: crate::docker_preflight::DockerPreflightConfig::default(),
         }
     }
 
@@ -260,7 +260,7 @@ mod tests {
         // Contract: the bootstrap env (the only env that ever rides through
         // tmux respawn-pane -e and is inherited by the shim process) is
         // exactly {RTM_SOCKET_PATH}. Runtime env arrives over UDS.
-        let env = shim_env(&test_config());
+        let env = shim_env(&test_config()).expect("shim env");
         assert_eq!(env.len(), 1, "bootstrap env widened unexpectedly: {env:?}");
         assert_eq!(env[0].key, "RTM_SOCKET_PATH");
         assert_eq!(env[0].value, "/tmp/rtm.sock");
@@ -289,12 +289,12 @@ mod tests {
         let address = tmux_session.pane();
         tmux_session.kill();
 
-        let error = match launch_shim(
+        let Err(error) = launch_shim(
             &test_config(),
             &SpawnRequest {
                 session_id: uuid::Uuid::now_v7(),
                 runtime: RuntimeKind::Claude,
-                isolation: Default::default(),
+                isolation: lilo_rm_core::IsolationPolicy::default(),
                 image: None,
                 env: Vec::new(),
                 mounts: Vec::new(),
@@ -307,12 +307,11 @@ mod tests {
             },
         )
         .await
-        {
-            Ok(_) => panic!("dead pane should fail launch"),
-            Err(error) => error,
+        else {
+            panic!("dead pane should fail launch");
         };
 
-        let RuntimeResponse::Error(payload) = rpc_error_response(RpcErrorContext::Spawn, error)
+        let RuntimeResponse::Error(payload) = rpc_error_response(RpcErrorContext::Spawn, &error)
         else {
             panic!("expected error response");
         };

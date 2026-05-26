@@ -36,7 +36,7 @@ pub(crate) async fn handle_connection(
             };
             response
         }
-        Err(error) => protocol_error_response(error),
+        Err(error) => protocol_error_response(&error),
     };
     let should_stop = matches!(response, RuntimeResponse::Stopping);
 
@@ -87,7 +87,7 @@ async fn handle_rpc(rpc: RuntimeRpc, state: Arc<ServerState>) -> RuntimeResponse
     let error_context = error_context(&rpc);
     match handle_rpc_result(rpc, state).await {
         Ok(response) => response,
-        Err(error) => rpc_error_response(error_context, error),
+        Err(error) => rpc_error_response(error_context, &error),
     }
 }
 

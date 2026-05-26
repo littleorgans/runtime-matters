@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 #[path = "support/report.rs"]
 mod report_support;
 #[path = "support/spawn.rs"]
@@ -33,9 +35,9 @@ async fn main() -> Result<()> {
 }
 
 fn event_count(events: &EventBatch) -> usize {
-    match events {
-        EventBatch::Events { events, .. } => events.len(),
-        EventBatch::CursorExpired { .. } => 0,
-        _ => 0,
+    if let EventBatch::Events { events, .. } = events {
+        events.len()
+    } else {
+        0
     }
 }

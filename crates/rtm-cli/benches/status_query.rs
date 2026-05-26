@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 #[path = "../tests/common/mod.rs"]
 mod common;
 

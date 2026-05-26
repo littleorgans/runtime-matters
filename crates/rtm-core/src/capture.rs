@@ -54,14 +54,19 @@ pub struct PaneSnapshot {
     pub pane_history_lines: u32,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, thiserror::Error)]
 #[non_exhaustive]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum CaptureError {
+    #[error("session is not attached to a tmux target")]
     NotATmuxTarget,
+    #[error("tmux pane is unavailable")]
     PaneUnavailable,
+    #[error("session not found")]
     SessionMissing,
+    #[error("tmux is not available")]
     TmuxNotAvailable,
+    #[error("tmux capture-pane failed: {stderr}")]
     CapturePaneFailed { stderr: String },
 }
 

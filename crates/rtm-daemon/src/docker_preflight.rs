@@ -22,7 +22,7 @@ impl DockerPreflightConfig {
             image: std::env::var(RTM_DOCKER_IMAGE)
                 .ok()
                 .filter(|value| !value.trim().is_empty())
-                .map(trimmed_string),
+                .map(|value| trimmed_string(&value)),
             allow_root_image_user: env_flag(RTM_DOCKER_ALLOW_ROOT_IMAGE_USER),
             allow_arm64_manifest_escape: env_flag(RTM_DOCKER_ALLOW_ARM64_MANIFEST_ESCAPE),
         }
@@ -58,7 +58,7 @@ impl DockerPreflightConfig {
     }
 }
 
-fn trimmed_string(value: String) -> String {
+fn trimmed_string(value: &str) -> String {
     value.trim().to_owned()
 }
 
@@ -118,7 +118,7 @@ impl DockerImageInspector for DockerCliInspector {
                 "docker image inspect returned invalid user metadata: {error}"
             ))
         })?;
-        Ok(non_empty(user))
+        Ok(non_empty(&user))
     }
 
     async fn arm64_manifest_available(&self, image: &str) -> Result<bool> {
@@ -167,7 +167,7 @@ impl DockerImageInspector for DockerCliInspector {
                 "docker image inspect returned invalid architecture metadata: {error}"
             ))
         })?;
-        non_empty(architecture).ok_or_else(|| {
+        non_empty(&architecture).ok_or_else(|| {
             RuntimeFailure::docker_image_metadata_unavailable(
                 "docker image inspect returned empty architecture metadata",
             )
@@ -181,7 +181,7 @@ fn env_flag(name: &str) -> bool {
         .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
 }
 
-fn non_empty(value: String) -> Option<String> {
+fn non_empty(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         None
@@ -320,7 +320,7 @@ mod tests {
         SpawnRequest {
             session_id: Uuid::nil(),
             runtime: RuntimeKind::Claude,
-            isolation: IsolationPolicy::Docker(Default::default()),
+            isolation: IsolationPolicy::Docker(lilo_rm_core::IsolationProfile::default()),
             image: None,
             env: Vec::new(),
             mounts: Vec::new(),

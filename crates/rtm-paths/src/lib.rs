@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Runtime filesystem path policy and daemon endpoint modeling.
 //!
 //! Filesystem locations are plain `PathBuf` values. Daemon connection targets
@@ -5,7 +7,6 @@
 //! filesystem paths.
 
 use std::ffi::OsString;
-use std::fmt;
 use std::path::{Path, PathBuf};
 
 pub const RTM_SOCKET_PATH: &str = "RTM_SOCKET_PATH";
@@ -82,31 +83,37 @@ impl RuntimePathEnv {
         }
     }
 
+    #[must_use]
     pub fn socket_path(mut self, value: impl Into<OsString>) -> Self {
         self.socket_path = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn db_path(mut self, value: impl Into<OsString>) -> Self {
         self.db_path = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn rtm_home(mut self, value: impl Into<OsString>) -> Self {
         self.rtm_home = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn shim_path(mut self, value: impl Into<OsString>) -> Self {
         self.shim_path = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn xdg_runtime_dir(mut self, value: impl Into<OsString>) -> Self {
         self.xdg_runtime_dir = Some(value.into());
         self
     }
 
+    #[must_use]
     pub fn home(mut self, value: impl Into<OsString>) -> Self {
         self.home = Some(value.into());
         self
@@ -119,33 +126,15 @@ impl Default for RuntimePathEnv {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RuntimePathError {
+    #[error("HOME is required for default {context}")]
     MissingHome { context: &'static str },
-    CurrentExecutable(std::io::Error),
+    #[error("failed to resolve current executable: {0}")]
+    CurrentExecutable(#[source] std::io::Error),
+    #[error("{0}")]
     UnsupportedEndpoint(&'static str),
-}
-
-impl fmt::Display for RuntimePathError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MissingHome { context } => write!(f, "HOME is required for default {context}"),
-            Self::CurrentExecutable(error) => {
-                write!(f, "failed to resolve current executable: {error}")
-            }
-            Self::UnsupportedEndpoint(message) => f.write_str(message),
-        }
-    }
-}
-
-impl std::error::Error for RuntimePathError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::CurrentExecutable(error) => Some(error),
-            Self::MissingHome { .. } | Self::UnsupportedEndpoint(_) => None,
-        }
-    }
 }
 
 pub fn runtime_endpoint_from_env() -> Result<RuntimeEndpoint, RuntimePathError> {

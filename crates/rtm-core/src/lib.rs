@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Runtime Matters core protocol types and JSON line transport helpers.
 //!
 //! This crate is the stable contract shared by `rtm` clients and rtmd. The

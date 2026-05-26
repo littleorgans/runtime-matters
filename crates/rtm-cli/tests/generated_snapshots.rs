@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 #[test]
 fn generated_mcp_tool_list_is_stable() {
     let tools: serde_json::Value =

@@ -18,7 +18,17 @@ pub(crate) async fn handle_line(state: &Arc<ServerState>, line: &str) -> Option<
             json_rpc_error(-32700, format!("Parse error: {error}")),
         ),
     };
-    Some(serde_json::to_string(&response).expect("JSON-RPC response serializes"))
+    Some(serde_json::to_string(&response).unwrap_or_else(|error| {
+        json!({
+            "jsonrpc": "2.0",
+            "id": Value::Null,
+            "error": {
+                "code": -32603,
+                "message": format!("Internal error: {error}"),
+            },
+        })
+        .to_string()
+    }))
 }
 
 async fn handle_request(
@@ -81,7 +91,7 @@ async fn call_tool(state: &Arc<ServerState>, name: &str, arguments: Value) -> Re
     match name {
         "rtm_kill_by_pid" => kill_by_pid(state, arguments).await,
         "rtm_status" => status(state, arguments).await,
-        "rtm_version" => version(arguments),
+        "rtm_version" => version(&arguments),
         "rtm_watchers" => watchers(state, arguments).await,
         other => Ok(tool_error(format!("Unknown tool: {other}"))),
     }
@@ -103,7 +113,7 @@ async fn status(state: &Arc<ServerState>, arguments: Value) -> Result<Value> {
     Ok(tool_success(text, &response))
 }
 
-fn version(arguments: Value) -> Result<Value> {
+fn version(arguments: &Value) -> Result<Value> {
     ensure_empty_arguments(arguments)?;
     let response = crate::version::runtime_version_info();
     let text = serde_json::to_string(&response)?;
@@ -111,17 +121,14 @@ fn version(arguments: Value) -> Result<Value> {
 }
 
 async fn watchers(state: &Arc<ServerState>, arguments: Value) -> Result<Value> {
-    ensure_empty_arguments(arguments)?;
+    ensure_empty_arguments(&arguments)?;
     let response = state.watcher_counts().await;
     let text = serde_json::to_string(&response)?;
     Ok(tool_success(text, &response))
 }
 
-fn ensure_empty_arguments(arguments: Value) -> Result<()> {
-    if arguments
-        .as_object()
-        .is_some_and(|object| object.is_empty())
-    {
+fn ensure_empty_arguments(arguments: &Value) -> Result<()> {
+    if arguments.as_object().is_some_and(serde_json::Map::is_empty) {
         return Ok(());
     }
     Err(anyhow!("tool does not accept arguments"))

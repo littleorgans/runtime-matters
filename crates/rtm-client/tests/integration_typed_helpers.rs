@@ -3,7 +3,9 @@ use std::time::{Duration, Instant};
 
 use lilo_rm_client::RuntimeClient;
 use lilo_rm_core::{EventBatch, EventsRequest, RuntimeRpc, StatusFilter};
-use rtm_daemon::{DaemonConfig, ReconcileConfig, run_daemon};
+use rtm_daemon::{
+    DaemonConfig, ReconcileConfig, docker_preflight::DockerPreflightConfig, run_daemon,
+};
 use rtm_store::StoreConfig;
 use tokio::net::UnixStream;
 
@@ -25,7 +27,7 @@ impl TestDaemon {
                 db_path: tempdir.path().join("rtm.sqlite"),
             },
             reconcile: ReconcileConfig::default(),
-            docker_preflight: Default::default(),
+            docker_preflight: DockerPreflightConfig::default(),
         };
         let task = tokio::spawn(async move {
             run_daemon(config).await.expect("daemon run");

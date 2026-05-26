@@ -66,14 +66,12 @@ pub fn emit_error(format: OutputFormat, error: &anyhow::Error) -> Result<()> {
                 conflict
                     .lifecycle
                     .runtime_pid
-                    .map(|pid| pid.to_string())
-                    .unwrap_or_else(|| "-".to_owned()),
+                    .map_or_else(|| "-".to_owned(), |pid| pid.to_string()),
                 conflict
                     .lifecycle
                     .tmux_pane
                     .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "-".to_owned())
+                    .map_or_else(|| "-".to_owned(), ToString::to_string)
             )?,
             None => writeln!(std::io::stderr(), "Error: {}", error_message(error))?,
         },
@@ -95,10 +93,10 @@ fn error_message(error: &anyhow::Error) -> String {
 }
 
 fn error_code(error: &anyhow::Error) -> String {
-    error
-        .downcast_ref::<ClientError>()
-        .map(|error| error.code().as_str().to_owned())
-        .unwrap_or_else(|| "runtime_error".to_owned())
+    error.downcast_ref::<ClientError>().map_or_else(
+        || "runtime_error".to_owned(),
+        |error| error.code().as_str().to_owned(),
+    )
 }
 
 fn error_details(error: &anyhow::Error) -> Option<Value> {

@@ -56,7 +56,7 @@ pub enum RuntimeCapability {
     StatusUpdatedSinceFilter,
     /// Nudge responses expose typed delivery outcomes.
     TypedNudgeOutcomes,
-    /// ValidateTarget checks a target string without spawning.
+    /// `ValidateTarget` checks a target string without spawning.
     ValidateTargetPreflight,
     /// Events support durable cursor replay.
     EventsCursor,
@@ -64,7 +64,7 @@ pub enum RuntimeCapability {
     EventsLongPoll,
     /// Tmux targets support on demand pane snapshot capture.
     TmuxPaneSnapshot,
-    /// Kill responses include typed Signalled or AlreadyExited outcomes.
+    /// Kill responses include typed `Signalled` or `AlreadyExited` outcomes.
     KillOutcomes,
     /// Spawn rejects session reuse and occupied tmux panes with typed conflicts.
     SpawnConflicts,

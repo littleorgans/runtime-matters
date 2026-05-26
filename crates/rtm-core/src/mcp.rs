@@ -66,12 +66,12 @@ pub fn json_rpc_error(code: i32, message: impl Into<String>) -> JsonRpcError {
     }
 }
 
-pub fn tool_success<T>(text: String, structured: &T) -> Value
+pub fn tool_success<T>(text: impl Into<String>, structured: &T) -> Value
 where
     T: Serialize,
 {
     json!({
-        "content": [{"type": "text", "text": text}],
+        "content": [{"type": "text", "text": text.into()}],
         "structuredContent": serde_json::to_value(structured)
             .expect("structured MCP result serializes")
     })

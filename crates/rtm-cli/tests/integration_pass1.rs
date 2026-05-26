@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 mod common;
 
 use common::{RtmHarness, assert_process_alive, output_stdout, parse_runtime_pid, wait_for_events};

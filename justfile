@@ -6,7 +6,7 @@ RTM_LOCAL_BIN := env("RTM_LOCAL_BIN", env("HOME") / ".cargo/bin/rtm")
 install: install-release
 
 build:
-    cargo build --workspace
+    cargo build --workspace --all-features
 
 release-build:
     cargo build --workspace --release
@@ -41,7 +41,7 @@ _install-bin src:
 #     just test-unit
 #     just test-integration
 test *ARGS:
-    cargo nextest run --workspace {{ARGS}}
+    cargo nextest run --workspace --all-features {{ARGS}}
 
 test-unit:
     cargo test --workspace --lib --bins
@@ -97,10 +97,13 @@ fmt-check:
     cargo fmt --all -- --check
 
 clippy:
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 clippy-fix:
-    cargo clippy --workspace --fix --allow-dirty -- -D warnings
+    cargo clippy --workspace --all-targets --all-features --fix --allow-dirty -- -D warnings
+
+doc:
+    cargo doc --workspace --no-deps --all-features
 
 check-loc:
     bash scripts/check-loc-limit.sh

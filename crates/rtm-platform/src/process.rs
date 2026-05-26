@@ -19,10 +19,18 @@ pub enum ProcessStartTime {
     Unsupported,
 }
 
+pub(crate) fn platform_pid(pid: u32) -> Option<libc::pid_t> {
+    libc::pid_t::try_from(pid).ok()
+}
+
 pub fn pid_alive(pid: u32) -> bool {
+    let Some(pid) = platform_pid(pid) else {
+        return false;
+    };
+
     // SAFETY: signal 0 asks the kernel to validate pid without delivering a
     // signal.
-    let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
+    let result = unsafe { libc::kill(pid, 0) };
     if result == 0 {
         return true;
     }
@@ -46,21 +54,26 @@ pub fn start_time_probe_for_pid(pid: u32) -> Result<ProcessStartTime> {
 
 #[cfg(target_os = "macos")]
 fn read_start_time_probe_for_pid(pid: u32) -> Result<ProcessStartTime> {
+    let Some(platform_pid) = platform_pid(pid) else {
+        return Ok(ProcessStartTime::Gone);
+    };
     let mut info = std::mem::MaybeUninit::<libc::proc_taskallinfo>::uninit();
-    let size = std::mem::size_of::<libc::proc_taskallinfo>();
-    // SAFETY: proc_pidinfo writes at most `size` bytes into a valid buffer for
-    // PROC_PIDTASKALLINFO. The return value tells us whether the struct is full.
+    let expected_size = libc::c_int::try_from(std::mem::size_of::<libc::proc_taskallinfo>())
+        .context("proc_taskallinfo size exceeds libc::c_int")?;
+    // SAFETY: proc_pidinfo writes at most `expected_size` bytes into a valid
+    // buffer for PROC_PIDTASKALLINFO. The return value tells us whether the
+    // struct is full.
     let read = unsafe {
         libc::proc_pidinfo(
-            pid as libc::c_int,
+            platform_pid,
             libc::PROC_PIDTASKALLINFO,
             0,
             info.as_mut_ptr().cast(),
-            size as libc::c_int,
+            expected_size,
         )
     };
 
-    if read != size as libc::c_int {
+    if read != expected_size {
         let error = std::io::Error::last_os_error();
         if (read == 0 && !pid_alive(pid)) || error.raw_os_error() == Some(libc::ESRCH) {
             return Ok(ProcessStartTime::Gone);
@@ -71,11 +84,12 @@ fn read_start_time_probe_for_pid(pid: u32) -> Result<ProcessStartTime> {
     // SAFETY: proc_pidinfo reported that the full proc_taskallinfo struct was
     // initialized.
     let info = unsafe { info.assume_init() };
+    let seconds = i64::try_from(info.pbsd.pbi_start_tvsec)
+        .with_context(|| format!("invalid start time seconds for pid {pid}"))?;
+    let nanos = u32::try_from(info.pbsd.pbi_start_tvusec * 1_000)
+        .with_context(|| format!("invalid start time for pid {pid}"))?;
     let timestamp = Utc
-        .timestamp_opt(
-            info.pbsd.pbi_start_tvsec as i64,
-            (info.pbsd.pbi_start_tvusec * 1_000) as u32,
-        )
+        .timestamp_opt(seconds, nanos)
         .single()
         .with_context(|| format!("invalid start time for pid {pid}"))?;
     Ok(ProcessStartTime::Known(timestamp))
@@ -131,14 +145,23 @@ fn linux_boot_time(path: &Path) -> Result<Option<i64>> {
 
 #[cfg(target_os = "linux")]
 fn start_time_from_ticks(boot_time: i64, start_ticks: u64) -> Result<Option<DateTime<Utc>>> {
+    // SAFETY: sysconf with _SC_CLK_TCK reads a process global setting and does
+    // not dereference Rust pointers.
     let ticks_per_second = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
     if ticks_per_second <= 0 {
         return Ok(None);
     }
 
-    let ticks_per_second = ticks_per_second as u64;
-    let seconds = boot_time + (start_ticks / ticks_per_second) as i64;
-    let nanos = ((start_ticks % ticks_per_second) * 1_000_000_000 / ticks_per_second) as u32;
+    let ticks_per_second =
+        u64::try_from(ticks_per_second).context("invalid Linux clock tick rate")?;
+    let seconds_since_boot =
+        i64::try_from(start_ticks / ticks_per_second).context("process start time overflow")?;
+    let Some(seconds) = boot_time.checked_add(seconds_since_boot) else {
+        return Ok(None);
+    };
+    let nanos =
+        (u128::from(start_ticks % ticks_per_second) * 1_000_000_000) / u128::from(ticks_per_second);
+    let nanos = u32::try_from(nanos).context("process start time nanoseconds overflow")?;
     Utc.timestamp_opt(seconds, nanos)
         .single()
         .map(Some)
@@ -150,8 +173,8 @@ pub fn start_time_probe_for_pid(_pid: u32) -> Result<ProcessStartTime> {
     Ok(ProcessStartTime::Unsupported)
 }
 
-pub fn start_time_for_pid(_pid: u32) -> Result<Option<DateTime<Utc>>> {
-    match start_time_probe_for_pid(_pid)? {
+pub fn start_time_for_pid(pid: u32) -> Result<Option<DateTime<Utc>>> {
+    match start_time_probe_for_pid(pid)? {
         ProcessStartTime::Known(start_time) => Ok(Some(start_time)),
         ProcessStartTime::Gone | ProcessStartTime::Unsupported => Ok(None),
     }

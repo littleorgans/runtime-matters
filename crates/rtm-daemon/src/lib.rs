@@ -1,3 +1,11 @@
+#![forbid(unsafe_code)]
+#![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
+
+//! Local rtmd process that owns runtime lifecycle state.
+//!
+//! The daemon handles sockets, request dispatch, persistence, Docker wrapping,
+//! event delivery, spawn orchestration, and reconciliation.
+
 mod backend;
 mod docker_argv;
 mod docker_mount_plan;

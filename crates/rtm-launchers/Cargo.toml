@@ -12,3 +12,6 @@ publish = false
 [dependencies]
 lilo-rm-core.workspace = true
 uuid.workspace = true
+
+[lints]
+workspace = true

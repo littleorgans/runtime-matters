@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Async Unix socket client for the public rtmd JSON line contract.
 //!
 //! `lilo-rm-client` owns connection setup, newline delimited JSON framing, and
@@ -208,10 +210,9 @@ impl ClientError {
     pub const fn code(&self) -> ErrorCode {
         match self {
             Self::DaemonUnavailable { .. } => ErrorCode::RuntimeUnavailable,
-            Self::Protocol { .. } => ErrorCode::ProtocolMismatch,
+            Self::Protocol { .. } | Self::UnexpectedResponse { .. } => ErrorCode::ProtocolMismatch,
             Self::ErrorResponse { code, .. } => *code,
             Self::SpawnConflict(_) => ErrorCode::SpawnConflict,
-            Self::UnexpectedResponse { .. } => ErrorCode::ProtocolMismatch,
         }
     }
 }

@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 mod common;
 
 use std::process::{Command, Output};

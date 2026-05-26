@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 mod common;
 
 use common::mcp::{call_tool, content_text, mcp_json, request, tool_names};

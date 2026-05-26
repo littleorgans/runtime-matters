@@ -187,7 +187,7 @@ impl ServerState {
         WatcherCounts {
             process_exit_watchers: self.watchers.process_exit_watcher_count().await,
             shim_sockets: self.spawn.pending_shim_socket_count().await,
-            event_waiters: self.events.event_waiter_count().await,
+            event_waiters: self.events.event_waiter_count(),
         }
     }
 

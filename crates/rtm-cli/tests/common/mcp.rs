@@ -2,7 +2,12 @@ use serde_json::{Value, json};
 
 use super::{RtmHarness, output_stdout};
 
-pub fn call_tool(harness: &RtmHarness, id: u32, name: &str, arguments: Value) -> Value {
+pub fn call_tool(
+    harness: &RtmHarness,
+    id: u32,
+    name: &str,
+    arguments: impl serde::Serialize,
+) -> Value {
     mcp_json(
         harness,
         request(
@@ -16,7 +21,7 @@ pub fn call_tool(harness: &RtmHarness, id: u32, name: &str, arguments: Value) ->
     )
 }
 
-pub fn request(id: u32, method: &str, params: Value) -> String {
+pub fn request(id: u32, method: &str, params: impl serde::Serialize) -> String {
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -26,8 +31,8 @@ pub fn request(id: u32, method: &str, params: Value) -> String {
     .to_string()
 }
 
-pub fn mcp_json(harness: &RtmHarness, request: String) -> Value {
-    let output = harness.mcp_line(&request);
+pub fn mcp_json(harness: &RtmHarness, request: impl AsRef<str>) -> Value {
+    let output = harness.mcp_line(request.as_ref());
     let success = output.status.success();
     let stdout = output_stdout(output);
     assert!(success, "mcp failed: stdout={stdout}");

@@ -56,6 +56,8 @@ mod linux {
                 events: libc::POLLIN,
                 revents: 0,
             };
+            // SAFETY: poll_fd points to one initialized pollfd, nfds is 1, and
+            // the file descriptor is borrowed from a live OwnedFd for this call.
             let result = unsafe {
                 libc::poll(
                     &mut poll_fd,

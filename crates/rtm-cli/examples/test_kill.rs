@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 #[path = "support/report.rs"]
 mod report_support;
 #[path = "support/spawn.rs"]

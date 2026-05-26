@@ -13,12 +13,14 @@ pub struct EventWatcherBuilder {
 
 impl EventWatcherBuilder {
     /// Resume watching from `cursor`.
+    #[must_use]
     pub fn since(mut self, cursor: EventCursor) -> Self {
         self.cursor = Some(cursor);
         self
     }
 
     /// Set the long poll wait window in milliseconds.
+    #[must_use]
     pub fn wait_ms(mut self, ms: u32) -> Self {
         self.wait_ms = Some(ms);
         self

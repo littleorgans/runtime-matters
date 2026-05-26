@@ -223,6 +223,10 @@ pub struct SpawnRequest {
     pub shell_resume: Option<ShellResume>,
 }
 
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if predicates receive borrowed field values"
+)]
 fn is_false(value: &bool) -> bool {
     !*value
 }

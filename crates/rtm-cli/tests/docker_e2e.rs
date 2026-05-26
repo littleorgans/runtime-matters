@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 mod common;
 
 use std::path::{Path, PathBuf};
@@ -367,8 +369,7 @@ fn wait_for_child(mut child: Child) {
         let stderr = child
             .stderr
             .take()
-            .map(read_to_string)
-            .unwrap_or_else(|| "<stderr unavailable>".to_owned());
+            .map_or_else(|| "<stderr unavailable>".to_owned(), read_to_string);
         panic!("daemon did not exit after stop; stderr={stderr:?}")
     });
 }

@@ -35,13 +35,18 @@ fn shim_session_id() -> Result<Option<Uuid>> {
 
     let flag = args.next().context("__shim requires --session-id")?;
     if flag != "--session-id" {
-        bail!("__shim expects --session-id, got {flag:?}");
+        bail!(
+            "__shim expects --session-id, got {}",
+            flag.to_string_lossy()
+        );
     }
     let session_id = args
         .next()
         .context("__shim requires a session id")?
         .into_string()
-        .map_err(|value| anyhow::anyhow!("invalid unicode session id: {value:?}"))?
+        .map_err(|value| {
+            anyhow::anyhow!("invalid unicode session id: {}", value.to_string_lossy())
+        })?
         .parse()
         .context("invalid shim session id")?;
     Ok(Some(session_id))

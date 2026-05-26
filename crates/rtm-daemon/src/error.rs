@@ -81,10 +81,10 @@ impl RuntimeFailure {
             Self::SessionAlreadyExists { .. } => ErrorCode::InvalidTarget,
             Self::SessionNotFound { .. } => ErrorCode::SessionNotFound,
             Self::TmuxPaneDead { .. } => ErrorCode::TmuxPaneDead,
-            Self::DockerUnavailable { .. } => ErrorCode::RuntimeUnavailable,
+            Self::DockerUnavailable { .. }
+            | Self::DockerImageUnavailable { .. }
+            | Self::DockerImageMetadataUnavailable { .. } => ErrorCode::RuntimeUnavailable,
             Self::DockerImageNotConfigured => ErrorCode::DockerImageNotConfigured,
-            Self::DockerImageUnavailable { .. } => ErrorCode::RuntimeUnavailable,
-            Self::DockerImageMetadataUnavailable { .. } => ErrorCode::RuntimeUnavailable,
             Self::UnsupportedIsolationPolicy { .. } => ErrorCode::UnsupportedIsolationPolicy,
         }
     }
@@ -124,8 +124,8 @@ impl Display for RuntimeFailure {
 
 impl Error for RuntimeFailure {}
 
-pub(crate) fn protocol_error_response(error: lilo_rm_core::ProtocolError) -> RuntimeResponse {
-    let code = match &error {
+pub(crate) fn protocol_error_response(error: &lilo_rm_core::ProtocolError) -> RuntimeResponse {
+    let code = match error {
         lilo_rm_core::ProtocolError::Json(error) if is_invalid_target_json(error) => {
             ErrorCode::InvalidTarget
         }
@@ -136,9 +136,9 @@ pub(crate) fn protocol_error_response(error: lilo_rm_core::ProtocolError) -> Run
 
 pub(crate) fn rpc_error_response(
     context: RpcErrorContext,
-    error: anyhow::Error,
+    error: &anyhow::Error,
 ) -> RuntimeResponse {
-    let code = rpc_error_code(context, &error);
+    let code = rpc_error_code(context, error);
     RuntimeResponse::error(code, error.to_string())
 }
 
@@ -216,7 +216,8 @@ mod tests {
         ];
 
         for (error, expected) in cases {
-            let RuntimeResponse::Error(payload) = rpc_error_response(RpcErrorContext::Other, error)
+            let RuntimeResponse::Error(payload) =
+                rpc_error_response(RpcErrorContext::Other, &error)
             else {
                 panic!("expected error response");
             };
@@ -226,8 +227,8 @@ mod tests {
 
     #[test]
     fn spawn_errors_default_to_launch_failed() {
-        let RuntimeResponse::Error(payload) =
-            rpc_error_response(RpcErrorContext::Spawn, anyhow!("boom"))
+        let error = anyhow!("boom");
+        let RuntimeResponse::Error(payload) = rpc_error_response(RpcErrorContext::Spawn, &error)
         else {
             panic!("expected error response");
         };
@@ -262,8 +263,9 @@ mod tests {
         ];
 
         for (error, expected) in cases {
+            let error: anyhow::Error = error.into();
             let RuntimeResponse::Error(payload) =
-                rpc_error_response(RpcErrorContext::Other, error.into())
+                rpc_error_response(RpcErrorContext::Other, &error)
             else {
                 panic!("expected error response");
             };
@@ -287,9 +289,8 @@ mod tests {
         }))
         .expect_err("invalid tmux target");
 
-        let RuntimeResponse::Error(payload) =
-            protocol_error_response(lilo_rm_core::ProtocolError::Json(error))
-        else {
+        let error = lilo_rm_core::ProtocolError::Json(error);
+        let RuntimeResponse::Error(payload) = protocol_error_response(&error) else {
             panic!("expected error response");
         };
         assert_eq!(payload.code, ErrorCode::InvalidTarget);

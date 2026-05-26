@@ -1,5 +1,6 @@
 use std::fmt::Write as _;
 use std::io::{Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
@@ -332,15 +333,11 @@ fn write_fake_runtime(dir: &Path, name: &str) -> PathBuf {
     std::fs::write(
         &path,
         format!(
-            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exec sleep 60\nfi\nif [ \"${{RTM_TEST_TUI_EXIT_WINDOW:-}}\" = 1 ]; then\n  trap 'trap \"\" INT; printf \"press CTRL+C to quit\\n\"; sleep 1; exit 130' INT\n  printf '{}\\n'\n  while :; do sleep 60; done\nfi\nif [ \"${{RTM_TEST_PRINT_CWD:-}}\" = 1 ] || [ -f .rtm-print-cwd ]; then\n  printf '{} %s\\n' \"$(pwd)\"\n  exec sleep 60\nfi\nif [ \"${{RTM_TEST_PRINT_ENV:-}}\" = 1 ]; then\n  env | sort\n  exec sleep 60\nfi\nprintf '{}\\n'\nexec sleep 60\n",
-            FAKE_RUNTIME_READY,
-            FAKE_RUNTIME_READY,
-            FAKE_RUNTIME_READY
+            "#!/bin/sh\nif [ \"${{RTM_TEST_STDIO_SENTINELS:-}}\" = 1 ]; then\n  printf 'HELLO\\n'\n  printf 'WORLD\\n' >&2\n  exec sleep 60\nfi\nif [ \"${{RTM_TEST_TUI_EXIT_WINDOW:-}}\" = 1 ]; then\n  trap 'trap \"\" INT; printf \"press CTRL+C to quit\\n\"; sleep 1; exit 130' INT\n  printf '{FAKE_RUNTIME_READY}\\n'\n  while :; do sleep 60; done\nfi\nif [ \"${{RTM_TEST_PRINT_CWD:-}}\" = 1 ] || [ -f .rtm-print-cwd ]; then\n  printf '{FAKE_RUNTIME_READY} %s\\n' \"$(pwd)\"\n  exec sleep 60\nfi\nif [ \"${{RTM_TEST_PRINT_ENV:-}}\" = 1 ]; then\n  env | sort\n  exec sleep 60\nfi\nprintf '{FAKE_RUNTIME_READY}\\n'\nexec sleep 60\n"
         ),
     )
     .expect("fake runtime");
     let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
-    use std::os::unix::fs::PermissionsExt;
     permissions.set_mode(0o755);
     std::fs::set_permissions(&path, permissions).expect("permissions");
     path
@@ -391,13 +388,12 @@ fn wait_for_socket(socket: &Path, daemon: &mut Child) {
             Ok(_) => return,
             Err(error) => last_error = Some(error),
         }
-        if daemon.try_wait().expect("daemon try_wait").is_some() {
-            panic!(
-                "daemon exited before socket accepted connections at {}{}",
-                socket.display(),
-                daemon_debug(daemon)
-            );
-        }
+        assert!(
+            daemon.try_wait().expect("daemon try_wait").is_none(),
+            "daemon exited before socket accepted connections at {}{}",
+            socket.display(),
+            daemon_debug(daemon)
+        );
         std::thread::sleep(Duration::from_millis(25));
     }
     panic!(

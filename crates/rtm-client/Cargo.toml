@@ -28,3 +28,6 @@ rtm-store.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 uuid.workspace = true
+
+[lints]
+workspace = true
